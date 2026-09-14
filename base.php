@@ -7,10 +7,10 @@
 
 // ---------- 1. DB CONNECTION ----------
 // Edit these 4 lines to match your local MySQL / XAMPP setup.
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'schema');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+define('DB_HOST', getenv('MYSQLHOST'));
+define('DB_NAME', getenv('MYSQLDATABASE'));
+define('DB_USER', getenv('MYSQLUSER'));
+define('DB_PASS', getenv('MYSQLPASSWORD'));
 
 try {
     $pdo = new PDO(

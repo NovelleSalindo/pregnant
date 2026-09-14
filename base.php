@@ -8,7 +8,7 @@
 // ---------- 1. DB CONNECTION ----------
 // Edit these 4 lines to match your local MySQL / XAMPP setup.
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'pregnacare');
+define('DB_NAME', 'schema');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 

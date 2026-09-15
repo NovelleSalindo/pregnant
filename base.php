@@ -8,6 +8,7 @@
 // ---------- 1. DB CONNECTION ----------
 // Edit these 4 lines to match your local MySQL / XAMPP setup.
 define('DB_HOST', getenv('MYSQLHOST'));
+define('DB_PORT', getenv('MYSQLPORT'));
 define('DB_NAME', getenv('MYSQLDATABASE'));
 define('DB_USER', getenv('MYSQLUSER'));
 define('DB_PASS', getenv('MYSQLPASSWORD'));

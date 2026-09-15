@@ -1,0 +1,4 @@
+{
+  "buildCommand": "composer install --no-dev 2>/dev/null || true && docker-php-ext-install pdo pdo_mysql",
+  "startCommand": "php -S 0.0.0.0:8080"
+}

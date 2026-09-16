@@ -15,6 +15,28 @@ require_once __DIR__ . '/bootstrap.php';
 
 $u = require_api_user('patient');
 
+// Handle notification actions if requested via POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_GET['action'] ?? ($_POST['action'] ?? '');
+    $body = json_decode(file_get_contents('php://input'), true) ?? [];
+    if (!$action && isset($body['action'])) {
+        $action = $body['action'];
+    }
+
+    if ($action === 'mark_all_read') {
+        $stmt = $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?");
+        $stmt->execute([$u['id']]);
+        json_success(['message' => 'All notifications marked as read']);
+    } elseif ($action === 'mark_read') {
+        $id = $body['id'] ?? ($_GET['id'] ?? '');
+        if ($id) {
+            $stmt = $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?");
+            $stmt->execute([$id, $u['id']]);
+        }
+        json_success(['message' => 'Notification marked as read']);
+    }
+}
+
 // Trigger OB-GYN reminder check
 check_ob_visit_reminder($pdo, $u);
 

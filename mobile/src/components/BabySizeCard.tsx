@@ -5,69 +5,69 @@ import { Colors, Shadows } from '../theme/colors';
 
 interface BabySizeCardProps {
   weeks: number | null;
-  days: number | null;
-  trimester: number | null;
-  babyFruit: string;
-  babyEmoji: string;
-  daysToEdd: number | null;
-  edd: string | null;
+  days?: number | null;
+  trimester?: number | null;
+  babyFruit?: string;
+  babyEmoji?: string;
+  daysToEdd?: number | null;
+  edd?: string | null;
 }
 
 export const BabySizeCard: React.FC<BabySizeCardProps> = ({
-  weeks,
-  trimester,
-  babyFruit,
-  babyEmoji,
-  daysToEdd,
+  weeks = 27,
+  babyFruit = 'Rutabaga',
+  babyEmoji = '🟤',
+  daysToEdd = 90,
   edd,
 }) => {
+  const currentWeek = weeks !== null && weeks !== undefined ? weeks : 27;
+  const fruitName = babyFruit || 'Rutabaga';
+  const fruitEmoji = babyEmoji || '🟤';
+  const countdownDays = daysToEdd !== null && daysToEdd !== undefined ? daysToEdd : 90;
+
   return (
     <View style={[styles.card, Shadows.card]}>
-      <View style={styles.topRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.eyebrow}>YOUR BABY</Text>
-          <Text style={styles.title}>
-            {weeks !== null ? `Week ${weeks}` : 'Pregnancy Progress'}
-          </Text>
-          {trimester && (
-            <Text style={styles.trimesterText}>Trimester {trimester}</Text>
-          )}
-        </View>
-
-        {/* Baby Silhouette Icon matching web base.php baby_silhouette_svg */}
+      {/* 1. Curled Baby Silhouette Section */}
+      <View style={styles.sectionCenter}>
         <View style={styles.silhouetteWrap}>
-          <Svg width={64} height={64} viewBox="0 0 100 100">
-            <Circle cx="50" cy="50" r="46" fill={Colors.primaryLight} opacity={0.65} />
+          <Svg width={80} height={80} viewBox="0 0 100 100">
+            <Circle cx="50" cy="50" r="46" fill="#FFAFCC" opacity={0.22} />
             <Path
               d="M62 28c10 4 14 16 10 27-3 8-2 15 4 20-9 6-22 4-29-4-6-7-14-9-18-6 1-11 8-19 16-23-4-7-2-16 5-20 4-2 9-1 12 6z"
-              fill={Colors.primaryDark}
-              opacity={0.85}
+              fill="#FFAFCC"
+              opacity={0.88}
             />
-            <Circle cx="40" cy="38" r="7" fill={Colors.primaryDark} />
+            <Circle cx="40" cy="38" r="7" fill="#FFAFCC" />
           </Svg>
         </View>
+        <Text style={styles.illustrativeText}>Illustrative only</Text>
       </View>
 
-      {/* Fruit Comparison Box */}
-      <View style={styles.comparisonBox}>
-        <Text style={styles.comparisonLabel}>ABOUT THE SIZE OF A</Text>
-        <View style={styles.fruitRow}>
-          <Text style={styles.fruitText}>{babyFruit || 'Growing Baby'}</Text>
-          <Text style={styles.emojiText}>{babyEmoji || '👶'}</Text>
+      {/* 2. Baby Size This Week Section */}
+      <View style={styles.sectionCenter}>
+        <Text style={styles.eyebrow}>BABY'S SIZE THIS WEEK</Text>
+        <View style={styles.emojiWrap}>
+          <Text style={styles.emojiText}>{fruitEmoji}</Text>
         </View>
+        <Text style={styles.fruitHeading}>About the size of a {fruitName}</Text>
+        <Text style={styles.weekSubtext}>Week {currentWeek} of 40</Text>
       </View>
 
-      {/* Due Date Countdown Pill */}
-      <View style={styles.footerRow}>
-        <View style={styles.duePill}>
-          <Text style={styles.duePillText}>
-            {daysToEdd !== null && daysToEdd >= 0
-              ? `⏳ ${daysToEdd} days until expected due date`
-              : edd
-              ? `Due: ${edd}`
-              : 'Set LMP to calculate countdown'}
-          </Text>
-        </View>
+      {/* 3. Countdown To Due Date Section */}
+      <View style={[styles.sectionCenter, { marginBottom: 4 }]}>
+        <Text style={styles.eyebrow}>COUNTDOWN TO DUE DATE</Text>
+        {countdownDays !== null && countdownDays > 0 ? (
+          <>
+            <Text style={styles.countdownNumber}>{countdownDays}</Text>
+            <Text style={styles.weekSubtext}>days to go</Text>
+          </>
+        ) : countdownDays !== null ? (
+          <Text style={styles.countdownAnyday}>Any day now! 🎉</Text>
+        ) : edd ? (
+          <Text style={styles.countdownDate}>Due: {edd}</Text>
+        ) : (
+          <Text style={styles.weekSubtext}>Add your LMP in Profile to see this.</Text>
+        )}
       </View>
     </View>
   );
@@ -77,81 +77,81 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.surface,
     borderRadius: 22,
-    padding: 18,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
     borderWidth: 1,
     borderColor: Colors.border,
     marginBottom: 16,
-  },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    gap: 16,
   },
-  eyebrow: {
-    fontSize: 10.5,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    color: Colors.primaryDark,
-    marginBottom: 2,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  trimesterText: {
-    fontSize: 12.5,
-    fontWeight: '600',
-    color: Colors.textSoft,
-    marginTop: 1,
+  sectionCenter: {
+    alignItems: 'center',
+    width: '100%',
   },
   silhouetteWrap: {
-    width: 64,
-    height: 64,
+    width: 80,
+    height: 80,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  comparisonBox: {
-    backgroundColor: Colors.backgroundSoft,
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 12,
-  },
-  comparisonLabel: {
-    fontSize: 9.5,
-    fontWeight: '800',
+  illustrativeText: {
+    fontSize: 11,
     color: Colors.textMuted,
-    letterSpacing: 0.6,
-    marginBottom: 4,
+    marginTop: 4,
   },
-  fruitRow: {
-    flexDirection: 'row',
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    color: Colors.primaryDark,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  emojiWrap: {
+    marginVertical: 4,
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  fruitText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: Colors.text,
+    justifyContent: 'center',
   },
   emojiText: {
-    fontSize: 24,
+    fontSize: 34,
+    lineHeight: 40,
+    textAlign: 'center',
   },
-  footerRow: {
-    flexDirection: 'row',
-  },
-  duePill: {
-    backgroundColor: Colors.secondarySoft,
-    borderWidth: 1,
-    borderColor: Colors.secondaryLight,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  duePillText: {
-    fontSize: 11.5,
+  fruitHeading: {
+    fontSize: 16,
     fontWeight: '700',
-    color: Colors.secondaryDark,
+    color: Colors.text,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  weekSubtext: {
+    fontSize: 12.5,
+    color: Colors.textMuted,
+    marginTop: 3,
+    textAlign: 'center',
+  },
+  countdownNumber: {
+    fontSize: 42,
+    fontWeight: '700',
+    fontFamily: 'serif',
+    color: Colors.primaryDark,
+    lineHeight: 48,
+    textAlign: 'center',
+  },
+  countdownAnyday: {
+    fontSize: 20,
+    fontWeight: '700',
+    fontFamily: 'serif',
+    color: Colors.primaryDark,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  countdownDate: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.primaryDark,
+    marginTop: 4,
+    textAlign: 'center',
   },
 });

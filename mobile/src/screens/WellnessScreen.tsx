@@ -14,8 +14,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Shadows, Gradients } from '../theme/colors';
 import { api } from '../services/api';
 
-export const WellnessScreen: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'education' | 'bag' | 'meds' | 'plan' | 'weight'>('education');
+interface WellnessScreenProps {
+  initialTab?: 'education' | 'bag' | 'meds' | 'plan' | 'weight';
+  onNavigate?: (tab: string) => void;
+}
+
+export const WellnessScreen: React.FC<WellnessScreenProps> = ({ initialTab = 'education' }) => {
+  const [activeTab, setActiveTab] = useState<'education' | 'bag' | 'meds' | 'plan' | 'weight'>(initialTab);
+
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
   const [activeTrimester, setActiveTrimester] = useState<1 | 2 | 3>(2);
   const [loading, setLoading] = useState(false);
 

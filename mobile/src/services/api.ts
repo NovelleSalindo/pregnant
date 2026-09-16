@@ -149,6 +149,20 @@ class ApiService {
     return this.request('dashboard.php');
   }
 
+  async markAllNotificationsRead() {
+    return this.request('dashboard.php?action=mark_all_read', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'mark_all_read' }),
+    });
+  }
+
+  async markNotificationRead(id: string) {
+    return this.request('dashboard.php?action=mark_read', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'mark_read', id }),
+    });
+  }
+
   // --- Vitals Monitoring Endpoints ---
   async getVitals(limit = 30) {
     return this.request(`monitoring.php?limit=${limit}`);

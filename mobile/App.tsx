@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   SafeAreaView,
   View,
@@ -21,11 +21,35 @@ import { TrackerScreen } from './src/screens/TrackerScreen';
 import { WellnessScreen } from './src/screens/WellnessScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { AnalyzeScreen } from './src/screens/AnalyzeScreen';
+import { AdviceScreen } from './src/screens/AdviceScreen';
+import { WellnessDrawer } from './src/components/WellnessDrawer';
+import { NotificationModal } from './src/components/NotificationModal';
+import { EmergencyFab } from './src/components/EmergencyFab';
+
+type NavTab = 'home' | 'vitals' | 'symptoms' | 'analyze' | 'advice' | 'profile' | 'wellness' | 'trackers';
 
 export default function App() {
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'vitals' | 'symptoms' | 'trackers' | 'wellness' | 'profile' | 'analyze'>('home');
+  const [activeTab, setActiveTab] = useState<NavTab>('home');
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [wellnessSubTab, setWellnessSubTab] = useState<'education' | 'bag' | 'meds' | 'plan' | 'weight'>('education');
+
+  const fetchUserData = useCallback(async () => {
+    try {
+      const dashboard = await api.getDashboard();
+      if (dashboard?.notifications?.items) {
+        setNotifications(dashboard.notifications.items);
+      }
+      if (dashboard?.user) {
+        setUser(dashboard.user);
+      }
+    } catch (e: any) {
+      console.warn('Dashboard fetch error:', e.message);
+    }
+  }, []);
 
   useEffect(() => {
     async function setup() {
@@ -34,6 +58,7 @@ export default function App() {
         const cachedUser = await api.getCachedUser();
         if (cachedUser && api.getToken()) {
           setUser(cachedUser);
+          fetchUserData();
         }
       } catch (e) {
         console.warn('Init error:', e);
@@ -42,16 +67,66 @@ export default function App() {
       }
     }
     setup();
-  }, []);
+  }, [fetchUserData]);
 
   const handleLoginSuccess = (loggedInUser: any) => {
     setUser(loggedInUser);
     setActiveTab('home');
+    fetchUserData();
   };
 
   const handleLogout = async () => {
     await api.logout();
     setUser(null);
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    try {
+      await api.markAllNotificationsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: 1 })));
+    } catch (e) {
+      console.warn('Mark read error:', e);
+    }
+  };
+
+  const handleSelectTool = (key: string) => {
+    switch (key) {
+      case 'education':
+        setWellnessSubTab('education');
+        setActiveTab('wellness');
+        break;
+      case 'meal_planner':
+        setWellnessSubTab('education');
+        setActiveTab('wellness');
+        break;
+      case 'medications':
+        setWellnessSubTab('meds');
+        setActiveTab('wellness');
+        break;
+      case 'weight_tracker':
+        setWellnessSubTab('weight');
+        setActiveTab('wellness');
+        break;
+      case 'birth_plan':
+        setWellnessSubTab('plan');
+        setActiveTab('wellness');
+        break;
+      case 'hospital_bag':
+        setWellnessSubTab('bag');
+        setActiveTab('wellness');
+        break;
+      case 'journal':
+      case 'bump_photos':
+        setActiveTab('trackers');
+        break;
+      case 'postpartum':
+        setWellnessSubTab('education');
+        setActiveTab('wellness');
+        break;
+      default:
+        setActiveTab('wellness');
+        break;
+    }
   };
 
   if (initializing) {
@@ -82,13 +157,14 @@ export default function App() {
     );
   }
 
+  // Exact 6 bottom navigation tabs matching Screenshot 1
   const tabs = [
-    { key: 'home', label: 'Home', icon: 'home-outline', iconActive: 'home' },
-    { key: 'vitals', label: 'Vitals', icon: 'pulse-outline', iconActive: 'pulse' },
-    { key: 'symptoms', label: 'Check-in', icon: 'shield-checkmark-outline', iconActive: 'shield-checkmark' },
-    { key: 'trackers', label: 'Trackers', icon: 'footsteps-outline', iconActive: 'footsteps' },
-    { key: 'wellness', label: 'Wellness', icon: 'library-outline', iconActive: 'library' },
-    { key: 'profile', label: 'Profile', icon: 'person-outline', iconActive: 'person' },
+    { key: 'home' as const, label: 'Home', icon: 'speedometer-outline', iconActive: 'speedometer' },
+    { key: 'vitals' as const, label: 'Vitals', icon: 'heart-outline', iconActive: 'heart' },
+    { key: 'symptoms' as const, label: 'Check-in', icon: 'medkit-outline', iconActive: 'medkit' },
+    { key: 'analyze' as const, label: 'Risk', icon: 'share-social-outline', iconActive: 'share-social' },
+    { key: 'advice' as const, label: 'Advice', icon: 'bulb-outline', iconActive: 'bulb' },
+    { key: 'profile' as const, label: 'Profile', icon: 'person-outline', iconActive: 'person' },
   ];
 
   return (
@@ -97,16 +173,27 @@ export default function App() {
 
       {/* Screen Body */}
       <View style={styles.screenContainer}>
-        {activeTab === 'home' && <HomeScreen onNavigate={(tab: any) => setActiveTab(tab)} />}
+        {activeTab === 'home' && (
+          <HomeScreen
+            onNavigate={(tab: any) => setActiveTab(tab)}
+            onOpenDrawer={() => setDrawerVisible(true)}
+            onOpenNotifications={() => setNotificationsVisible(true)}
+            currentUser={user}
+          />
+        )}
         {activeTab === 'vitals' && <VitalsScreen />}
         {activeTab === 'symptoms' && <SymptomsScreen />}
-        {activeTab === 'trackers' && <TrackerScreen />}
-        {activeTab === 'wellness' && <WellnessScreen />}
-        {activeTab === 'profile' && <ProfileScreen user={user} onLogout={handleLogout} />}
         {activeTab === 'analyze' && <AnalyzeScreen onNavigate={(tab: any) => setActiveTab(tab)} />}
+        {activeTab === 'advice' && <AdviceScreen onNavigate={(tab: any) => setActiveTab(tab)} />}
+        {activeTab === 'profile' && <ProfileScreen user={user} onLogout={handleLogout} />}
+        {activeTab === 'wellness' && <WellnessScreen initialTab={wellnessSubTab} onNavigate={(tab: any) => setActiveTab(tab)} />}
+        {activeTab === 'trackers' && <TrackerScreen />}
+
+        {/* Floating Emergency Button (FAB) matching Screenshot 1 */}
+        <EmergencyFab bottomOffset={Platform.OS === 'ios' ? 76 : 68} />
       </View>
 
-      {/* Bottom Navigation Bar (1:1 with style.css .bottom-nav) */}
+      {/* Bottom Navigation Bar (1:1 with Screenshot 1) */}
       <View style={[styles.bottomBar, Shadows.soft]}>
         {tabs.map((tab) => {
           const isActive = activeTab === tab.key;
@@ -114,7 +201,7 @@ export default function App() {
             <TouchableOpacity
               key={tab.key}
               style={[styles.tabItem, isActive && styles.tabItemActive]}
-              onPress={() => setActiveTab(tab.key as any)}
+              onPress={() => setActiveTab(tab.key)}
               activeOpacity={0.7}
             >
               <View style={[styles.tabIconWrap, isActive && styles.tabIconWrapActive]}>
@@ -131,6 +218,22 @@ export default function App() {
           );
         })}
       </View>
+
+      {/* Wellness Drawer Modal matching Screenshot 2 */}
+      <WellnessDrawer
+        visible={drawerVisible}
+        onClose={() => setDrawerVisible(false)}
+        onSelectTool={handleSelectTool}
+        onLogout={handleLogout}
+      />
+
+      {/* Notifications Modal */}
+      <NotificationModal
+        visible={notificationsVisible}
+        notifications={notifications}
+        onClose={() => setNotificationsVisible(false)}
+        onMarkAllRead={handleMarkAllNotificationsRead}
+      />
     </SafeAreaView>
   );
 }
@@ -143,6 +246,7 @@ const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
     backgroundColor: Colors.background,
+    position: 'relative',
   },
   splashContainer: {
     flex: 1,
@@ -161,8 +265,9 @@ const styles = StyleSheet.create({
     ...Shadows.glow,
   },
   splashTitle: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '800',
+    fontFamily: 'serif',
     color: Colors.text,
     letterSpacing: -0.5,
   },
@@ -177,8 +282,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    paddingVertical: 8,
-    paddingBottom: Platform.OS === 'ios' ? 12 : 8,
+    paddingVertical: 6,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 6,
     justifyContent: 'space-around',
     alignItems: 'center',
   },
@@ -190,15 +295,12 @@ const styles = StyleSheet.create({
   },
   tabItemActive: {},
   tabIconWrap: {
-    width: 38,
-    height: 28,
+    width: 32,
+    height: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 14,
   },
-  tabIconWrapActive: {
-    backgroundColor: Colors.primaryLight,
-  },
+  tabIconWrapActive: {},
   tabItemText: {
     fontSize: 10.5,
     fontWeight: '700',

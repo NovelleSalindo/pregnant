@@ -13,13 +13,22 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Shadows, Gradients } from '../theme/colors';
 import { BabySizeCard } from '../components/BabySizeCard';
 import { RiskGauge } from '../components/RiskGauge';
+import { HeaderBar } from '../components/HeaderBar';
 import { api } from '../services/api';
 
 interface HomeScreenProps {
   onNavigate: (tab: string) => void;
+  onOpenDrawer?: () => void;
+  onOpenNotifications?: () => void;
+  currentUser?: any;
 }
 
-export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
+export const HomeScreen: React.FC<HomeScreenProps> = ({
+  onNavigate,
+  onOpenDrawer,
+  onOpenNotifications,
+  currentUser,
+}) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -67,33 +76,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primaryDark} />}
     >
-      {/* Top Brand Header (1:1 with style.css .brand) */}
-      <View style={styles.topbar}>
-        <View style={styles.brandRow}>
-          <LinearGradient
-            colors={Gradients.brandMark}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.brandMark}
-          >
-            <Ionicons name="heart" size={18} color="#FFFFFF" />
-          </LinearGradient>
-          <View>
-            <Text style={styles.brandName}>PregnaCare</Text>
-            <Text style={styles.brandSubtitle}>MATERNAL HEALTH</Text>
-          </View>
-        </View>
+      {/* Top Header Bar matching Screenshot 1 1:1 */}
+      <HeaderBar
+        title="Dashboard"
+        user={user?.name ? user : currentUser}
+        unreadCount={data?.notifications?.unreadCount || 0}
+        onOpenDrawer={onOpenDrawer || (() => {})}
+        onOpenNotifications={onOpenNotifications || (() => {})}
+      />
 
-        <TouchableOpacity style={styles.iconBtn} onPress={() => onNavigate('profile')} activeOpacity={0.7}>
-          <Ionicons name="notifications-outline" size={20} color={Colors.textSoft} />
-          {(data?.notifications?.unreadCount || 0) > 0 && (
-            <View style={styles.badgeDot} />
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {/* Hero Gradient Banner (.hero-gradient in style.css) */}
-      <LinearGradient
+      {/* Body Cards Container */}
+      <View style={styles.bodyContent}>
+        {/* Hero Gradient Banner (.hero-gradient in style.css) */}
+        <LinearGradient
         colors={Gradients.hero}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -302,6 +297,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
           <Text style={styles.quickSub}>Checklist gear</Text>
         </TouchableOpacity>
       </View>
+      </View>
     </ScrollView>
   );
 };
@@ -312,8 +308,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   content: {
-    padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 90,
+  },
+  bodyContent: {
+    paddingHorizontal: 16,
   },
   centerContainer: {
     flex: 1,
@@ -402,8 +400,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   heroName: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '800',
+    fontFamily: 'serif',
     color: '#FFFFFF',
     marginTop: 4,
     marginBottom: 4,

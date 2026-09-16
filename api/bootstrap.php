@@ -19,12 +19,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // 2. Load base.php for Database connection ($pdo) and risk engine
 require_once __DIR__ . '/../base.php';
 
-// 3. Ensure API tokens table exists
+// 3. Ensure API tokens and mobile tracker tables exist
 $pdo->exec("CREATE TABLE IF NOT EXISTS api_tokens (
     token VARCHAR(64) PRIMARY KEY,
     user_id VARCHAR(20) NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at DATETIME NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB");
+
+$pdo->exec("CREATE TABLE IF NOT EXISTS trackers (
+    id VARCHAR(20) PRIMARY KEY,
+    user_id VARCHAR(20) NOT NULL,
+    kind ENUM('kick','contraction') NOT NULL,
+    at DATETIME NOT NULL,
+    duration_seconds INT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB");
+
+$pdo->exec("CREATE TABLE IF NOT EXISTS medications (
+    id VARCHAR(20) PRIMARY KEY,
+    user_id VARCHAR(20) NOT NULL,
+    name VARCHAR(120) NOT NULL,
+    dosage VARCHAR(80) NULL,
+    schedule_time VARCHAR(60) NULL,
+    active TINYINT(1) NOT NULL DEFAULT 1,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB");
+
+$pdo->exec("CREATE TABLE IF NOT EXISTS medication_logs (
+    id VARCHAR(20) PRIMARY KEY,
+    medication_id VARCHAR(20) NOT NULL,
+    user_id VARCHAR(20) NOT NULL,
+    taken_at DATETIME NOT NULL,
+    status ENUM('taken','skipped') NOT NULL DEFAULT 'taken',
+    FOREIGN KEY (medication_id) REFERENCES medications(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB");
+
+$pdo->exec("CREATE TABLE IF NOT EXISTS journal_entries (
+    id VARCHAR(20) PRIMARY KEY,
+    user_id VARCHAR(20) NOT NULL,
+    entry_date DATE NOT NULL,
+    mood VARCHAR(40) NULL,
+    notes TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB");
+
+$pdo->exec("CREATE TABLE IF NOT EXISTS bump_photos (
+    id VARCHAR(20) PRIMARY KEY,
+    user_id VARCHAR(20) NOT NULL,
+    week_number INT NOT NULL,
+    photo_path VARCHAR(255) NOT NULL,
+    caption VARCHAR(255) NULL,
+    uploaded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB");
 

@@ -76,46 +76,64 @@ $babySize = baby_size_for_week($weeksPregnant);
 $daysToEdd = !empty($profile['edd']) ? (int)ceil((strtotime($profile['edd']) - time()) / 86400) : 53;
 
 // 2. Latest Risk Assessment
-$stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 1");
-$stmt->execute([$u['id']]);
-$latestAssessment = $stmt->fetch();
-
+$latestAssessment = null;
 $topRecs = [];
-if ($latestAssessment && !empty($latestAssessment['recommendations_json'])) {
-    $decodedRecs = json_decode($latestAssessment['recommendations_json'], true);
-    if (is_array($decodedRecs)) {
-        $topRecs = array_slice($decodedRecs, 0, 4);
+try {
+    $stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 1");
+    $stmt->execute([$u['id']]);
+    $latestAssessment = $stmt->fetch();
+    if ($latestAssessment && !empty($latestAssessment['recommendations_json'])) {
+        $decodedRecs = json_decode($latestAssessment['recommendations_json'], true);
+        if (is_array($decodedRecs)) {
+            $topRecs = array_slice($decodedRecs, 0, 4);
+        }
     }
-}
+} catch (Exception $e) {}
 
 // 3. Latest Vitals
-$stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? ORDER BY date DESC LIMIT 1");
-$stmt->execute([$u['id']]);
-$lastVitals = $stmt->fetch();
+$lastVitals = null;
+try {
+    $stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? ORDER BY date DESC LIMIT 1");
+    $stmt->execute([$u['id']]);
+    $lastVitals = $stmt->fetch();
+} catch (Exception $e) {}
 
 // 4. Daily Check-in Status
 $today = today_iso();
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM monitoring WHERE user_id = ? AND date >= ?");
-$stmt->execute([$u['id'], $today . ' 00:00:00']);
-$loggedVitalsToday = (int)$stmt->fetchColumn() > 0;
+$loggedVitalsToday = false;
+$loggedSymptomsToday = false;
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM monitoring WHERE user_id = ? AND date >= ?");
+    $stmt->execute([$u['id'], $today . ' 00:00:00']);
+    $loggedVitalsToday = (int)$stmt->fetchColumn() > 0;
 
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM symptom_logs WHERE user_id = ? AND date >= ?");
-$stmt->execute([$u['id'], $today . ' 00:00:00']);
-$loggedSymptomsToday = (int)$stmt->fetchColumn() > 0;
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM symptom_logs WHERE user_id = ? AND date >= ?");
+    $stmt->execute([$u['id'], $today . ' 00:00:00']);
+    $loggedSymptomsToday = (int)$stmt->fetchColumn() > 0;
+} catch (Exception $e) {}
 
 // 5. Notifications
-$stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY date DESC LIMIT 5");
-$stmt->execute([$u['id']]);
-$notifications = $stmt->fetchAll();
+$notifications = [];
+$unreadCount = 0;
+try {
+    $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY date DESC LIMIT 5");
+    $stmt->execute([$u['id']]);
+    $notifications = $stmt->fetchAll();
 
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0");
-$stmt->execute([$u['id']]);
-$unreadCount = (int)$stmt->fetchColumn();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0");
+    $stmt->execute([$u['id']]);
+    $unreadCount = (int)$stmt->fetchColumn();
+} catch (Exception $e) {}
 
-// 6. Today's Kicks Count
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM kick_logs WHERE user_id = ? AND recorded_at >= ?");
-$stmt->execute([$u['id'], $today . ' 00:00:00']);
-$kicksToday = (int)$stmt->fetchColumn();
+// 6. Today's Kicks Count (trackers table with kind='kick')
+$kicksToday = 0;
+try {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM trackers WHERE user_id = ? AND kind = 'kick' AND at >= ?");
+    $stmt->execute([$u['id'], $today . ' 00:00:00']);
+    $kicksToday = (int)$stmt->fetchColumn();
+} catch (Exception $e) {
+    $kicksToday = 0;
+}
 
 json_success([
     'user' => [

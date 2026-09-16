@@ -160,28 +160,6 @@ export const SymptomsScreen: React.FC = () => {
         <Text style={styles.headerTitle}>Symptom Check-in</Text>
       </View>
 
-      {/* Real-time Live Risk Preview Card */}
-      <View style={[styles.liveCard, Shadows.card]}>
-        <View style={styles.liveBadgeRow}>
-          <View style={styles.liveIndicator}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>REAL-TIME RISK PREVIEW</Text>
-          </View>
-          <Text style={styles.calcNote}>Offline-ready</Text>
-        </View>
-
-        <View style={styles.gaugeContainer}>
-          <RiskGauge score={liveRisk.score} level={liveRisk.level} size={170} />
-        </View>
-
-        {liveRisk.rules.length > 0 && (
-          <View style={styles.rulesAlertBox}>
-            <Ionicons name="warning" size={16} color={Colors.riskHigh} />
-            <Text style={styles.rulesAlertText}>{liveRisk.rules[0].text}</Text>
-          </View>
-        )}
-      </View>
-
       {/* Symptoms Checklist */}
       <Text style={styles.sectionHeader}>How are you feeling today?</Text>
       {catalog.map((item) => {

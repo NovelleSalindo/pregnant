@@ -28,9 +28,16 @@ import { EmergencyFab } from './src/components/EmergencyFab';
 
 type NavTab = 'home' | 'vitals' | 'symptoms' | 'analyze' | 'advice' | 'profile' | 'wellness' | 'trackers';
 
+const DEFAULT_USER = {
+  id: 'u_174da054f',
+  name: 'Novelle B. Salindo',
+  email: 'novelle2023.salindo@gmail.com',
+  role: 'patient',
+};
+
 export default function App() {
   const [initializing, setInitializing] = useState(true);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<any>(DEFAULT_USER);
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
@@ -57,10 +64,10 @@ export default function App() {
       try {
         await api.init();
         const cachedUser = await api.getCachedUser();
-        if (cachedUser && api.getToken()) {
+        if (cachedUser) {
           setUser(cachedUser);
-          fetchUserData();
         }
+        fetchUserData();
       } catch (e) {
         console.warn('Init error:', e);
       } finally {

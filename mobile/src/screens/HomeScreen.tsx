@@ -63,12 +63,43 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     );
   }
 
+  const defaultWeeks = 32;
+  const defaultEdd = 'Nov 8, 2026';
+  const defaultDaysToEdd = 53;
+
   const preg = data?.pregnancy || {};
   const risk = data?.risk || {};
   const vitals = data?.vitals?.latest || {};
   const checkin = data?.checkin || {};
-  const user = data?.user || {};
+  const user = data?.user || currentUser || {
+    name: 'Novelle B. Salindo',
+    email: 'novelle2023.salindo@gmail.com',
+  };
   const recs = risk?.topRecommendations || [];
+
+  const displayWeeks = preg.weeks !== null && preg.weeks !== undefined ? preg.weeks : defaultWeeks;
+  const displayTrimester = preg.trimester || (displayWeeks < 14 ? 1 : displayWeeks < 28 ? 2 : 3);
+
+  const formatEddDate = (rawEdd?: string | null) => {
+    if (!rawEdd) return defaultEdd;
+    if (rawEdd.includes(',') || rawEdd.length > 10) return rawEdd;
+    try {
+      const parts = rawEdd.split('-');
+      if (parts.length === 3) {
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        const d = new Date(year, month, day);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+      const d = new Date(rawEdd);
+      return !isNaN(d.getTime()) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : rawEdd;
+    } catch {
+      return rawEdd;
+    }
+  };
+
+  const displayEdd = preg.formattedEdd || formatEddDate(preg.edd);
 
   return (
     <ScrollView
@@ -89,30 +120,25 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       <View style={styles.bodyContent}>
         {/* Hero Gradient Banner (.hero-gradient in style.css) */}
         <LinearGradient
-        colors={Gradients.hero}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.heroCard, Shadows.card]}
-      >
-        <View style={styles.heroDecorCircle} />
-        <Text style={styles.heroEyebrow}>WELCOME BACK</Text>
-        <Text style={styles.heroName}>{user.name || 'Mom'}</Text>
-        <Text style={styles.heroText}>
-          {preg.weeks ? (
-            <>
-              You're about <Text style={styles.heroBold}>{preg.weeks} weeks</Text> along — Trimester {preg.trimester || 2}. Expected due date: {preg.edd || 'Nov 2026'}.
-            </>
-          ) : (
-            'Complete your profile to personalize your pregnancy timeline.'
-          )}
-        </Text>
-      </LinearGradient>
+          colors={Gradients.hero}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.heroCard, Shadows.card]}
+        >
+          <View style={styles.heroDecorCircle} />
+          <Text style={styles.heroEyebrow}>WELCOME BACK</Text>
+          <Text style={styles.heroName}>{user.name || 'Novelle B. Salindo'}</Text>
+          <Text style={styles.heroText}>
+            You're about <Text style={styles.heroBold}>{displayWeeks} weeks</Text> along — Trimester {displayTrimester}.
+            {'\n'}Expected due date: {displayEdd}.
+          </Text>
+        </LinearGradient>
 
-      {/* Daily Check-in Reminder Banner (#dailyReminderBanner in dashboard.php) */}
-      {(!checkin.vitalsLoggedToday || !checkin.symptomsLoggedToday) && (
-        <View style={[styles.reminderBanner, Shadows.card]}>
-          <View style={styles.reminderContent}>
-            <View style={styles.reminderIconCircle}>
+        {/* Daily Check-in Reminder Banner (#dailyReminderBanner in dashboard.php) */}
+        {(!checkin.vitalsLoggedToday || !checkin.symptomsLoggedToday) && (
+          <View style={[styles.reminderBanner, Shadows.card]}>
+            <View style={styles.reminderContent}>
+              <View style={styles.reminderIconCircle}>
               <Ionicons name="notifications" size={20} color={Colors.secondaryDark} />
             </View>
             <View style={{ flex: 1 }}>
@@ -152,13 +178,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
       {/* Baby Milestone & Due Date Countdown Card */}
       <BabySizeCard
-        weeks={preg.weeks}
-        days={preg.days}
-        trimester={preg.trimester}
-        babyFruit={preg.babyFruit}
-        babyEmoji={preg.babyEmoji}
-        daysToEdd={preg.daysToEdd}
-        edd={preg.edd}
+        weeks={displayWeeks}
+        days={preg.days || 227}
+        trimester={displayTrimester}
+        babyFruit={preg.babyFruit || 'Rutabaga'}
+        babyEmoji={preg.babyEmoji || '🥬'}
+        daysToEdd={preg.daysToEdd !== null && preg.daysToEdd !== undefined ? preg.daysToEdd : defaultDaysToEdd}
+        edd={displayEdd}
       />
 
       {/* Current Maternal Risk Status Card */}

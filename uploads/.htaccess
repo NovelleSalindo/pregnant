@@ -1,0 +1,4 @@
+# Allow direct viewing of uploaded images, block script execution for safety
+<FilesMatch "\.(php|phtml|php3|php4|php5|pht)$">
+  Require all denied
+</FilesMatch>

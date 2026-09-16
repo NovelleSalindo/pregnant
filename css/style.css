@@ -1,33 +1,42 @@
 /* ============================================================
    PregnaCare — Design Tokens
-   Palette: neutral warm-white surfaces and near-black text (for
-   readability and a polished, uncluttered feel), with coral-rose,
-   soft lilac, and honey-gold reserved as ACCENT colors only —
-   buttons, badges, gradients, active states. This keeps the app
-   feeling feminine and warm without tinting every line of text pink.
-   Variable NAMES are unchanged so every page picks up the refined
-   colors automatically.
-   Display face: Fraunces (warm, rounded serif — humanizes a clinical
-   product). Body/UI face: Manrope (clean geometric sans for data-density).
+   Palette: pastel purple / pink / blue reference palette
+   (#CDB4DB, #FFC8DD, #FFAFCC, #BDE0FE, #A2D2FF). Variable NAMES
+   are unchanged (--teal, --sky, --green, etc. are legacy names
+   from earlier palettes) so every page picks up the new colors
+   automatically without touching any other file.
+
+   Note: "-dark" variants (--teal-dark, --sky-dark, --green-dark)
+   are deepened versions of their matching swatch — the reference
+   image's colors are all light pastels, and a darker tone is
+   needed anywhere the accent is used as TEXT on a white background
+   (labels, hover states) so it stays readable/accessible.
+
+   Risk badges (--risk-low/mod/high = green/amber/red) are kept on
+   their original semantic colors rather than remapped to the pastel
+   palette — those colors carry medical meaning (safe/warning/danger)
+   and diluting them to match a decorative palette would make the
+   risk level harder to read at a glance.
+   Display face: Fraunces (warm, rounded serif). Body/UI face: Manrope.
    ============================================================ */
 :root{
-  --bg: #FDF9F8;
-  --bg-soft: #F7EFF0;
+  --bg: #FAF7FC;
+  --bg-soft: #F2E9F5;
   --surface: #FFFFFF;
   --surface-glass: rgba(255,255,255,0.72);
-  --border: #F0E2E5;
+  --border: #EADFF0;
   --ink: #2B2229;
   --ink-soft: #6B5C63;
   --muted: #A79AA0;
 
-  --teal: #E8748F;        /* coral-rose — primary accent */
-  --teal-dark: #D2536F;   /* deeper coral-rose */
-  --teal-light: #FCE4E9;  /* blush */
-  --sky: #B98FD9;         /* soft lilac — secondary accent */
-  --sky-dark: #9A63C4;
-  --sky-light: #F1E7FA;
-  --green: #F0A868;       /* honey — accent */
-  --green-light: #FDEEDD;
+  --teal: #FFAFCC;        /* hot pink — primary accent */
+  --teal-dark: #C2577D;   /* deepened pink, for text/hover on white */
+  --teal-light: #FFC8DD;  /* light pink */
+  --sky: #A2D2FF;         /* blue — secondary accent */
+  --sky-dark: #3E7CC4;
+  --sky-light: #BDE0FE;
+  --green: #CDB4DB;       /* purple — tertiary accent */
+  --green-light: #F1E7F5;
 
   --risk-low: #6FAE82;
   --risk-low-bg: #E7F4EB;
@@ -47,18 +56,18 @@
 }
 
 [data-theme="dark"]{
-  --bg: #201A1E;
-  --bg-soft: #2A2226;
-  --surface: #302629;
-  --surface-glass: rgba(48,38,41,0.72);
-  --border: #453840;
-  --ink: #F5EDEF;
-  --ink-soft: #C9B9C0;
-  --muted: #9C8990;
-  --teal-light: #4A2E38;
-  --sky-light: #3A2E48;
-  --green-light: #3E301F;
-  --risk-low-bg: #223529;
+  --bg: #0A0A0C;
+  --bg-soft: #131316;
+  --surface: #1A1A1E;
+  --surface-glass: rgba(20,20,23,0.78);
+  --border: #2C2C31;
+  --ink: #F0EEF0;
+  --ink-soft: #B8B4BA;
+  --muted: #85818A;
+  --teal-light: #3A2530;
+  --sky-light: #1D2836;
+  --green-light: #2A2434;
+  --risk-low-bg: #16261C;
   --risk-mod-bg: #3A2C15;
   --risk-high-bg: #3A1F26;
 }
@@ -111,6 +120,8 @@ button{ font-family: inherit; cursor:pointer; }
   padding: 14px 26px; position:sticky; top:0; z-index:20;
   background: var(--surface-glass); backdrop-filter: blur(14px); border-bottom:1px solid var(--border);
 }
+.topbar-brand-row{ display:none; align-items:center; gap:10px; }
+.topbar-user-row{ display:flex; align-items:center; gap:10px; }
 .main{ flex:1; min-width:0; display:flex; flex-direction:column; }
 .content{ padding: 22px 26px 100px; max-width:1280px; width:100%; margin:0 auto; }
 
@@ -119,6 +130,8 @@ button{ font-family: inherit; cursor:pointer; }
   display:flex; align-items:center; justify-content:center; color:var(--ink-soft); font-size:15px;
 }
 .icon-btn:hover{ color:var(--teal); border-color: var(--teal-light); }
+.wt-hamburger-btn{ display:none; }
+.wt-brand-mobile{ display:none; font-family: var(--font-display); font-weight:800; font-size:17px; color: var(--teal-dark); }
 .emergency-fab{
   position:fixed; right:22px; bottom:90px; z-index:40;
   background: linear-gradient(135deg,#E15D74,#C43F58); color:#fff; border:none;
@@ -149,7 +162,11 @@ button{ font-family: inherit; cursor:pointer; }
   table{ min-width:420px; }
 
   .topbar{ padding:12px 14px; flex-wrap:wrap; row-gap:8px; }
-  .topbar h2{ font-size:16px !important; }
+  .topbar h2{ order:3; width:100%; font-size:16px !important; }
+  .topbar-brand-row{ order:1; width:100%; display:flex; }
+  .topbar-user-row{ order:2; width:100%; flex-wrap:wrap; row-gap:6px; }
+  .wt-hamburger-btn{ display:flex; }
+  .wt-brand-mobile{ display:inline-block; }
 
   .grid-3, .grid-4{ grid-template-columns: 1fr; }
 
@@ -201,6 +218,158 @@ button{ font-family: inherit; cursor:pointer; }
 .field input:focus, .field select:focus, .field textarea:focus{ background: var(--surface); border-color: var(--teal); }
 .hint{ font-size:11.5px; color: var(--muted); }
 
+/* Button-style select — used for compact choices like symptom duration/frequency,
+   so they read as tappable pills instead of plain form controls. */
+.select-pill{
+  appearance: none; -webkit-appearance: none; -moz-appearance: none;
+  padding: 8px 30px 8px 14px; border-radius: 999px; border: 1.5px solid var(--teal);
+  background-color: var(--teal-light); background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23D2536F' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat; background-position: right 12px center;
+  font-family: inherit; font-size: 13px; font-weight: 700; color: var(--teal-dark);
+  width: 100%; cursor: pointer; transition: background-color .12s, border-color .12s, transform .08s;
+}
+.select-pill:hover{ background-color: var(--teal); color: #fff; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>"); }
+.select-pill:active{ transform: scale(.97); }
+.select-pill:focus{ outline: none; border-color: var(--teal-dark); box-shadow: 0 0 0 3px var(--teal-light); }
+
+/* Custom dropdown that replaces .select-pill at runtime (see pcEnhanceSelectPills in base.php).
+   Needed because the browser's native option list can't be themed — this keeps
+   the pink/coral look in both the closed button and the open list. */
+.csel{ position: relative; width: 100%; }
+.csel-btn{ display:flex; align-items:center; justify-content:space-between; text-align:left; background-image:none !important; padding-right:14px; }
+.csel-btn::after{
+  content:''; width:8px; height:8px; margin-left:8px; flex-shrink:0;
+  border-right:1.6px solid currentColor; border-bottom:1.6px solid currentColor;
+  transform: rotate(45deg); translate: 0 -2px;
+}
+.csel-list{
+  position:absolute; top: calc(100% + 6px); left:0; right:0; z-index:40;
+  background: var(--surface); border:1.5px solid var(--teal); border-radius:14px;
+  overflow:hidden; box-shadow: 0 10px 24px -8px rgba(0,0,0,.25);
+}
+.csel-opt{
+  padding:10px 14px; font-size:13.5px; font-weight:600; color:var(--ink); cursor:pointer;
+  border-bottom:1px solid var(--border); transition: background .1s;
+}
+.csel-opt:last-child{ border-bottom:none; }
+.csel-opt:hover{ background: var(--teal-light); color: var(--teal-dark); }
+.csel-opt.is-selected{ background: var(--teal); color:#fff; }
+
+/* Education Hub — trimester tabs, panel animation, warning callout, expandable cards */
+.trimester-tabs{ display:flex; gap:8px; flex-wrap:wrap; }
+.trimester-tabs button{
+  flex:1 1 0; min-width:100px; padding:12px 10px; border-radius:999px; border:1.5px solid var(--border);
+  background: var(--surface); font-family:inherit; font-weight:700; font-size:13px; color:var(--ink-soft);
+  cursor:pointer; transition: background .15s, border-color .15s, color .15s, transform .08s;
+}
+.trimester-tabs button:hover:not(.active){ border-color:var(--teal); color:var(--teal-dark); }
+.trimester-tabs button.active{ background: var(--teal); border-color:var(--teal); color:#fff; box-shadow: 0 6px 14px -6px rgba(210,83,111,.55); }
+.trimester-tabs button:active{ transform: scale(.97); }
+
+@keyframes trimesterIn{ from{ opacity:0; transform: translateY(10px); } to{ opacity:1; transform: translateY(0); } }
+.trimester-panel.pc-animate{ animation: trimesterIn .35s ease; }
+
+.warning-callout{
+  display:flex; gap:12px; align-items:flex-start; margin-top:16px; padding:14px 16px;
+  background: var(--risk-high-bg); border:1px solid var(--risk-high); border-radius:14px;
+  color: var(--risk-high); font-size:13.5px; line-height:1.5;
+}
+.warning-callout i{ font-size:16px; margin-top:2px; flex-shrink:0; }
+.warning-callout strong{ color: var(--risk-high); }
+
+.rec-card{ border:1px solid var(--border); border-radius:14px; margin-bottom:10px; overflow:hidden; background: var(--surface); }
+.rec-card-header{
+  display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+  cursor:pointer; font-weight:700; font-size:13.5px; color:var(--ink); user-select:none;
+}
+.rec-card-header .chev{ font-size:12px; color:var(--ink-soft); transition: transform .25s ease; }
+.rec-card.open .rec-card-header .chev{ transform: rotate(180deg); }
+.rec-card-body{ max-height:0; overflow:hidden; transition: max-height .3s ease; padding:0 16px; font-size:13.5px; color:var(--ink-soft); }
+
+/* Education Hub — icon-grid cards; tapping one pops the full detail up in a modal. */
+.ed-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:12px; margin-top:16px; }
+.ed-card{
+  background: var(--surface); border:1.5px solid var(--border); border-radius:18px; cursor:pointer;
+  transition: border-color .15s, box-shadow .15s, transform .1s;
+}
+.ed-card:hover{ border-color: var(--teal); }
+.ed-card:active{ border-color: var(--teal); box-shadow: 0 4px 12px -4px rgba(210,83,111,.35); transform: scale(.97); }
+.ed-card-summary{
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px;
+  padding:22px 10px; text-align:center;
+}
+.ed-icon{
+  width:42px; height:42px; border-radius:13px; background: var(--teal-light); color: var(--teal-dark);
+  display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0;
+  transition: background-color .15s, color .15s;
+}
+.ed-card:hover .ed-icon, .ed-card:active .ed-icon{ background: var(--teal); color:#fff; }
+.ed-title{ font-weight:700; font-size:12.5px; color: var(--ink); line-height:1.3; }
+
+/* .ed-card-detail is never shown inline — it's a hidden template the JS
+   clones into the popup modal below. */
+.ed-card-detail{ display:none; }
+
+.ed-detail-header{ display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.ed-icon-lg{
+  width:46px; height:46px; border-radius:14px; background: var(--teal-light); color: var(--teal-dark);
+  display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0;
+}
+.ed-detail-title{ flex:1; font-weight:800; font-size:15px; color: var(--ink); }
+.ed-close{
+  width:32px; height:32px; border-radius:10px; border:1px solid var(--border); background: var(--surface);
+  color: var(--ink-soft); cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+}
+.ed-close:hover{ color: var(--teal-dark); border-color: var(--teal); }
+.ed-explain{ font-size:13.5px; color: var(--ink-soft); margin:0 0 14px; line-height:1.5; }
+.ed-sub-title{ font-size:11.5px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color: var(--teal-dark); margin-bottom:6px; }
+.ed-modal ul{ margin:0 0 14px; padding-left:18px; font-size:13.5px; color: var(--ink); line-height:1.6; }
+.ed-modal ul.ed-reminders{ margin-bottom:0; }
+.ed-modal ul.ed-reminders li{ color: var(--risk-high); }
+
+/* The pop-up modal itself */
+.ed-modal-backdrop{
+  position:fixed; inset:0; background: rgba(43,34,41,.45); backdrop-filter: blur(2px);
+  display:flex; align-items:center; justify-content:center; padding:20px; z-index:1000;
+  opacity:0; pointer-events:none; transition: opacity .22s ease;
+}
+.ed-modal-backdrop.open{ opacity:1; pointer-events:auto; }
+.ed-modal{
+  background: var(--surface); border-radius:22px; max-width:540px; width:100%; max-height:85vh;
+  overflow-y:auto; padding:24px; box-shadow: var(--shadow-card);
+  transform: scale(.82); opacity:0;
+  transition: transform .3s cubic-bezier(.34,1.56,.64,1), opacity .22s ease;
+}
+.ed-modal-backdrop.open .ed-modal{ transform: scale(1); opacity:1; }
+
+/* Wellness Tools dropdown — opens directly below the topbar/header (mobile) */
+.wt-drawer-backdrop{
+  position:fixed; inset:0; background: rgba(43,34,41,.4); z-index:1000;
+  opacity:0; pointer-events:none; transition: opacity .25s ease;
+}
+.wt-drawer-backdrop.open{ opacity:1; pointer-events:auto; }
+.wt-drawer{
+  position:fixed; left:10px; right:10px; top:0; z-index:1001; max-height:70vh; overflow-y:auto;
+  background: var(--surface); box-shadow: 0 16px 32px -12px rgba(0,0,0,.3); border-radius:18px;
+  transform: translateY(-14px); opacity:0; pointer-events:none;
+  transition: transform .28s cubic-bezier(.34,1.12,.64,1), opacity .22s ease;
+  padding: 14px 12px; display:flex; flex-direction:column; gap:4px;
+}
+.wt-drawer.open{ transform: translateY(0); opacity:1; pointer-events:auto; }
+.wt-drawer-header{
+  display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; padding:2px 6px;
+  font-weight:800; font-size:14px; color: var(--ink);
+}
+.wt-drawer-link{
+  display:flex; align-items:center; gap:12px; padding:12px 12px; border-radius:12px;
+  font-weight:700; font-size:13.5px; color: var(--ink-soft); text-decoration:none;
+  transition: background-color .12s, color .12s;
+}
+.wt-drawer-link i{ width:18px; text-align:center; color: var(--teal); }
+.wt-drawer-link:hover{ background: var(--teal-light); color: var(--teal-dark); }
+.wt-drawer-link.active{ background: var(--teal-light); color: var(--teal-dark); }
+.wt-drawer-divider{ height:1px; background: var(--border); margin:6px 4px; }
+
 table{ width:100%; border-collapse: collapse; font-size:13.5px; }
 th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); padding:9px 10px; border-bottom:1px solid var(--border); }
 td{ padding:12px 10px; border-bottom:1px solid var(--border); }
@@ -220,6 +389,17 @@ tr:last-child td{ border-bottom:none; }
   content:''; position:absolute; right:-40px; top:-60px; width:220px; height:220px; border-radius:50%;
   background: radial-gradient(circle, rgba(255,255,255,.22), transparent 70%);
 }
+
+/* Reusable "photo placeholder" frame — swap the inner <i> for a real <img> once
+   you have photos (e.g. from Unsplash/Pexels). Keeps layout/spacing correct either way. */
+.photo-frame{
+  background: var(--teal-light); border-radius: 16px; display:flex; align-items:center; justify-content:center;
+  color: var(--teal-dark); overflow:hidden; position:relative;
+}
+.photo-frame img{ width:100%; height:100%; object-fit:cover; display:block; }
+.photo-frame .ph-icon{ font-size:22px; opacity:.55; }
+.photo-collage{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.photo-collage .photo-frame{ aspect-ratio:1/1; }
 
 /* ---------- Risk meter (signature element) ---------- */
 .risk-gauge-wrap{ display:flex; flex-direction:column; align-items:center; gap:8px; }
@@ -248,6 +428,7 @@ tr:last-child td{ border-bottom:none; }
 
 .chip{ display:inline-flex; align-items:center; padding:8px 12px; border-radius:11px; border:1.5px solid var(--border); font-size:13px; font-weight:700; color:var(--ink-soft); }
 .chip.on{ border-color: var(--teal); background: var(--teal-light); color: var(--teal-dark); }
+.chip:has(input:checked){ border-color: var(--teal); background: var(--teal-light); color: var(--teal-dark); }
 
 .symptom-grid{ display:grid; grid-template-columns: repeat(auto-fill,minmax(190px,1fr)); gap:10px; }
 .photo-grid{ display:grid; grid-template-columns: repeat(auto-fill,minmax(130px,1fr)); gap:12px; }

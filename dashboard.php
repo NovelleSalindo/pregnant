@@ -199,14 +199,4 @@ render_header('Dashboard', 'dashboard');
   <?php endif; ?>
 </div>
 
-<div class="card" style="margin-top:16px;">
-  <div class="eyebrow">Wellness Tools</div>
-  <div class="grid grid-4" style="margin-top:10px;">
-    <a class="btn btn-outline btn-block btn-sm" href="medications.php"><i class="fa-solid fa-pills"></i> Medications</a>
-    <a class="btn btn-outline btn-block btn-sm" href="weight_tracker.php"><i class="fa-solid fa-weight-scale"></i> Weight Gain</a>
-    <a class="btn btn-outline btn-block btn-sm" href="journal.php"><i class="fa-solid fa-book"></i> Journal</a>
-    <a class="btn btn-outline btn-block btn-sm" href="bump_photos.php"><i class="fa-solid fa-camera"></i> Bump Photos</a>
-  </div>
-</div>
-
 <?php render_footer(); ?>

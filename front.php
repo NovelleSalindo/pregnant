@@ -15,13 +15,14 @@ if ($u) redirect(role_home($u['role']));
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png" type="image/png">
-<meta name="theme-color" content="#E8748F">
+<meta name="theme-color" content="#FFAFCC">
 <link rel="stylesheet" href="css/style.css?v=<?php echo @filemtime(__DIR__.'/css/style.css') ?: time(); ?>" />
 <style>
   .front-wrap{ min-height:100vh; display:flex; flex-direction:column; }
   .front-hero{
     background: linear-gradient(135deg, var(--teal) 0%, var(--sky) 100%);
-    color:#fff; padding:52px 24px 64px; text-align:center; position:relative; overflow:hidden;
+    color:#fff; padding:24px; text-align:center; position:relative; overflow:hidden;
+    min-height:48vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
   }
   .front-hero::after{ content:''; position:absolute; right:-60px; top:-80px; width:280px; height:280px; border-radius:50%; background:radial-gradient(circle, rgba(255,255,255,.22), transparent 70%); }
   .front-hero::before{ content:''; position:absolute; left:-60px; bottom:-90px; width:260px; height:260px; border-radius:50%; background:radial-gradient(circle, rgba(255,255,255,.16), transparent 70%); }
@@ -33,12 +34,19 @@ if ($u) redirect(role_home($u['role']));
   .btn-white{ background:#fff; color:var(--teal-dark); box-shadow:0 8px 20px -8px rgba(0,0,0,.25); }
   .btn-outline-white{ background:transparent; color:#fff; border:1.5px solid rgba(255,255,255,.7); }
 
-  .front-features{ flex:1; padding:40px 20px 60px; max-width:1000px; margin:0 auto; width:100%; }
+  .front-features{ flex:1; padding:44px 20px 40px; max-width:1000px; margin:0 auto; width:100%; }
   .front-features h2{ text-align:center; font-size:22px; margin-bottom:28px; }
-  .feature-card{ text-align:center; padding:22px 16px; }
-  .feature-card .fi{ width:52px;height:52px;border-radius:16px; background:var(--teal-light); color:var(--teal-dark); display:flex; align-items:center; justify-content:center; font-size:20px; margin:0 auto 12px; }
-  .feature-card h4{ margin:0 0 6px; font-size:15px; }
-  .feature-card p{ margin:0; font-size:13px; color:var(--ink-soft); line-height:1.5; }
+  .feature-card{ text-align:center; padding:22px 10px; cursor:pointer; transition: border-color .15s, box-shadow .15s, transform .1s; }
+  .feature-card:hover{ border-color: var(--teal); }
+  .feature-card:active{ border-color: var(--teal); box-shadow: 0 4px 12px -4px rgba(210,83,111,.35); transform: scale(.97); }
+  .feature-card .fi{ width:42px;height:42px;border-radius:13px; background:var(--teal-light); color:var(--teal-dark); display:flex; align-items:center; justify-content:center; font-size:17px; margin:0 auto 9px; transition: background-color .15s, color .15s; }
+  .feature-card:hover .fi, .feature-card:active .fi{ background: var(--teal); color:#fff; }
+  .feature-card h4{ margin:0; font-size:12.5px; font-weight:700; }
+  .feature-desc{
+    max-height:0; opacity:0; overflow:hidden; margin:0; font-size:12.5px; color:var(--ink-soft); line-height:1.5;
+    transition: max-height .3s ease, opacity .25s ease, margin-top .3s ease;
+  }
+  .feature-card.open .feature-desc{ max-height:100px; opacity:1; margin-top:8px; }
 
   .front-footer{ text-align:center; padding:20px; font-size:12px; color:var(--muted); border-top:1px solid var(--border); }
 </style>
@@ -57,26 +65,26 @@ if ($u) redirect(role_home($u['role']));
 
   <div class="front-features">
     <h2 class="font-display">Everything you need, in one place</h2>
-    <div class="grid grid-4">
-      <div class="card feature-card">
+    <div class="grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:12px;">
+      <div class="card feature-card" onclick="this.classList.toggle('open')">
         <div class="fi"><i class="fa-solid fa-gauge-high"></i></div>
         <h4>Risk Monitoring</h4>
-        <p>Log vitals and symptoms, get a clear Low / High / Severe risk score.</p>
+        <p class="feature-desc">Log vitals and symptoms, get a clear Low / High / Severe risk score.</p>
       </div>
-      <div class="card feature-card">
+      <div class="card feature-card" onclick="this.classList.toggle('open')">
         <div class="fi"><i class="fa-solid fa-lightbulb"></i></div>
         <h4>Recommendations</h4>
-        <p>Personalized guidance based on your latest assessment.</p>
+        <p class="feature-desc">Personalized guidance based on your latest assessment.</p>
       </div>
-      <div class="card feature-card">
+      <div class="card feature-card" onclick="this.classList.toggle('open')">
         <div class="fi"><i class="fa-solid fa-book-medical"></i></div>
         <h4>Trimester Guidance</h4>
-        <p>Checklists, nutrition, and tips tailored to each stage.</p>
+        <p class="feature-desc">Checklists, nutrition, and tips tailored to each stage.</p>
       </div>
-      <div class="card feature-card">
+      <div class="card feature-card" onclick="this.classList.toggle('open')">
         <div class="fi"><i class="fa-solid fa-heart"></i></div>
         <h4>Wellness Tools</h4>
-        <p>Medication reminders, weight tracking, journal, and more.</p>
+        <p class="feature-desc">Medication reminders, weight tracking, journal, and more.</p>
       </div>
     </div>
   </div>

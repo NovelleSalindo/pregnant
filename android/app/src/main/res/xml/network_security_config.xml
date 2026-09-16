@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allows cleartext (http://) traffic for local development/testing.
+         This is needed because your XAMPP server runs on plain http://,
+         not https://. Safe for local testing on your own WiFi network. -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

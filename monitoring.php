@@ -45,31 +45,37 @@ render_header('Vitals & Risk Monitoring', 'monitoring');
     <h3 style="margin-top:0;">Log Today's Vitals</h3>
     <form method="post" action="monitoring.php">
       <div class="grid grid-2">
-        <div class="field"><label>Systolic BP (mmHg)</label><input type="number" name="bp_sys" required min="60" max="220" value="118"></div>
-        <div class="field"><label>Diastolic BP (mmHg)</label><input type="number" name="bp_dia" required min="40" max="140" value="76"></div>
+        <div class="field"><label>Systolic BP (mmHg)</label><input type="number" name="bp_sys" required min="60" max="220" placeholder="e.g. 118"></div>
+        <div class="field"><label>Diastolic BP (mmHg)</label><input type="number" name="bp_dia" required min="40" max="140" placeholder="e.g. 76"></div>
       </div>
       <div class="grid grid-2">
-        <div class="field"><label>Weight (kg)</label><input type="number" step="0.1" name="weight_kg" required value="62"></div>
-        <div class="field"><label>Hemoglobin (g/dL)</label><input type="number" step="0.1" name="hemoglobin" required value="12"></div>
+        <div class="field"><label>Weight (kg)</label><input type="number" step="0.1" name="weight_kg" required placeholder="e.g. 62"></div>
+        <div class="field"><label>Hemoglobin (g/dL)</label><input type="number" step="0.1" name="hemoglobin" required placeholder="e.g. 12"></div>
       </div>
       <div class="grid grid-2">
-        <div class="field"><label>Blood Sugar (mg/dL)</label><input type="number" name="blood_sugar" required value="95"></div>
-        <div class="field"><label>Temperature (°C)</label><input type="number" step="0.1" name="temp" value="36.8"></div>
+        <div class="field"><label>Blood Sugar (mg/dL)</label><input type="number" name="blood_sugar" required placeholder="e.g. 95"></div>
+        <div class="field"><label>Temperature (°C)</label><input type="number" step="0.1" name="temp" placeholder="e.g. 36.8"></div>
       </div>
       <div class="grid grid-2">
-        <div class="field"><label>Heart Rate (bpm)</label><input type="number" name="heart_rate" value="78"></div>
-        <div class="field"><label>Fetal Movement (kicks/hr)</label><input type="number" name="fetal_movement" value="8"></div>
+        <div class="field"><label>Heart Rate (bpm)</label><input type="number" name="heart_rate" placeholder="e.g. 78"></div>
+        <div class="field"><label>Fetal Movement (kicks/hr)</label><input type="number" name="fetal_movement" placeholder="e.g. 8"></div>
       </div>
       <div class="grid grid-2">
-        <div class="field"><label>Sleep (hours)</label><input type="number" step="0.5" name="sleep_hours" value="7"></div>
-        <div class="field"><label>Water Intake (glasses)</label><input type="number" name="water_intake" value="6"></div>
+        <div class="field"><label>Sleep (hours)</label><input type="number" step="0.5" name="sleep_hours" placeholder="e.g. 7"></div>
+        <div class="field"><label>Water Intake (glasses)</label><input type="number" name="water_intake" placeholder="e.g. 6"></div>
       </div>
       <div class="grid grid-2">
         <div class="field"><label>Mood</label>
-          <select name="mood"><option>Good</option><option>Okay</option><option>Tired</option><option>Anxious</option><option>Low</option></select>
+          <select name="mood" required>
+            <option value="" selected disabled>Select mood…</option>
+            <option>Good</option><option>Okay</option><option>Tired</option><option>Anxious</option><option>Low</option>
+          </select>
         </div>
         <div class="field"><label>Activity Level</label>
-          <select name="activity"><option>Resting</option><option>Light</option><option>Moderate</option><option>Active</option></select>
+          <select name="activity" required>
+            <option value="" selected disabled>Select activity…</option>
+            <option>Resting</option><option>Light</option><option>Moderate</option><option>Active</option>
+          </select>
         </div>
       </div>
       <button class="btn btn-primary btn-block" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save Entry</button>

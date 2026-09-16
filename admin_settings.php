@@ -3,17 +3,7 @@ require_once __DIR__ . '/base.php';
 $u = require_role('admin');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST'){
-    if (($_POST['form'] ?? '') === 'weights'){
-        $weights = $_POST['weight'] ?? [];
-        $sum = array_sum(array_map('floatval', $weights));
-        if ($sum <= 0) $sum = 1;
-        foreach ($weights as $key => $val){
-            $norm = round((float)$val / $sum, 3); // keep weights normalized to sum to 1, like the AHP brief requires
-            $pdo->prepare("UPDATE ahp_weights SET weight=? WHERE criterion=?")->execute([$norm, $key]);
-        }
-        flash('AHP weights updated and re-normalized to sum to 1.', 'success');
-        log_action('update_ahp_weights');
-    } elseif (($_POST['form'] ?? '') === 'rules'){
+    if (($_POST['form'] ?? '') === 'rules'){
         $activeKeys = $_POST['active'] ?? [];
         $all = $pdo->query("SELECT rule_key FROM rule_base")->fetchAll(PDO::FETCH_COLUMN);
         foreach ($all as $key){
@@ -25,28 +15,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     redirect('admin_settings.php');
 }
 
-$weights = get_ahp_weights();
 $rules = get_rule_base();
 
-render_header('AHP & Rules Configuration', 'admin_settings');
+render_header('Risk Rules Configuration', 'admin_settings');
 ?>
 
 <div class="card" style="margin-bottom:16px;">
-  <div class="eyebrow">Step 2 Configuration</div>
-  <h3 style="margin-top:6px;">AHP Criteria Weights</h3>
-  <p class="muted" style="margin-top:-6px;">Values are automatically re-normalized to sum to 1 after saving.</p>
-  <form method="post" action="admin_settings.php">
-    <input type="hidden" name="form" value="weights">
-    <div class="grid grid-2">
-      <?php foreach ($weights as $key => $val): ?>
-        <div class="field">
-          <label><?php echo e(AHP_LABELS[$key] ?? $key); ?></label>
-          <input type="number" step="0.01" min="0" max="1" name="weight[<?php echo e($key); ?>]" value="<?php echo e($val); ?>">
-        </div>
-      <?php endforeach; ?>
-    </div>
-    <button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save Weights</button>
-  </form>
+  <div class="eyebrow">Step 2 — Reference</div>
+  <h3 style="margin-top:6px;">Clinical Risk-Scoring Rules</h3>
+  <p class="muted" style="margin-top:-6px;">Fixed point values from the reproductive history, medical conditions, and present pregnancy problems rule table. Each patient's total is classified into Low/High/Severe via fuzzy logic.</p>
+  <?php
+  $byCat = ['RH' => [], 'MC' => [], 'PP' => []];
+  foreach (RULE_SCORES as $id => $r) $byCat[$r['cat']][] = [$id, $r];
+  foreach ($byCat as $cat => $items):
+  ?>
+    <h4 style="margin:14px 0 6px;"><?php echo e(RULE_CAT_LABELS[$cat]); ?></h4>
+    <?php foreach ($items as [$id, $r]): ?>
+      <div class="kv"><span class="k"><?php echo e($id); ?> — <?php echo e($r['label']); ?></span><span class="v">+<?php echo (int)$r['points']; ?></span></div>
+    <?php endforeach; ?>
+  <?php endforeach; ?>
+  <p class="muted" style="font-size:12px;margin-top:10px;">MC-06 (other significant disease) is a variable +1 to +5, set per patient in their profile.</p>
 </div>
 
 <div class="card">

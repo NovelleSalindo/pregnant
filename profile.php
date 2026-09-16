@@ -5,13 +5,14 @@ $u = require_role('patient');
 $stmt = $pdo->prepare("SELECT * FROM patient_profiles WHERE user_id = ?");
 $stmt->execute([$u['id']]);
 $p = $stmt->fetch() ?: [];
+$rh = get_risk_history($pdo, $u['id']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     $height = (float)$_POST['height_cm'];
     $weight = (float)$_POST['weight_kg'];
     $stmt = $pdo->prepare("REPLACE INTO patient_profiles
-        (user_id, dob, age, height_cm, weight_kg, blood_type, occupation, lmp, edd, gravida, prior_miscarriage, prior_csection, conditions, phone, address, emergency_name, emergency_relation, emergency_phone, medical_history_score, prior_complications_score)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        (user_id, dob, age, height_cm, weight_kg, blood_type, occupation, lmp, edd, gravida, prior_miscarriage, prior_csection, conditions, phone, address, emergency_name, emergency_relation, emergency_phone)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
     $age = $_POST['dob'] ? (int)((time() - strtotime($_POST['dob'])) / (365.25*86400)) : null;
     $edd = $_POST['lmp'] ? date('Y-m-d', strtotime($_POST['lmp'].' + 280 days')) : null;
     $stmt->execute([
@@ -20,7 +21,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
         (int)$_POST['gravida'], isset($_POST['prior_miscarriage'])?1:0, isset($_POST['prior_csection'])?1:0,
         trim($_POST['conditions']), trim($_POST['phone']), trim($_POST['address']),
         trim($_POST['emergency_name']), trim($_POST['emergency_relation']), trim($_POST['emergency_phone']),
-        (float)($_POST['medical_history_score'] ?: 0), (float)($_POST['prior_complications_score'] ?: 0),
+    ]);
+
+    // Reproductive History (RH) + Medical/Surgical Conditions (MC) — feeds the clinical risk-scoring rules
+    $rhFields = ['prior_abortions_or_infertility','prev_pp_hemorrhage','prev_manual_placenta_removal','prev_baby_over_9lb','prev_baby_over_5lb8oz','prev_toxemia_hpn','prev_abnormal_labor','prev_gyn_disease','chronic_renal_disease','gestational_diabetes','class_b_diabetes_or_higher','cardiac_disease'];
+    $rhVals = [];
+    foreach ($rhFields as $f) $rhVals[$f] = isset($_POST[$f]) ? 1 : 0;
+    $otherScore = max(0, min(5, (int)($_POST['other_significant_disease_score'] ?? 0)));
+    $stmt = $pdo->prepare("REPLACE INTO risk_history
+        (user_id, parity, prior_abortions_or_infertility, prev_pp_hemorrhage, prev_manual_placenta_removal, prev_baby_over_9lb, prev_baby_over_5lb8oz, prev_toxemia_hpn, prev_abnormal_labor, prev_gyn_disease, chronic_renal_disease, gestational_diabetes, class_b_diabetes_or_higher, cardiac_disease, other_significant_disease_score)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+    $stmt->execute([
+        $u['id'], (int)($_POST['parity'] ?? 0),
+        $rhVals['prior_abortions_or_infertility'], $rhVals['prev_pp_hemorrhage'], $rhVals['prev_manual_placenta_removal'],
+        $rhVals['prev_baby_over_9lb'], $rhVals['prev_baby_over_5lb8oz'], $rhVals['prev_toxemia_hpn'], $rhVals['prev_abnormal_labor'],
+        $rhVals['prev_gyn_disease'], $rhVals['chronic_renal_disease'], $rhVals['gestational_diabetes'],
+        $rhVals['class_b_diabetes_or_higher'], $rhVals['cardiac_disease'], $otherScore,
     ]);
     $pdo->prepare("UPDATE users SET name = ? WHERE id = ?")->execute([trim($_POST['name']), $u['id']]);
     flash('Profile updated.', 'success');
@@ -60,9 +76,35 @@ render_header('Profile', 'profile');
         <input type="checkbox" name="prior_csection" <?php echo !empty($p['prior_csection'])?'checked':''; ?> style="margin-right:8px;"> Prior C-Section
       </label>
     </div>
+    <div class="divider"></div>
+    <div class="eyebrow">Reproductive &amp; Medical History</div>
+    <p class="muted" style="margin-top:-4px;font-size:12.5px;">Feeds your clinical risk score (RH + MC rules) — fill in what applies.</p>
     <div class="grid grid-2">
-      <div class="field"><label>Medical History Risk Score (0–1)</label><input type="number" step="0.05" min="0" max="1" name="medical_history_score" value="<?php echo e($p['medical_history_score'] ?? 0); ?>"></div>
-      <div class="field"><label>Prior Complications Risk Score (0–1)</label><input type="number" step="0.05" min="0" max="1" name="prior_complications_score" value="<?php echo e($p['prior_complications_score'] ?? 0); ?>"></div>
+      <div class="field"><label>Parity (# of live births)</label><input type="number" min="0" name="parity" value="<?php echo e($rh['parity'] ?? 0); ?>"></div>
+      <div class="field"><label>Other significant disease severity (0–5)</label><input type="number" min="0" max="5" name="other_significant_disease_score" value="<?php echo e($rh['other_significant_disease_score'] ?? 0); ?>"></div>
+    </div>
+    <div class="grid grid-2" style="gap:8px;">
+      <?php
+      $rhChecks = [
+        'prior_abortions_or_infertility' => '2+ prior abortions or infertility history',
+        'prev_pp_hemorrhage' => 'Previous postpartum hemorrhage',
+        'prev_manual_placenta_removal' => 'Previous manual removal of placenta',
+        'prev_baby_over_9lb' => 'Previous baby over 9 lb',
+        'prev_baby_over_5lb8oz' => 'Previous baby over 5 lb 8 oz',
+        'prev_toxemia_hpn' => 'Previous toxemia / hypertension',
+        'prev_abnormal_labor' => 'Previous abnormal or difficult labor',
+        'prev_gyn_disease' => 'Previous gynecological disease',
+        'chronic_renal_disease' => 'Chronic renal disease',
+        'gestational_diabetes' => 'Gestational diabetes',
+        'class_b_diabetes_or_higher' => 'Class B diabetes or higher',
+        'cardiac_disease' => 'Cardiac disease',
+      ];
+      foreach ($rhChecks as $field => $label):
+      ?>
+        <label class="chip" style="cursor:pointer;">
+          <input type="checkbox" name="<?php echo e($field); ?>" <?php echo !empty($rh[$field])?'checked':''; ?> style="margin-right:8px;"> <?php echo e($label); ?>
+        </label>
+      <?php endforeach; ?>
     </div>
     <div class="divider"></div>
     <div class="grid grid-2">

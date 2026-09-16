@@ -25,8 +25,8 @@ if ($filter === 'unread'){
 $stmt->execute([$u['id']]);
 $items = $stmt->fetchAll();
 
-$kindIcon = ['error'=>'fa-circle-exclamation','success'=>'fa-circle-check','info'=>'fa-circle-info'];
-$kindColor = ['error'=>'var(--risk-high)','success'=>'var(--risk-low)','info'=>'var(--teal)'];
+$kindIcon = ['error'=>'fa-circle-exclamation','success'=>'fa-circle-check','info'=>'fa-circle-info','ob_visit'=>'fa-calendar-check','emergency'=>'fa-truck-medical','due_date'=>'fa-baby'];
+$kindColor = ['error'=>'var(--risk-high)','success'=>'var(--risk-low)','info'=>'var(--teal)','ob_visit'=>'var(--teal-dark)','emergency'=>'var(--risk-high)','due_date'=>'var(--teal-dark)'];
 
 render_header('Notifications', 'notifications');
 ?>

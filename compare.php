@@ -17,7 +17,7 @@ $b = $byId[$idB] ?? null;
 
 function decode_fields($row){
     if (!$row) return null;
-    $row['ahp'] = json_decode($row['ahp_json'], true);
+    $row['structural'] = json_decode($row['ahp_json'], true); // ahp_json column now stores the RH/MC/PP rule breakdown
     $row['fuzzy'] = json_decode($row['fuzzy_json'], true);
     $row['rules'] = json_decode($row['rules_json'], true) ?: [];
     $row['recs'] = json_decode($row['recommendations_json'], true) ?: [];
@@ -116,24 +116,33 @@ render_header('Compare Assessments', 'analyze');
 </div>
 
 <div class="card" style="margin-top:16px;">
-  <div class="eyebrow">AHP Weighted Contribution per Criterion</div>
+  <div class="eyebrow">Risk Factor Score Breakdown</div>
   <h3 style="margin-top:6px;">What changed</h3>
   <?php
-  $keys = array_unique(array_merge(array_keys($a['ahp']['contributions'] ?? []), array_keys($b['ahp']['contributions'] ?? [])));
-  $sumA = array_sum($a['ahp']['contributions'] ?? []) ?: 1;
-  $sumB = array_sum($b['ahp']['contributions'] ?? []) ?: 1;
-  foreach ($keys as $key):
-      $pctA = (($a['ahp']['contributions'][$key] ?? 0) / $sumA) * 100;
-      $pctB = (($b['ahp']['contributions'][$key] ?? 0) / $sumB) * 100;
+  $hitsA = []; foreach (($a['structural']['hits'] ?? []) as $h) $hitsA[$h['label']] = $h;
+  $hitsB = []; foreach (($b['structural']['hits'] ?? []) as $h) $hitsB[$h['label']] = $h;
+  $allLabels = array_unique(array_merge(array_keys($hitsA), array_keys($hitsB)));
+  if ($allLabels): foreach ($allLabels as $label):
+      $inA = isset($hitsA[$label]);
+      $inB = isset($hitsB[$label]);
+      $pts = ($hitsA[$label] ?? $hitsB[$label])['points'];
+      $cat = ($hitsA[$label] ?? $hitsB[$label])['cat'];
   ?>
-    <div class="contrib-bar-row" style="align-items:center;">
-      <div class="name"><?php echo e(AHP_LABELS[$key] ?? $key); ?></div>
-      <div class="contrib-bar-track"><div class="contrib-bar-fill" style="width:<?php echo min(100,max(0,$pctA)); ?>%"></div></div>
-      <div class="contrib-bar-pct"><?php echo number_format($pctA,0); ?>%</div>
-      <div style="min-width:70px;text-align:right;"><?php echo delta_badge(round($pctA), round($pctB)); ?></div>
+    <div class="kv">
+      <span class="k"><span class="badge badge-teal" style="margin-right:8px;"><?php echo e($cat); ?></span><?php echo e($label); ?> (+<?php echo (int)$pts; ?>)</span>
+      <span class="v" style="font-size:12px;">
+        <span style="color:<?php echo $inA ? 'var(--risk-high)' : 'var(--muted)'; ?>;font-weight:700;">Current: <?php echo $inA ? 'Yes' : 'No'; ?></span>
+        &nbsp;·&nbsp;
+        <span class="muted">Previous: <?php echo $inB ? 'Yes' : 'No'; ?></span>
+      </span>
     </div>
-  <?php endforeach; ?>
-  <div class="muted" style="font-size:12px;margin-top:8px;">Bars show the current assessment's share; the arrow shows the change vs. the previous one.</div>
+  <?php endforeach; else: ?>
+    <div class="empty"><i class="fa-solid fa-check"></i>No reproductive history, medical condition, or present pregnancy problem rules triggered in either assessment.</div>
+  <?php endif; ?>
+  <div class="kv" style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px;">
+    <span class="k" style="font-weight:800;">Total structural score</span>
+    <span class="v"><?php echo delta_badge((int)($a['structural']['total'] ?? 0), (int)($b['structural']['total'] ?? 0)); ?></span>
+  </div>
 </div>
 
 <div class="grid grid-2" style="margin-top:16px;align-items:start;">

@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "PregnaCare",
+    "slug": "pregnacare",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "primaryColor": "#0E9C8F",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pregnacare.app"
+    },
+    "android": {
+      "package": "com.pregnacare.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F6F4",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

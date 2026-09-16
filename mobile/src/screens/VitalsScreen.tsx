@@ -12,7 +12,8 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Shadows } from '../theme/colors';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors, Shadows, Gradients } from '../theme/colors';
 import { api } from '../services/api';
 
 export const VitalsScreen: React.FC = () => {
@@ -95,50 +96,61 @@ export const VitalsScreen: React.FC = () => {
     <View style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primaryDark} />}
       >
         {/* Header */}
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.headerTitle}>Vitals Monitoring</Text>
-            <Text style={styles.headerSubtitle}>Log & track clinical vital signs</Text>
+            <Text style={styles.headerEyebrow}>MONITORING</Text>
+            <Text style={styles.headerTitle}>Vitals Tracking</Text>
+            <Text style={styles.headerSubtitle}>Record and track clinical vital signs</Text>
           </View>
-          <TouchableOpacity style={styles.addBtn} onPress={() => setShowModal(true)}>
-            <Ionicons name="add" size={20} color={Colors.white} />
-            <Text style={styles.addBtnText}>Log Vitals</Text>
+          <TouchableOpacity
+            onPress={() => setShowModal(true)}
+            activeOpacity={0.85}
+          >
+            <LinearGradient
+              colors={Gradients.primaryBtn}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.addBtn}
+            >
+              <Ionicons name="add" size={18} color={Colors.white} />
+              <Text style={styles.addBtnText}>Log Vitals</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
 
-        {/* Stats Strip */}
+        {/* Stats Strip (.stat from style.css) */}
         <View style={styles.statsRow}>
-          <View style={[styles.statTile, Shadows.small]}>
-            <Text style={styles.statLabel}>AVG BLOOD PRESSURE</Text>
+          <View style={[styles.statTile, Shadows.card]}>
+            <Text style={styles.statLabel}>AVG BP</Text>
             <Text style={styles.statValue}>
               {stats.avgBpSys ? `${stats.avgBpSys}/${stats.avgBpDia}` : '—'}
             </Text>
             <Text style={styles.statUnit}>mmHg</Text>
           </View>
 
-          <View style={[styles.statTile, Shadows.small]}>
-            <Text style={styles.statLabel}>AVG BLOOD SUGAR</Text>
+          <View style={[styles.statTile, Shadows.card]}>
+            <Text style={styles.statLabel}>AVG SUGAR</Text>
             <Text style={styles.statValue}>{stats.avgSugar || '—'}</Text>
             <Text style={styles.statUnit}>mg/dL</Text>
           </View>
 
-          <View style={[styles.statTile, Shadows.small]}>
+          <View style={[styles.statTile, Shadows.card]}>
             <Text style={styles.statLabel}>TOTAL LOGS</Text>
             <Text style={styles.statValue}>{stats.totalEntries || 0}</Text>
-            <Text style={styles.statUnit}>records</Text>
+            <Text style={styles.statUnit}>entries</Text>
           </View>
         </View>
 
         {/* History List */}
-        <Text style={styles.historyTitle}>Measurement History</Text>
+        <Text style={styles.sectionTitle}>Measurement History</Text>
         {loading ? (
-          <ActivityIndicator color={Colors.primary} style={{ marginTop: 20 }} />
+          <ActivityIndicator color={Colors.primaryDark} style={{ marginTop: 20 }} />
         ) : logs.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Ionicons name="heart-dislike-outline" size={40} color={Colors.textMuted} />
+          <View style={[styles.emptyCard, Shadows.card]}>
+            <Ionicons name="heart-dislike-outline" size={40} color={Colors.primaryLight} />
             <Text style={styles.emptyText}>No vitals logged yet.</Text>
             <TouchableOpacity style={styles.emptyAction} onPress={() => setShowModal(true)}>
               <Text style={styles.emptyActionText}>Add Your First Record</Text>
@@ -149,7 +161,7 @@ export const VitalsScreen: React.FC = () => {
             const isHighBp = log.bp_sys >= 140 || log.bp_dia >= 90;
             const isLowHb = log.hemoglobin && log.hemoglobin < 10;
             return (
-              <View key={log.id} style={[styles.logCard, Shadows.small]}>
+              <View key={log.id} style={[styles.logCard, Shadows.card]}>
                 <View style={styles.logHeader}>
                   <View style={styles.dateRow}>
                     <Ionicons name="calendar-outline" size={14} color={Colors.textMuted} />
@@ -157,7 +169,7 @@ export const VitalsScreen: React.FC = () => {
                   </View>
                   {isHighBp && (
                     <View style={styles.warningPill}>
-                      <Text style={styles.warningText}>High BP</Text>
+                      <Text style={styles.warningText}>Elevated BP</Text>
                     </View>
                   )}
                 </View>
@@ -179,7 +191,7 @@ export const VitalsScreen: React.FC = () => {
 
                   {log.hemoglobin ? (
                     <View style={styles.metricItem}>
-                      <Text style={[styles.metricItemVal, isLowHb && { color: Colors.riskSevere }]}>
+                      <Text style={[styles.metricItemVal, isLowHb && { color: Colors.riskHigh }]}>
                         {log.hemoglobin}
                       </Text>
                       <Text style={styles.metricItemLbl}>Hb (g/dL)</Text>
@@ -199,24 +211,25 @@ export const VitalsScreen: React.FC = () => {
         )}
       </ScrollView>
 
-      {/* Log Modal */}
+      {/* Log Modal (.ed-modal in style.css) */}
       <Modal visible={showModal} animationType="slide" transparent>
         <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, Shadows.large]}>
+          <View style={[styles.modalCard, Shadows.soft]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Record Daily Vitals</Text>
-              <TouchableOpacity onPress={() => setShowModal(false)}>
-                <Ionicons name="close-circle" size={24} color={Colors.textMuted} />
+              <TouchableOpacity onPress={() => setShowModal(false)} style={styles.closeBtn}>
+                <Ionicons name="close" size={20} color={Colors.textSoft} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ maxHeight: 420 }}>
+            <ScrollView style={{ maxHeight: 440 }} keyboardShouldPersistTaps="handled">
               <View style={styles.modalInputRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.fieldLabel}>Systolic BP (mmHg)</Text>
                   <TextInput
                     style={styles.fieldInput}
                     placeholder="e.g. 120"
+                    placeholderTextColor={Colors.textMuted}
                     keyboardType="numeric"
                     value={bpSys}
                     onChangeText={setBpSys}
@@ -228,6 +241,7 @@ export const VitalsScreen: React.FC = () => {
                   <TextInput
                     style={styles.fieldInput}
                     placeholder="e.g. 80"
+                    placeholderTextColor={Colors.textMuted}
                     keyboardType="numeric"
                     value={bpDia}
                     onChangeText={setBpDia}
@@ -241,6 +255,7 @@ export const VitalsScreen: React.FC = () => {
                   <TextInput
                     style={styles.fieldInput}
                     placeholder="e.g. 95"
+                    placeholderTextColor={Colors.textMuted}
                     keyboardType="numeric"
                     value={sugar}
                     onChangeText={setSugar}
@@ -252,6 +267,7 @@ export const VitalsScreen: React.FC = () => {
                   <TextInput
                     style={styles.fieldInput}
                     placeholder="e.g. 12.5"
+                    placeholderTextColor={Colors.textMuted}
                     keyboardType="decimal-pad"
                     value={hb}
                     onChangeText={setHb}
@@ -264,7 +280,8 @@ export const VitalsScreen: React.FC = () => {
                   <Text style={styles.fieldLabel}>Weight (kg)</Text>
                   <TextInput
                     style={styles.fieldInput}
-                    placeholder="e.g. 64.5"
+                    placeholder="e.g. 62.5"
+                    placeholderTextColor={Colors.textMuted}
                     keyboardType="decimal-pad"
                     value={weight}
                     onChangeText={setWeight}
@@ -276,25 +293,34 @@ export const VitalsScreen: React.FC = () => {
                   <TextInput
                     style={styles.fieldInput}
                     placeholder="e.g. 36.8"
+                    placeholderTextColor={Colors.textMuted}
                     keyboardType="decimal-pad"
                     value={temp}
                     onChangeText={setTemp}
                   />
                 </View>
               </View>
-            </ScrollView>
 
-            <TouchableOpacity
-              style={[styles.saveBtn, submitting && { opacity: 0.7 }]}
-              onPress={handleSave}
-              disabled={submitting}
-            >
-              {submitting ? (
-                <ActivityIndicator color={Colors.white} />
-              ) : (
-                <Text style={styles.saveBtnText}>Save Measurements</Text>
-              )}
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSave}
+                disabled={submitting}
+                activeOpacity={0.85}
+                style={{ marginTop: 14 }}
+              >
+                <LinearGradient
+                  colors={Gradients.primaryBtn}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.modalSaveBtn, submitting && { opacity: 0.7 }]}
+                >
+                  {submitting ? (
+                    <ActivityIndicator color={Colors.white} />
+                  ) : (
+                    <Text style={styles.modalSaveBtnText}>Save Measurements</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -308,7 +334,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   content: {
-    padding: 18,
+    padding: 16,
     paddingBottom: 40,
   },
   headerRow: {
@@ -316,73 +342,110 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
-    marginTop: 8,
+  },
+  headerEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.9,
+    color: Colors.primaryDark,
+    textTransform: 'uppercase',
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     color: Colors.text,
+    letterSpacing: -0.3,
+    marginTop: 2,
   },
   headerSubtitle: {
-    fontSize: 12,
-    color: Colors.textMuted,
+    fontSize: 12.5,
+    color: Colors.textSoft,
     marginTop: 2,
   },
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.primary,
+    gap: 6,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 9,
     borderRadius: 12,
-    gap: 4,
+    ...Shadows.glow,
   },
   addBtnText: {
     color: Colors.white,
-    fontWeight: '700',
     fontSize: 13,
+    fontWeight: '800',
   },
   statsRow: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 20,
+    marginBottom: 18,
   },
   statTile: {
     flex: 1,
     backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 18,
+    padding: 14,
     borderWidth: 1,
     borderColor: Colors.border,
     alignItems: 'center',
   },
   statLabel: {
-    fontSize: 8.5,
+    fontSize: 10,
     fontWeight: '800',
     color: Colors.textMuted,
-    letterSpacing: 0.5,
-    textAlign: 'center',
+    letterSpacing: 0.8,
     marginBottom: 4,
+    textTransform: 'uppercase',
   },
   statValue: {
-    fontSize: 16,
+    fontSize: 19,
     fontWeight: '800',
     color: Colors.text,
+    letterSpacing: -0.3,
   },
   statUnit: {
-    fontSize: 10,
-    color: Colors.textMuted,
+    fontSize: 10.5,
+    color: Colors.textSoft,
+    fontWeight: '600',
     marginTop: 2,
   },
-  historyTitle: {
-    fontSize: 16,
+  sectionTitle: {
+    fontSize: 15,
     fontWeight: '800',
     color: Colors.text,
-    marginBottom: 12,
+    marginBottom: 10,
+    letterSpacing: -0.2,
+  },
+  emptyCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    padding: 28,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 8,
+  },
+  emptyText: {
+    fontSize: 13.5,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  emptyAction: {
+    marginTop: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: Colors.primaryLight,
+  },
+  emptyActionText: {
+    color: Colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '700',
   },
   logCard: {
     backgroundColor: Colors.surface,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 14,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -392,7 +455,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   dateRow: {
     flexDirection: 'row',
@@ -400,77 +463,56 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   dateText: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    fontWeight: '600',
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: Colors.textSoft,
   },
   warningPill: {
-    backgroundColor: Colors.riskSevereLight,
+    backgroundColor: Colors.riskHighBg,
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
   },
   warningText: {
-    color: Colors.riskSevere,
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.riskHigh,
   },
   metricsRow: {
     flexDirection: 'row',
-    gap: 12,
     flexWrap: 'wrap',
+    gap: 12,
   },
   metricItem: {
-    backgroundColor: Colors.surfaceSoft,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
+    flex: 1,
+    minWidth: 70,
+    backgroundColor: Colors.backgroundSoft,
+    padding: 10,
+    borderRadius: 12,
   },
   metricItemVal: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     color: Colors.text,
   },
   metricItemLbl: {
-    fontSize: 10,
+    fontSize: 10.5,
     color: Colors.textMuted,
     marginTop: 2,
-  },
-  emptyCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: Colors.textMuted,
-  },
-  emptyAction: {
-    backgroundColor: Colors.primaryLight,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 10,
-    marginTop: 6,
-  },
-  emptyActionText: {
-    color: Colors.primary,
-    fontWeight: '700',
-    fontSize: 12,
+    fontWeight: '600',
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(43, 34, 41, 0.45)',
+    justifyContent: 'center',
+    padding: 20,
   },
   modalCard: {
     backgroundColor: Colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 22,
+    borderRadius: 22,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -483,37 +525,47 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.text,
   },
-  modalInputRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 14,
-  },
-  fieldLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  fieldInput: {
-    backgroundColor: Colors.surfaceSoft,
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalInputRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textSoft,
+    marginBottom: 6,
+  },
+  fieldInput: {
+    backgroundColor: Colors.backgroundSoft,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 11,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
     color: Colors.text,
   },
-  saveBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
+  modalSaveBtn: {
+    borderRadius: 12,
+    paddingVertical: 13,
     alignItems: 'center',
-    marginTop: 14,
+    justifyContent: 'center',
+    ...Shadows.glow,
   },
-  saveBtnText: {
+  modalSaveBtnText: {
     color: Colors.white,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 14.5,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
 });

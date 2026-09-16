@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Shadows } from '../theme/colors';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors, Shadows, Gradients } from '../theme/colors';
 import { BabySizeCard } from '../components/BabySizeCard';
 import { RiskGauge } from '../components/RiskGauge';
 import { api } from '../services/api';
@@ -47,7 +48,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
   if (loading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+        <ActivityIndicator size="large" color={Colors.primaryDark} />
         <Text style={styles.loadingText}>Loading your pregnancy dashboard...</Text>
       </View>
     );
@@ -57,29 +58,104 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
   const risk = data?.risk || {};
   const vitals = data?.vitals?.latest || {};
   const checkin = data?.checkin || {};
+  const user = data?.user || {};
+  const recs = risk?.topRecommendations || [];
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primaryDark} />}
     >
-      {/* Welcome Bar */}
-      <View style={styles.welcomeRow}>
-        <View>
-          <Text style={styles.welcomeLabel}>Hello,</Text>
-          <Text style={styles.userName}>{data?.user?.name || 'Mom'}</Text>
+      {/* Top Brand Header (1:1 with style.css .brand) */}
+      <View style={styles.topbar}>
+        <View style={styles.brandRow}>
+          <LinearGradient
+            colors={Gradients.brandMark}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.brandMark}
+          >
+            <Ionicons name="heart" size={18} color="#FFFFFF" />
+          </LinearGradient>
+          <View>
+            <Text style={styles.brandName}>PregnaCare</Text>
+            <Text style={styles.brandSubtitle}>MATERNAL HEALTH</Text>
+          </View>
         </View>
 
-        <TouchableOpacity style={styles.notifBtn} onPress={() => onNavigate('profile')}>
-          <Ionicons name="notifications-outline" size={22} color={Colors.text} />
+        <TouchableOpacity style={styles.iconBtn} onPress={() => onNavigate('profile')} activeOpacity={0.7}>
+          <Ionicons name="notifications-outline" size={20} color={Colors.textSoft} />
           {(data?.notifications?.unreadCount || 0) > 0 && (
             <View style={styles.badgeDot} />
           )}
         </TouchableOpacity>
       </View>
 
-      {/* Baby Milestone Card */}
+      {/* Hero Gradient Banner (.hero-gradient in style.css) */}
+      <LinearGradient
+        colors={Gradients.hero}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.heroCard, Shadows.card]}
+      >
+        <View style={styles.heroDecorCircle} />
+        <Text style={styles.heroEyebrow}>WELCOME BACK</Text>
+        <Text style={styles.heroName}>{user.name || 'Mom'}</Text>
+        <Text style={styles.heroText}>
+          {preg.weeks ? (
+            <>
+              You're about <Text style={styles.heroBold}>{preg.weeks} weeks</Text> along — Trimester {preg.trimester || 2}. Expected due date: {preg.edd || 'Nov 2026'}.
+            </>
+          ) : (
+            'Complete your profile to personalize your pregnancy timeline.'
+          )}
+        </Text>
+      </LinearGradient>
+
+      {/* Daily Check-in Reminder Banner (#dailyReminderBanner in dashboard.php) */}
+      {(!checkin.vitalsLoggedToday || !checkin.symptomsLoggedToday) && (
+        <View style={[styles.reminderBanner, Shadows.card]}>
+          <View style={styles.reminderContent}>
+            <View style={styles.reminderIconCircle}>
+              <Ionicons name="notifications" size={20} color={Colors.secondaryDark} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.reminderTitle}>Daily check-in reminder</Text>
+              <Text style={styles.reminderDesc}>
+                {!checkin.vitalsLoggedToday && !checkin.symptomsLoggedToday
+                  ? "You haven't logged your vitals or symptoms today."
+                  : !checkin.vitalsLoggedToday
+                  ? "You haven't logged your vitals today."
+                  : "You haven't done your symptom check-in today."}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.reminderActions}>
+            {!checkin.vitalsLoggedToday && (
+              <TouchableOpacity
+                style={styles.btnOutlineSm}
+                onPress={() => onNavigate('vitals')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.btnOutlineSmText}>Log Vitals</Text>
+              </TouchableOpacity>
+            )}
+            {!checkin.symptomsLoggedToday && (
+              <TouchableOpacity
+                style={styles.btnPrimarySm}
+                onPress={() => onNavigate('symptoms')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.btnPrimarySmText}>Check-in Now</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Baby Milestone & Due Date Countdown Card */}
       <BabySizeCard
         weeks={preg.weeks}
         days={preg.days}
@@ -90,62 +166,34 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
         edd={preg.edd}
       />
 
-      {/* Daily Check-in Alert */}
-      {(!checkin.vitalsLoggedToday || !checkin.symptomsLoggedToday) && (
-        <View style={[styles.reminderCard, Shadows.small]}>
-          <View style={styles.reminderIconCircle}>
-            <Ionicons name="notifications" size={20} color={Colors.secondary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.reminderTitle}>Daily Check-in Reminder</Text>
-            <Text style={styles.reminderDesc}>
-              {!checkin.vitalsLoggedToday && !checkin.symptomsLoggedToday
-                ? "Don't forget to log your vitals and symptom check-in today."
-                : !checkin.vitalsLoggedToday
-                ? "You haven't recorded today's vitals."
-                : "You haven't completed today's symptom check-in."}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.reminderActionBtn}
-            onPress={() => onNavigate(!checkin.symptomsLoggedToday ? 'symptoms' : 'vitals')}
-          >
-            <Text style={styles.reminderActionText}>Start</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Maternal Risk Assessment Card */}
-      <View style={[styles.card, Shadows.small]}>
+      {/* Current Maternal Risk Status Card */}
+      <View style={[styles.card, Shadows.card]}>
         <View style={styles.cardHeader}>
-          <View>
-            <Text style={styles.cardPreTitle}>CLINICAL DECISION SUPPORT</Text>
-            <Text style={styles.cardTitle}>Maternal Risk Status</Text>
-          </View>
-          <TouchableOpacity onPress={() => onNavigate('symptoms')} style={styles.checkinLink}>
-            <Text style={styles.checkinLinkText}>New Check-in</Text>
-            <Ionicons name="chevron-forward" size={14} color={Colors.primary} />
+          <Text style={styles.eyebrow}>CURRENT RISK LEVEL</Text>
+          <TouchableOpacity onPress={() => onNavigate('symptoms')} style={styles.linkRow}>
+            <Text style={styles.linkText}>New Check-in</Text>
+            <Ionicons name="chevron-forward" size={14} color={Colors.primaryDark} />
           </TouchableOpacity>
         </View>
 
         <View style={styles.gaugeWrapper}>
           <RiskGauge
             score={risk.latestScore !== null ? risk.latestScore : 0}
-            level={risk.level || 'None'}
-            size={200}
+            level={risk.level || 'Low'}
+            size={180}
           />
         </View>
 
-        {/* Top Recommendations */}
-        {risk.topRecommendations && risk.topRecommendations.length > 0 && (
-          <View style={styles.recsContainer}>
-            <Text style={styles.recsHeader}>Priority Clinical Recommendations:</Text>
-            {risk.topRecommendations.map((rec: any, idx: number) => (
+        {/* Priority Recommendations */}
+        {recs.length > 0 && (
+          <View style={styles.recsSection}>
+            <Text style={styles.recsEyebrow}>TOP CLINICAL RECOMMENDATIONS</Text>
+            {recs.slice(0, 3).map((rec: any, idx: number) => (
               <View key={idx} style={[styles.recItem, rec.urgent && styles.recItemUrgent]}>
                 <Ionicons
                   name={rec.urgent ? 'alert-circle' : 'checkmark-circle'}
                   size={18}
-                  color={rec.urgent ? Colors.riskSevere : Colors.primary}
+                  color={rec.urgent ? Colors.riskHigh : Colors.primaryDark}
                 />
                 <Text style={[styles.recText, rec.urgent && styles.recTextUrgent]}>
                   {rec.text}
@@ -156,70 +204,92 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
         )}
       </View>
 
-      {/* Latest Vitals Overview */}
-      <View style={[styles.card, Shadows.small]}>
+      {/* Latest Vitals Card (.kv layout from dashboard.php) */}
+      <View style={[styles.card, Shadows.card]}>
         <View style={styles.cardHeader}>
-          <View>
-            <Text style={styles.cardPreTitle}>MONITORING</Text>
-            <Text style={styles.cardTitle}>Latest Vitals</Text>
-          </View>
-          <TouchableOpacity onPress={() => onNavigate('vitals')} style={styles.checkinLink}>
-            <Text style={styles.checkinLinkText}>History & Log</Text>
-            <Ionicons name="chevron-forward" size={14} color={Colors.primary} />
+          <Text style={styles.eyebrow}>LATEST VITALS</Text>
+          <TouchableOpacity onPress={() => onNavigate('vitals')} style={styles.linkRow}>
+            <Text style={styles.linkText}>View History</Text>
+            <Ionicons name="chevron-forward" size={14} color={Colors.primaryDark} />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.vitalsGrid}>
-          <View style={styles.vitalTile}>
-            <Ionicons name="heart-circle-outline" size={22} color={Colors.accent} />
-            <Text style={styles.vitalValue}>
-              {vitals.bp_sys ? `${vitals.bp_sys}/${vitals.bp_dia}` : '—'}
-            </Text>
-            <Text style={styles.vitalLabel}>Blood Pressure (mmHg)</Text>
+        {vitals.bp_sys ? (
+          <View style={styles.kvList}>
+            <View style={styles.kvRow}>
+              <Text style={styles.kvKey}>Blood Pressure</Text>
+              <Text style={styles.kvVal}>{vitals.bp_sys}/{vitals.bp_dia} mmHg</Text>
+            </View>
+            <View style={styles.kvRow}>
+              <Text style={styles.kvKey}>Hemoglobin</Text>
+              <Text style={styles.kvVal}>{vitals.hemoglobin || '—'} g/dL</Text>
+            </View>
+            <View style={styles.kvRow}>
+              <Text style={styles.kvKey}>Blood Sugar</Text>
+              <Text style={styles.kvVal}>{vitals.blood_sugar || '—'} mg/dL</Text>
+            </View>
+            <View style={styles.kvRow}>
+              <Text style={styles.kvKey}>Weight</Text>
+              <Text style={styles.kvVal}>{vitals.weight_kg || '—'} kg</Text>
+            </View>
+            <View style={[styles.kvRow, { borderBottomWidth: 0 }]}>
+              <Text style={styles.kvKey}>Logged</Text>
+              <Text style={[styles.kvVal, { color: Colors.textSoft }]}>{vitals.date || 'Today'}</Text>
+            </View>
           </View>
+        ) : (
+          <View style={styles.emptyBox}>
+            <Ionicons name="pulse-outline" size={28} color={Colors.primaryLight} />
+            <Text style={styles.emptyText}>No vitals logged yet.</Text>
+          </View>
+        )}
 
-          <View style={styles.vitalTile}>
-            <Ionicons name="water-outline" size={22} color={Colors.secondary} />
-            <Text style={styles.vitalValue}>
-              {vitals.blood_sugar ? `${vitals.blood_sugar} mg/dL` : '—'}
-            </Text>
-            <Text style={styles.vitalLabel}>Blood Sugar</Text>
-          </View>
-
-          <View style={styles.vitalTile}>
-            <Ionicons name="medkit-outline" size={22} color={Colors.primary} />
-            <Text style={styles.vitalValue}>
-              {vitals.hemoglobin ? `${vitals.hemoglobin} g/dL` : '—'}
-            </Text>
-            <Text style={styles.vitalLabel}>Hemoglobin</Text>
-          </View>
-
-          <View style={styles.vitalTile}>
-            <Ionicons name="speedometer-outline" size={22} color={Colors.riskHigh} />
-            <Text style={styles.vitalValue}>
-              {vitals.weight_kg ? `${vitals.weight_kg} kg` : '—'}
-            </Text>
-            <Text style={styles.vitalLabel}>Weight</Text>
-          </View>
-        </View>
+        <TouchableOpacity
+          style={styles.btnBlockOutline}
+          onPress={() => onNavigate('vitals')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="add" size={18} color={Colors.text} />
+          <Text style={styles.btnBlockOutlineText}>Log Vitals</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Quick Action Hub */}
+      {/* Quick Action Navigation Grid */}
       <View style={styles.actionsGrid}>
-        <TouchableOpacity style={[styles.quickTile, Shadows.small]} onPress={() => onNavigate('trackers')}>
+        <TouchableOpacity
+          style={[styles.quickTile, Shadows.card]}
+          onPress={() => onNavigate('trackers')}
+          activeOpacity={0.7}
+        >
           <View style={[styles.quickIconCircle, { backgroundColor: Colors.primaryLight }]}>
-            <Ionicons name="footsteps" size={22} color={Colors.primary} />
+            <Ionicons name="footsteps" size={20} color={Colors.primaryDark} />
           </View>
           <Text style={styles.quickTitle}>Kick Counter</Text>
-          <Text style={styles.quickSub}>{checkin.kicksToday || 0} logged today</Text>
+          <Text style={styles.quickSub}>Track movement</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.quickTile, Shadows.small]} onPress={() => onNavigate('wellness')}>
+        <TouchableOpacity
+          style={[styles.quickTile, Shadows.card]}
+          onPress={() => onNavigate('wellness')}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.quickIconCircle, { backgroundColor: Colors.lavenderLight }]}>
+            <Ionicons name="library" size={20} color={Colors.lavender} />
+          </View>
+          <Text style={styles.quickTitle}>Education Hub</Text>
+          <Text style={styles.quickSub}>Trimester tips</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.quickTile, Shadows.card]}
+          onPress={() => onNavigate('wellness')}
+          activeOpacity={0.7}
+        >
           <View style={[styles.quickIconCircle, { backgroundColor: Colors.secondaryLight }]}>
-            <Ionicons name="bag-handle" size={22} color={Colors.secondary} />
+            <Ionicons name="bag-handle" size={20} color={Colors.secondaryDark} />
           </View>
           <Text style={styles.quickTitle}>Hospital Bag</Text>
-          <Text style={styles.quickSub}>Checklist & Gear</Text>
+          <Text style={styles.quickSub}>Checklist gear</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -232,7 +302,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   content: {
-    padding: 18,
+    padding: 16,
     paddingBottom: 40,
   },
   centerContainer: {
@@ -245,86 +315,165 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     color: Colors.textMuted,
-  },
-  welcomeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-    marginTop: 8,
-  },
-  welcomeLabel: {
-    fontSize: 13,
-    color: Colors.textMuted,
     fontWeight: '600',
   },
-  userName: {
-    fontSize: 22,
+  topbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  brandMark: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Shadows.glow,
+  },
+  brandName: {
+    fontSize: 18,
     fontWeight: '800',
     color: Colors.text,
+    letterSpacing: -0.3,
   },
-  notifBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.surface,
+  brandSubtitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    letterSpacing: 0.8,
+  },
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
     borderWidth: 1,
     borderColor: Colors.border,
+    backgroundColor: Colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   badgeDot: {
     position: 'absolute',
-    top: 10,
-    right: 11,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.riskSevere,
+    top: 8,
+    right: 8,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: Colors.riskHigh,
   },
-  reminderCard: {
-    backgroundColor: Colors.secondaryLight,
-    borderRadius: 16,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
+  heroCard: {
+    borderRadius: 22,
+    padding: 22,
     marginBottom: 16,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  heroDecorCircle: {
+    position: 'absolute',
+    right: -30,
+    top: -50,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+  },
+  heroEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.9,
+    color: 'rgba(255, 255, 255, 0.88)',
+    textTransform: 'uppercase',
+  },
+  heroName: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginTop: 4,
+    marginBottom: 4,
+    letterSpacing: -0.3,
+  },
+  heroText: {
+    fontSize: 13.5,
+    color: 'rgba(255, 255, 255, 0.94)',
+    lineHeight: 20,
+    fontWeight: '500',
+  },
+  heroBold: {
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  reminderBanner: {
+    backgroundColor: Colors.secondarySoft,
     borderWidth: 1,
     borderColor: Colors.secondary,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+  },
+  reminderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
   },
   reminderIconCircle: {
     width: 38,
     height: 38,
-    borderRadius: 19,
+    borderRadius: 12,
     backgroundColor: Colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   reminderTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.secondary,
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: Colors.secondaryDark,
   },
   reminderDesc: {
-    fontSize: 11,
-    color: Colors.textMuted,
+    fontSize: 12,
+    color: Colors.textSoft,
     marginTop: 2,
+    lineHeight: 16,
   },
-  reminderActionBtn: {
-    backgroundColor: Colors.secondary,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
+  reminderActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+    justifyContent: 'flex-end',
   },
-  reminderActionText: {
-    color: Colors.white,
+  btnOutlineSm: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 9,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  btnOutlineSmText: {
     fontSize: 12,
     fontWeight: '700',
+    color: Colors.text,
+  },
+  btnPrimarySm: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 9,
+    backgroundColor: Colors.primaryDark,
+  },
+  btnPrimarySmText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.white,
   },
   card: {
     backgroundColor: Colors.surface,
-    borderRadius: 20,
+    borderRadius: 22,
     padding: 18,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -334,117 +483,145 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
-  cardPreTitle: {
-    fontSize: 10,
+  eyebrow: {
+    fontSize: 11,
     fontWeight: '800',
-    color: Colors.textMuted,
-    letterSpacing: 0.8,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+    color: Colors.primaryDark,
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: Colors.text,
-  },
-  checkinLink: {
+  linkRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
   },
-  checkinLinkText: {
+  linkText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.primary,
+    color: Colors.primaryDark,
   },
   gaugeWrapper: {
     alignItems: 'center',
-    marginVertical: 4,
+    marginVertical: 6,
   },
-  recsContainer: {
+  recsSection: {
     marginTop: 14,
     borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
+    borderTopColor: Colors.borderSoft,
     paddingTop: 12,
   },
-  recsHeader: {
-    fontSize: 11,
-    fontWeight: '700',
+  recsEyebrow: {
+    fontSize: 10.5,
+    fontWeight: '800',
     color: Colors.textMuted,
+    letterSpacing: 0.7,
     marginBottom: 8,
-    textTransform: 'uppercase',
   },
   recItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surfaceSoft,
+    backgroundColor: Colors.backgroundSoft,
     padding: 10,
     borderRadius: 12,
     marginBottom: 6,
-    gap: 8,
-  },
-  recItemUrgent: {
-    backgroundColor: Colors.riskSevereLight,
-  },
-  recText: {
-    fontSize: 12,
-    color: Colors.text,
-    flex: 1,
-    fontWeight: '500',
-  },
-  recTextUrgent: {
-    color: Colors.riskSevere,
-    fontWeight: '700',
-  },
-  vitalsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 10,
   },
-  vitalTile: {
-    width: '48%',
-    backgroundColor: Colors.surfaceSoft,
-    borderRadius: 14,
-    padding: 12,
-    gap: 4,
+  recItemUrgent: {
+    backgroundColor: Colors.riskHighBg,
+    borderWidth: 1,
+    borderColor: Colors.riskHigh,
   },
-  vitalValue: {
-    fontSize: 16,
-    fontWeight: '800',
+  recText: {
+    fontSize: 12.5,
     color: Colors.text,
+    flex: 1,
+    fontWeight: '600',
   },
-  vitalLabel: {
-    fontSize: 11,
+  recTextUrgent: {
+    color: Colors.riskHigh,
+    fontWeight: '700',
+  },
+  kvList: {
+    marginVertical: 4,
+  },
+  kvRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderSoft,
+  },
+  kvKey: {
+    fontSize: 13,
     color: Colors.textMuted,
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  kvVal: {
+    fontSize: 13.5,
+    color: Colors.text,
+    fontWeight: '700',
+  },
+  emptyBox: {
+    alignItems: 'center',
+    paddingVertical: 18,
+    gap: 6,
+  },
+  emptyText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  btnBlockOutline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    paddingVertical: 10,
+    marginTop: 10,
+  },
+  btnBlockOutlineText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: Colors.text,
   },
   actionsGrid: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
   },
   quickTile: {
     flex: 1,
     backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 18,
+    padding: 12,
     borderWidth: 1,
     borderColor: Colors.border,
-    gap: 6,
+    alignItems: 'center',
+    gap: 4,
   },
   quickIconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 2,
   },
   quickTitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.text,
+    textAlign: 'center',
   },
   quickSub: {
-    fontSize: 11,
+    fontSize: 10,
     color: Colors.textMuted,
+    textAlign: 'center',
   },
 });

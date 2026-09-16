@@ -10,7 +10,8 @@ import {
   Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Shadows } from '../theme/colors';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors, Shadows, Gradients } from '../theme/colors';
 import { api } from '../services/api';
 import { evaluateMaternalRisk, SymptomEntry } from '../services/riskEngine';
 import { RiskGauge } from '../components/RiskGauge';
@@ -22,7 +23,7 @@ export const SymptomsScreen: React.FC = () => {
 
   // Selected state: symptomId -> 'None' | 'Mild' | 'Moderate' | 'Severe'
   const [selectedSeverities, setSelectedSeverities] = useState<Record<string, 'None' | 'Mild' | 'Moderate' | 'Severe'>>({});
-  
+
   // Present Pregnancy Problems (PP) switches
   const [ppFactors, setPpFactors] = useState<Record<string, boolean>>({
     bleeding_lt_20wks: false,
@@ -53,7 +54,7 @@ export const SymptomsScreen: React.FC = () => {
     loadCatalog();
   }, []);
 
-  // Real-time live client-side risk calculation
+  // Real-time live client-side risk calculation (offline capable)
   const liveRisk = useMemo(() => {
     const symptomEntries: SymptomEntry[] = catalog.map((c) => ({
       id: c.id,
@@ -105,7 +106,7 @@ export const SymptomsScreen: React.FC = () => {
       setLastResult(res);
       Alert.alert(
         `Assessment Complete: ${res.level} Risk`,
-        `Score: ${res.score}/100\n\n${res.recommendations?.[0]?.text || 'Review recommendations below.'}`
+        `Clinical Score: ${res.score}/100\n\n${res.recommendations?.[0]?.text || 'Review recommendations below.'}`
       );
     } catch (e: any) {
       Alert.alert('Submission Error', e.message || 'Could not submit assessment.');
@@ -117,8 +118,8 @@ export const SymptomsScreen: React.FC = () => {
   if (loading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading symptom catalog & clinical rules...</Text>
+        <ActivityIndicator size="large" color={Colors.primaryDark} />
+        <Text style={styles.loadingText}>Loading clinical symptom catalog...</Text>
       </View>
     );
   }
@@ -127,29 +128,28 @@ export const SymptomsScreen: React.FC = () => {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Header */}
       <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.headerTitle}>Symptom Check-in</Text>
-          <Text style={styles.headerSubtitle}>AHP + Fuzzy Logic + Clinical Safety Engine</Text>
-        </View>
+        <Text style={styles.headerEyebrow}>CLINICAL DECISION SUPPORT</Text>
+        <Text style={styles.headerTitle}>Symptom Check-in</Text>
+        <Text style={styles.headerSubtitle}>AHP + Fuzzy Inference + Clinical Safety Rule Engine</Text>
       </View>
 
       {/* Real-time Live Risk Preview Card */}
-      <View style={[styles.livePreviewCard, Shadows.medium]}>
+      <View style={[styles.liveCard, Shadows.card]}>
         <View style={styles.liveBadgeRow}>
           <View style={styles.liveIndicator}>
             <View style={styles.liveDot} />
             <Text style={styles.liveText}>REAL-TIME RISK PREVIEW</Text>
           </View>
-          <Text style={styles.calcNote}>Offline-capable</Text>
+          <Text style={styles.calcNote}>Offline-ready</Text>
         </View>
 
         <View style={styles.gaugeContainer}>
-          <RiskGauge score={liveRisk.score} level={liveRisk.level} size={180} />
+          <RiskGauge score={liveRisk.score} level={liveRisk.level} size={170} />
         </View>
 
         {liveRisk.rules.length > 0 && (
           <View style={styles.rulesAlertBox}>
-            <Ionicons name="warning" size={16} color={Colors.riskSevere} />
+            <Ionicons name="warning" size={16} color={Colors.riskHigh} />
             <Text style={styles.rulesAlertText}>{liveRisk.rules[0].text}</Text>
           </View>
         )}
@@ -162,13 +162,25 @@ export const SymptomsScreen: React.FC = () => {
         const isSelected = currentSev !== 'None';
 
         return (
-          <View key={item.id} style={[styles.symptomCard, isSelected && styles.symptomCardActive, Shadows.small]}>
+          <View
+            key={item.id}
+            style={[
+              styles.symptomCard,
+              isSelected && styles.symptomCardActive,
+              Shadows.card,
+            ]}
+          >
             <View style={styles.symptomInfoRow}>
-              <View style={[styles.iconCircle, isSelected && { backgroundColor: Colors.primaryLight }]}>
+              <View
+                style={[
+                  styles.iconCircle,
+                  isSelected && { backgroundColor: Colors.primaryLight },
+                ]}
+              >
                 <Ionicons
                   name={item.weight >= 0.8 ? 'warning-outline' : 'medkit-outline'}
                   size={18}
-                  color={item.weight >= 0.8 ? Colors.riskSevere : Colors.primary}
+                  color={item.weight >= 0.8 ? Colors.riskHigh : Colors.primaryDark}
                 />
               </View>
               <View style={{ flex: 1 }}>
@@ -179,7 +191,7 @@ export const SymptomsScreen: React.FC = () => {
               </View>
             </View>
 
-            {/* Severity Selector Chips */}
+            {/* Severity Selector Chips (1:1 with style.css .chip & .chip.on) */}
             <View style={styles.severityRow}>
               {(['None', 'Mild', 'Moderate', 'Severe'] as const).map((sev) => {
                 const isActive = currentSev === sev;
@@ -192,6 +204,7 @@ export const SymptomsScreen: React.FC = () => {
                       isActive && (isSevHigh ? styles.chipSevere : styles.chipActive),
                     ]}
                     onPress={() => setSeverity(item.id, sev)}
+                    activeOpacity={0.7}
                   >
                     <Text
                       style={[
@@ -209,39 +222,55 @@ export const SymptomsScreen: React.FC = () => {
         );
       })}
 
-      {/* Present Pregnancy Problems (Clinical Multi-factor Rules) */}
-      <Text style={[styles.sectionHeader, { marginTop: 24 }]}>Present Pregnancy Conditions (PP Rules)</Text>
-      <View style={[styles.ppCard, Shadows.small]}>
+      {/* Present Pregnancy Conditions (PP Rules) */}
+      <Text style={[styles.sectionHeader, { marginTop: 24 }]}>
+        Present Pregnancy Conditions (PP Rules)
+      </Text>
+      <View style={[styles.ppCard, Shadows.card]}>
         {[
           { key: 'bleeding_lt_20wks', label: 'Vaginal bleeding before 20 weeks' },
           { key: 'bleeding_gt_20wks', label: 'Vaginal bleeding after 20 weeks' },
           { key: 'hypertension', label: 'Diagnosed gestational hypertension' },
           { key: 'prom', label: 'Premature rupture of membrane (PROM)' },
           { key: 'multiple_pregnancy', label: 'Multiple pregnancy (twins / triplets)' },
-        ].map((item) => (
-          <View key={item.key} style={styles.ppRow}>
+        ].map((item, idx, arr) => (
+          <View
+            key={item.key}
+            style={[
+              styles.ppRow,
+              idx === arr.length - 1 && { borderBottomWidth: 0 },
+            ]}
+          >
             <Text style={styles.ppLabel}>{item.label}</Text>
             <Switch
               value={!!ppFactors[item.key]}
               onValueChange={() => togglePP(item.key)}
-              trackColor={{ false: Colors.border, true: Colors.primary }}
+              trackColor={{ false: Colors.border, true: Colors.primaryDark }}
               thumbColor={Colors.white}
             />
           </View>
         ))}
       </View>
 
-      {/* Submit Button */}
+      {/* Submit Action Button (.btn-primary) */}
       <TouchableOpacity
-        style={[styles.submitBtn, submitting && { opacity: 0.7 }]}
         onPress={handleSubmit}
         disabled={submitting}
+        activeOpacity={0.85}
+        style={{ marginTop: 6 }}
       >
-        {submitting ? (
-          <ActivityIndicator color={Colors.white} />
-        ) : (
-          <Text style={styles.submitBtnText}>Submit Clinical Assessment</Text>
-        )}
+        <LinearGradient
+          colors={Gradients.primaryBtn}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.submitBtn, submitting && { opacity: 0.7 }]}
+        >
+          {submitting ? (
+            <ActivityIndicator color={Colors.white} />
+          ) : (
+            <Text style={styles.submitBtnText}>Submit Clinical Assessment</Text>
+          )}
+        </LinearGradient>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -253,7 +282,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   content: {
-    padding: 18,
+    padding: 16,
     paddingBottom: 40,
   },
   centerContainer: {
@@ -264,36 +293,45 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    fontSize: 13,
+    fontSize: 14,
     color: Colors.textMuted,
+    fontWeight: '600',
   },
   headerRow: {
     marginBottom: 16,
-    marginTop: 8,
+  },
+  headerEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.9,
+    color: Colors.primaryDark,
+    textTransform: 'uppercase',
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     color: Colors.text,
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: Colors.textMuted,
+    letterSpacing: -0.3,
     marginTop: 2,
   },
-  livePreviewCard: {
+  headerSubtitle: {
+    fontSize: 12.5,
+    color: Colors.textSoft,
+    marginTop: 4,
+  },
+  liveCard: {
     backgroundColor: Colors.surface,
-    borderRadius: 20,
-    padding: 18,
+    borderRadius: 22,
+    padding: 16,
     borderWidth: 1,
     borderColor: Colors.border,
-    marginBottom: 20,
+    marginBottom: 18,
   },
   liveBadgeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   liveIndicator: {
     flexDirection: 'row',
@@ -304,18 +342,18 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.primaryDark,
   },
   liveText: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '800',
-    color: Colors.primary,
-    letterSpacing: 0.6,
+    color: Colors.primaryDark,
+    letterSpacing: 0.7,
   },
   calcNote: {
     fontSize: 11,
     color: Colors.textMuted,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   gaugeContainer: {
     alignItems: 'center',
@@ -323,23 +361,26 @@ const styles = StyleSheet.create({
   rulesAlertBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.riskSevereLight,
+    backgroundColor: Colors.riskHighBg,
+    borderWidth: 1,
+    borderColor: Colors.riskHigh,
     padding: 10,
     borderRadius: 12,
     marginTop: 10,
     gap: 8,
   },
   rulesAlertText: {
-    fontSize: 11,
-    color: Colors.riskSevere,
+    fontSize: 11.5,
+    color: Colors.riskHigh,
     fontWeight: '700',
     flex: 1,
   },
   sectionHeader: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: Colors.text,
-    marginBottom: 12,
+    marginBottom: 10,
+    letterSpacing: -0.2,
   },
   symptomCard: {
     backgroundColor: Colors.surface,
@@ -351,6 +392,7 @@ const styles = StyleSheet.create({
   },
   symptomCardActive: {
     borderColor: Colors.primary,
+    backgroundColor: Colors.surface,
   },
   symptomInfoRow: {
     flexDirection: 'row',
@@ -361,19 +403,20 @@ const styles = StyleSheet.create({
   iconCircle: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.surfaceSoft,
+    borderRadius: 12,
+    backgroundColor: Colors.backgroundSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   symptomName: {
-    fontSize: 15,
+    fontSize: 14.5,
     fontWeight: '700',
     color: Colors.text,
   },
   symptomWeight: {
     fontSize: 11,
     color: Colors.textMuted,
+    fontWeight: '600',
   },
   severityRow: {
     flexDirection: 'row',
@@ -381,33 +424,37 @@ const styles = StyleSheet.create({
   },
   chip: {
     flex: 1,
-    paddingVertical: 7,
-    backgroundColor: Colors.surfaceSoft,
-    borderRadius: 8,
+    paddingVertical: 8,
+    backgroundColor: Colors.backgroundSoft,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 11,
     alignItems: 'center',
   },
   chipActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primary,
   },
   chipSevere: {
-    backgroundColor: Colors.riskSevere,
+    backgroundColor: Colors.riskHighBg,
+    borderColor: Colors.riskHigh,
   },
   chipText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textMuted,
+    fontWeight: '700',
+    color: Colors.textSoft,
   },
   chipTextActive: {
-    color: Colors.white,
-    fontWeight: '700',
+    color: Colors.primaryDark,
+    fontWeight: '800',
   },
   chipTextSevere: {
-    color: Colors.white,
-    fontWeight: '700',
+    color: Colors.riskHigh,
+    fontWeight: '800',
   },
   ppCard: {
     backgroundColor: Colors.surface,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 16,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -419,7 +466,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
+    borderBottomColor: Colors.borderSoft,
   },
   ppLabel: {
     fontSize: 13,
@@ -429,16 +476,16 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   submitBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: 16,
-    paddingVertical: 16,
+    borderRadius: 14,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 6,
-    ...Shadows.medium,
+    justifyContent: 'center',
+    ...Shadows.glow,
   },
   submitBtnText: {
     color: Colors.white,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
+    letterSpacing: 0.2,
   },
 });

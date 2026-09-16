@@ -12,7 +12,8 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Shadows } from '../theme/colors';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors, Shadows, Gradients } from '../theme/colors';
 import { api } from '../services/api';
 
 interface AuthScreenProps {
@@ -97,23 +98,33 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      {/* Decorative ambient background spots (.auth-wrap in style.css) */}
+      <View style={styles.ambientSpotSky} />
+      <View style={styles.ambientSpotPink} />
+
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         {/* Brand Header */}
         <View style={styles.brandContainer}>
-          <View style={styles.logoCircle}>
-            <Ionicons name="heart-circle" size={48} color={Colors.primary} />
-          </View>
+          <LinearGradient
+            colors={Gradients.brandMark}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.brandMark}
+          >
+            <Ionicons name="heart" size={28} color="#FFFFFF" />
+          </LinearGradient>
           <Text style={styles.brandName}>PregnaCare</Text>
-          <Text style={styles.brandTagline}>Maternal Risk Monitoring & Companion</Text>
+          <Text style={styles.brandTagline}>Maternal Risk Monitoring & Recommendations</Text>
         </View>
 
-        {/* Auth Card */}
-        <View style={[styles.card, Shadows.medium]}>
-          {/* Segmented Tab */}
+        {/* Auth Card (.auth-card in style.css) */}
+        <View style={[styles.card, Shadows.soft]}>
+          {/* Segmented Tab (.auth-tabs) */}
           <View style={styles.tabBar}>
             <TouchableOpacity
               style={[styles.tabBtn, tab === 'login' && styles.tabBtnActive]}
               onPress={() => setTab('login')}
+              activeOpacity={0.8}
             >
               <Text style={[styles.tabText, tab === 'login' && styles.tabTextActive]}>Log In</Text>
             </TouchableOpacity>
@@ -121,30 +132,31 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
             <TouchableOpacity
               style={[styles.tabBtn, tab === 'register' && styles.tabBtnActive]}
               onPress={() => setTab('register')}
+              activeOpacity={0.8}
             >
               <Text style={[styles.tabText, tab === 'register' && styles.tabTextActive]}>Register</Text>
             </TouchableOpacity>
           </View>
 
           {tab === 'register' && (
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Full Name</Text>
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Full Name</Text>
               <TextInput
                 style={styles.input}
                 placeholder="e.g. Maria Santos"
-                placeholderTextColor={Colors.textLight}
+                placeholderTextColor={Colors.textMuted}
                 value={name}
                 onChangeText={setName}
               />
             </View>
           )}
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Email Address</Text>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Email Address</Text>
             <TextInput
               style={styles.input}
               placeholder="you@example.com"
-              placeholderTextColor={Colors.textLight}
+              placeholderTextColor={Colors.textMuted}
               keyboardType="email-address"
               autoCapitalize="none"
               value={email}
@@ -152,12 +164,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
             />
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Password</Text>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Password</Text>
             <TextInput
               style={styles.input}
               placeholder="••••••••"
-              placeholderTextColor={Colors.textLight}
+              placeholderTextColor={Colors.textMuted}
               secureTextEntry
               value={password}
               onChangeText={setPassword}
@@ -166,23 +178,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
 
           {tab === 'register' && (
             <>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Last Menstrual Period (LMP) - Optional</Text>
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Last Menstrual Period (LMP) - Optional</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="YYYY-MM-DD (e.g. 2026-03-10)"
-                  placeholderTextColor={Colors.textLight}
+                  placeholderTextColor={Colors.textMuted}
                   value={lmp}
                   onChangeText={setLmp}
                 />
               </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Age - Optional</Text>
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Age - Optional</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="e.g. 28"
-                  placeholderTextColor={Colors.textLight}
+                  placeholderTextColor={Colors.textMuted}
                   keyboardType="numeric"
                   value={age}
                   onChangeText={setAge}
@@ -191,18 +203,27 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
             </>
           )}
 
+          {/* Action Button (.btn-primary) */}
           <TouchableOpacity
-            style={[styles.actionBtn, loading && styles.actionBtnDisabled]}
             onPress={tab === 'login' ? handleLogin : handleRegister}
             disabled={loading}
+            activeOpacity={0.85}
+            style={{ marginTop: 8 }}
           >
-            {loading ? (
-              <ActivityIndicator color={Colors.white} />
-            ) : (
-              <Text style={styles.actionBtnText}>
-                {tab === 'login' ? 'Sign In' : 'Create Account'}
-              </Text>
-            )}
+            <LinearGradient
+              colors={Gradients.primaryBtn}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.actionBtn, loading && { opacity: 0.7 }]}
+            >
+              {loading ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <Text style={styles.actionBtnText}>
+                  {tab === 'login' ? 'Sign In' : 'Create Account'}
+                </Text>
+              )}
+            </LinearGradient>
           </TouchableOpacity>
 
           {/* Demo Quick Fill */}
@@ -227,17 +248,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
           onPress={() => setShowServerModal(!showServerModal)}
         >
           <Ionicons name="server-outline" size={14} color={Colors.textMuted} />
-          <Text style={styles.serverSettingsText}>Server: {api.getBaseUrl()}</Text>
+          <Text style={styles.serverSettingsText}>Backend: {api.getBaseUrl()}</Text>
         </TouchableOpacity>
 
         {showServerModal && (
-          <View style={styles.serverConfigBox}>
+          <View style={[styles.serverConfigBox, Shadows.card]}>
             <Text style={styles.serverConfigTitle}>Configure Backend API URL:</Text>
             <TextInput
               style={styles.input}
               value={serverUrl}
               onChangeText={setServerUrl}
-              placeholder="http://192.168.1.xxx/HAYYYSSSS/pregnacare_old/api"
+              placeholder="https://pregnant-production.up.railway.app/api"
               autoCapitalize="none"
             />
             <TouchableOpacity style={styles.saveServerBtn} onPress={saveServerUrl}>
@@ -254,24 +275,46 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+    position: 'relative',
+  },
+  ambientSpotSky: {
+    position: 'absolute',
+    top: -60,
+    left: -60,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: Colors.secondaryLight,
+    opacity: 0.45,
+  },
+  ambientSpotPink: {
+    position: 'absolute',
+    bottom: -60,
+    right: -60,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: Colors.primaryLight,
+    opacity: 0.45,
   },
   scrollContent: {
     padding: 24,
-    justifyContent: 'center',
-    minHeight: '100%',
+    paddingTop: 36,
+    paddingBottom: 48,
+    alignItems: 'center',
   },
   brandContainer: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 26,
   },
-  logoCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: Colors.primaryLight,
+  brandMark: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
+    ...Shadows.glow,
   },
   brandName: {
     fontSize: 28,
@@ -280,79 +323,78 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   brandTagline: {
-    fontSize: 13,
-    color: Colors.textMuted,
+    fontSize: 12.5,
+    color: Colors.textSoft,
     marginTop: 4,
+    textAlign: 'center',
     fontWeight: '500',
   },
   card: {
+    width: '100%',
+    maxWidth: 420,
     backgroundColor: Colors.surface,
-    borderRadius: 24,
-    padding: 20,
     borderWidth: 1,
     borderColor: Colors.border,
+    borderRadius: 22,
+    padding: 24,
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: Colors.surfaceSoft,
-    borderRadius: 14,
+    backgroundColor: Colors.backgroundSoft,
     padding: 4,
+    borderRadius: 12,
     marginBottom: 20,
   },
   tabBtn: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 9,
     alignItems: 'center',
-    borderRadius: 10,
+    borderRadius: 9,
   },
   tabBtnActive: {
     backgroundColor: Colors.surface,
-    ...Shadows.small,
+    ...Shadows.card,
   },
   tabText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 13.5,
+    fontWeight: '700',
     color: Colors.textMuted,
   },
   tabTextActive: {
-    color: Colors.primary,
-    fontWeight: '700',
+    color: Colors.primaryDark,
+    fontWeight: '800',
   },
-  inputGroup: {
+  field: {
     marginBottom: 14,
   },
-  inputLabel: {
-    fontSize: 12,
+  fieldLabel: {
+    fontSize: 12.5,
     fontWeight: '700',
-    color: Colors.text,
+    color: Colors.textSoft,
     marginBottom: 6,
-    letterSpacing: 0.2,
   },
   input: {
-    backgroundColor: Colors.surfaceSoft,
+    backgroundColor: Colors.backgroundSoft,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderRadius: 11,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
     fontSize: 14,
     color: Colors.text,
   },
   actionBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
+    borderRadius: 12,
+    paddingVertical: 13,
     alignItems: 'center',
-    marginTop: 10,
-    ...Shadows.small,
-  },
-  actionBtnDisabled: {
-    opacity: 0.7,
+    justifyContent: 'center',
+    ...Shadows.glow,
   },
   actionBtnText: {
     color: Colors.white,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 14.5,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   demoBox: {
     marginTop: 20,
@@ -363,10 +405,11 @@ const styles = StyleSheet.create({
   },
   demoBoxTitle: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
     color: Colors.textMuted,
     marginBottom: 8,
     textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   demoBtnRow: {
     flexDirection: 'row',
@@ -374,14 +417,14 @@ const styles = StyleSheet.create({
   },
   demoPill: {
     backgroundColor: Colors.primaryLight,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
   },
   demoPillText: {
-    fontSize: 12,
-    color: Colors.primary,
-    fontWeight: '600',
+    fontSize: 12.5,
+    color: Colors.primaryDark,
+    fontWeight: '700',
   },
   serverSettingsBtn: {
     flexDirection: 'row',
@@ -391,10 +434,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   serverSettingsText: {
-    fontSize: 11,
+    fontSize: 11.5,
     color: Colors.textMuted,
+    fontWeight: '600',
   },
   serverConfigBox: {
+    width: '100%',
+    maxWidth: 420,
     backgroundColor: Colors.surface,
     padding: 16,
     borderRadius: 16,
@@ -403,13 +449,13 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   serverConfigTitle: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '700',
     marginBottom: 8,
     color: Colors.text,
   },
   saveServerBtn: {
-    backgroundColor: Colors.secondary,
+    backgroundColor: Colors.secondaryDark,
     borderRadius: 10,
     paddingVertical: 10,
     alignItems: 'center',

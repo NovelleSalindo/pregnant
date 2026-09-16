@@ -9,7 +9,8 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Shadows } from '../theme/colors';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors, Shadows, Gradients } from '../theme/colors';
 import { api } from '../services/api';
 
 export const TrackerScreen: React.FC = () => {
@@ -73,13 +74,14 @@ export const TrackerScreen: React.FC = () => {
     if (nextCount === 10) {
       Alert.alert(
         'Goal Reached! 🎉',
-        `You felt 10 kicks in ${formatTime(kickSeconds)}. Good fetal movement is a healthy sign!`
+        `You recorded 10 kicks in ${formatTime(kickSeconds)}. Good fetal movement is a positive sign of well-being.`
       );
     }
   };
 
   const resetKickSession = () => {
     if (kickTimerRef.current) clearInterval(kickTimerRef.current);
+    kickTimerRef.current = null;
     setKickSessionActive(false);
     setKickCount(0);
     setKickSeconds(0);
@@ -101,12 +103,12 @@ export const TrackerScreen: React.FC = () => {
     } else {
       // Stop & save
       if (contractionTimerRef.current) clearInterval(contractionTimerRef.current);
+      contractionTimerRef.current = null;
       setContractionActive(false);
 
       const duration = contractionSeconds;
       try {
         await api.logContraction(duration);
-        // Refresh contractions
         const contRes = await api.getContractions();
         setContractions(contRes.contractions || []);
         setAlert511(contRes.alert511 || false);
@@ -135,22 +137,22 @@ export const TrackerScreen: React.FC = () => {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Header */}
       <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.headerTitle}>Pregnancy Trackers</Text>
-          <Text style={styles.headerSubtitle}>Kick counter & labor contraction timer</Text>
-        </View>
+        <Text style={styles.headerEyebrow}>TRACKERS</Text>
+        <Text style={styles.headerTitle}>Pregnancy Trackers</Text>
+        <Text style={styles.headerSubtitle}>Fetal kick counter & labor contraction timer</Text>
       </View>
 
-      {/* Segmented Switch */}
+      {/* Segmented Switch (.auth-tabs style) */}
       <View style={styles.tabBar}>
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === 'kick' && styles.tabBtnActive]}
           onPress={() => setActiveTab('kick')}
+          activeOpacity={0.8}
         >
           <Ionicons
             name="footsteps"
             size={16}
-            color={activeTab === 'kick' ? Colors.primary : Colors.textMuted}
+            color={activeTab === 'kick' ? Colors.primaryDark : Colors.textMuted}
           />
           <Text style={[styles.tabText, activeTab === 'kick' && styles.tabTextActive]}>
             Kick Counter
@@ -160,13 +162,14 @@ export const TrackerScreen: React.FC = () => {
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === 'contraction' && styles.tabBtnActive]}
           onPress={() => setActiveTab('contraction')}
+          activeOpacity={0.8}
         >
           <Ionicons
             name="timer-outline"
             size={16}
-            color={activeTab === 'contraction' ? Colors.accent : Colors.textMuted}
+            color={activeTab === 'contraction' ? Colors.primaryDark : Colors.textMuted}
           />
-          <Text style={[styles.tabText, activeTab === 'contraction' && { color: Colors.accent, fontWeight: '700' }]}>
+          <Text style={[styles.tabText, activeTab === 'contraction' && styles.tabTextActive]}>
             Contraction Timer
           </Text>
         </TouchableOpacity>
@@ -175,24 +178,30 @@ export const TrackerScreen: React.FC = () => {
       {/* --- KICK COUNTER TAB --- */}
       {activeTab === 'kick' && (
         <View>
-          <View style={[styles.card, Shadows.small]}>
+          <View style={[styles.card, Shadows.card]}>
             <View style={styles.cardHeader}>
-              <Text style={styles.goalLabel}>CLINICAL TARGET: 10 KICKS IN 2 HOURS</Text>
+              <Text style={styles.goalLabel}>TARGET: 10 KICKS IN 2 HOURS</Text>
               <View style={styles.todayPill}>
                 <Text style={styles.todayPillText}>{todayTotalKicks} Total Today</Text>
               </View>
             </View>
 
-            {/* Tap Button */}
+            {/* Tap Button with Pink Gradient */}
             <View style={styles.kickButtonContainer}>
               <TouchableOpacity
-                style={[styles.kickCircle, Shadows.medium]}
                 onPress={handleKickTap}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
               >
-                <Ionicons name="footsteps" size={44} color={Colors.white} />
-                <Text style={styles.kickCountBig}>{kickCount}</Text>
-                <Text style={styles.kickPrompt}>TAP TO RECORD</Text>
+                <LinearGradient
+                  colors={Gradients.primaryBtn}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.kickCircle, Shadows.glow]}
+                >
+                  <Ionicons name="footsteps" size={40} color="#FFFFFF" />
+                  <Text style={styles.kickCountBig}>{kickCount}</Text>
+                  <Text style={styles.kickPrompt}>TAP TO RECORD</Text>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
 
@@ -210,8 +219,8 @@ export const TrackerScreen: React.FC = () => {
 
             {/* Reset Button */}
             {kickCount > 0 && (
-              <TouchableOpacity style={styles.resetBtn} onPress={resetKickSession}>
-                <Ionicons name="refresh" size={14} color={Colors.textMuted} />
+              <TouchableOpacity style={styles.resetBtn} onPress={resetKickSession} activeOpacity={0.7}>
+                <Ionicons name="refresh" size={14} color={Colors.textSoft} />
                 <Text style={styles.resetBtnText}>Reset Current Session</Text>
               </TouchableOpacity>
             )}
@@ -223,8 +232,8 @@ export const TrackerScreen: React.FC = () => {
       {activeTab === 'contraction' && (
         <View>
           {alert511 && (
-            <View style={styles.alert511Box}>
-              <Ionicons name="medical" size={22} color={Colors.riskSevere} />
+            <View style={[styles.alert511Box, Shadows.card]}>
+              <Ionicons name="medical" size={22} color={Colors.riskHigh} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.alert511Title}>5-1-1 Rule Triggered!</Text>
                 <Text style={styles.alert511Desc}>
@@ -234,7 +243,7 @@ export const TrackerScreen: React.FC = () => {
             </View>
           )}
 
-          <View style={[styles.card, Shadows.small]}>
+          <View style={[styles.card, Shadows.card]}>
             <View style={styles.contractionTimerBox}>
               <Text style={styles.contractionTimerDigits}>
                 {formatTime(contractionSeconds)}
@@ -244,34 +253,38 @@ export const TrackerScreen: React.FC = () => {
               </Text>
 
               <TouchableOpacity
-                style={[
-                  styles.contractionActionBtn,
-                  contractionActive ? styles.contractionBtnStop : styles.contractionBtnStart,
-                  Shadows.medium,
-                ]}
                 onPress={toggleContractionTimer}
+                activeOpacity={0.85}
+                style={{ marginTop: 16 }}
               >
-                <Ionicons
-                  name={contractionActive ? 'stop' : 'play'}
-                  size={20}
-                  color={Colors.white}
-                />
-                <Text style={styles.contractionActionBtnText}>
-                  {contractionActive ? 'Stop Contraction' : 'Start Contraction'}
-                </Text>
+                <LinearGradient
+                  colors={contractionActive ? Gradients.emergency : Gradients.primaryBtn}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.contractionActionBtn, Shadows.glow]}
+                >
+                  <Ionicons
+                    name={contractionActive ? 'stop' : 'play'}
+                    size={20}
+                    color={Colors.white}
+                  />
+                  <Text style={styles.contractionActionBtnText}>
+                    {contractionActive ? 'Stop Contraction' : 'Start Contraction'}
+                  </Text>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </View>
 
           {/* History List */}
-          <Text style={styles.historyTitle}>Recent Contractions</Text>
+          <Text style={styles.sectionTitle}>Recent Contractions</Text>
           {contractions.length === 0 ? (
-            <View style={styles.emptyBox}>
+            <View style={[styles.emptyBox, Shadows.card]}>
               <Text style={styles.emptyText}>No contractions recorded yet.</Text>
             </View>
           ) : (
             contractions.map((c) => (
-              <View key={c.id} style={[styles.contRow, Shadows.small]}>
+              <View key={c.id} style={[styles.contRow, Shadows.card]}>
                 <View>
                   <Text style={styles.contDuration}>{c.durationSeconds}s duration</Text>
                   <Text style={styles.contTime}>{c.at}</Text>
@@ -284,7 +297,7 @@ export const TrackerScreen: React.FC = () => {
                     <Text style={styles.contInterval}>First in set</Text>
                   )}
                   <TouchableOpacity onPress={() => deleteContraction(c.id)}>
-                    <Ionicons name="trash-outline" size={16} color={Colors.textLight} />
+                    <Ionicons name="trash-outline" size={16} color={Colors.textMuted} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -302,27 +315,35 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   content: {
-    padding: 18,
+    padding: 16,
     paddingBottom: 40,
   },
   headerRow: {
     marginBottom: 16,
-    marginTop: 8,
+  },
+  headerEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.9,
+    color: Colors.primaryDark,
+    textTransform: 'uppercase',
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     color: Colors.text,
+    letterSpacing: -0.3,
+    marginTop: 2,
   },
   headerSubtitle: {
-    fontSize: 12,
-    color: Colors.textMuted,
+    fontSize: 12.5,
+    color: Colors.textSoft,
     marginTop: 2,
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: Colors.surfaceSoft,
-    borderRadius: 14,
+    backgroundColor: Colors.backgroundSoft,
+    borderRadius: 12,
     padding: 4,
     marginBottom: 16,
   },
@@ -330,28 +351,28 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     gap: 6,
-    paddingVertical: 10,
+    paddingVertical: 9,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
+    borderRadius: 9,
   },
   tabBtnActive: {
     backgroundColor: Colors.surface,
-    ...Shadows.small,
+    ...Shadows.card,
   },
   tabText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     color: Colors.textMuted,
   },
   tabTextActive: {
-    color: Colors.primary,
-    fontWeight: '700',
+    color: Colors.primaryDark,
+    fontWeight: '800',
   },
   card: {
     backgroundColor: Colors.surface,
-    borderRadius: 20,
-    padding: 18,
+    borderRadius: 22,
+    padding: 20,
     borderWidth: 1,
     borderColor: Colors.border,
     marginBottom: 16,
@@ -363,21 +384,21 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   goalLabel: {
-    fontSize: 9.5,
+    fontSize: 10.5,
     fontWeight: '800',
     color: Colors.textMuted,
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   todayPill: {
     backgroundColor: Colors.primaryLight,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 10,
+    borderRadius: 999,
   },
   todayPillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.primary,
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: Colors.primaryDark,
   },
   kickButtonContainer: {
     alignItems: 'center',
@@ -387,31 +408,30 @@ const styles = StyleSheet.create({
     width: 170,
     height: 170,
     borderRadius: 85,
-    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 6,
-    borderColor: Colors.primaryLight,
   },
   kickCountBig: {
-    fontSize: 38,
-    fontWeight: '900',
-    color: Colors.white,
+    fontSize: 44,
+    fontWeight: '800',
+    color: '#FFFFFF',
     marginTop: 2,
+    letterSpacing: -1,
   },
   kickPrompt: {
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '800',
-    color: 'rgba(255,255,255,0.85)',
-    letterSpacing: 0.8,
+    color: 'rgba(255, 255, 255, 0.9)',
+    letterSpacing: 1,
+    marginTop: 2,
   },
   sessionStatsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
+    marginTop: 14,
     paddingTop: 14,
-    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderSoft,
   },
   sessionItem: {
     alignItems: 'center',
@@ -425,108 +445,116 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.textMuted,
     marginTop: 2,
+    fontWeight: '600',
   },
   resetBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
     marginTop: 14,
-    gap: 4,
+    borderRadius: 10,
+    backgroundColor: Colors.backgroundSoft,
   },
   resetBtnText: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    fontWeight: '600',
+    fontSize: 12.5,
+    color: Colors.textSoft,
+    fontWeight: '700',
   },
   alert511Box: {
     flexDirection: 'row',
-    backgroundColor: Colors.riskSevereLight,
+    alignItems: 'flex-start',
+    backgroundColor: Colors.riskHighBg,
+    borderWidth: 1.5,
+    borderColor: Colors.riskHigh,
     borderRadius: 16,
     padding: 14,
     gap: 12,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.riskSevere,
   },
   alert511Title: {
     fontSize: 14,
     fontWeight: '800',
-    color: Colors.riskSevere,
+    color: Colors.riskHigh,
   },
   alert511Desc: {
-    fontSize: 12,
-    color: Colors.text,
-    marginTop: 2,
+    fontSize: 12.5,
+    color: Colors.riskHigh,
+    marginTop: 4,
+    lineHeight: 18,
+    fontWeight: '500',
   },
   contractionTimerBox: {
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 10,
   },
   contractionTimerDigits: {
-    fontSize: 52,
+    fontSize: 48,
     fontWeight: '800',
     color: Colors.text,
-    fontVariant: ['tabular-nums'],
+    letterSpacing: -1,
   },
   contractionTimerLabel: {
-    fontSize: 13,
-    color: Colors.textMuted,
+    fontSize: 12.5,
+    color: Colors.textSoft,
     marginTop: 4,
-    marginBottom: 20,
+    fontWeight: '600',
   },
   contractionActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 16,
     gap: 8,
-  },
-  contractionBtnStart: {
-    backgroundColor: Colors.accent,
-  },
-  contractionBtnStop: {
-    backgroundColor: Colors.text,
+    paddingHorizontal: 26,
+    paddingVertical: 14,
+    borderRadius: 14,
   },
   contractionActionBtnText: {
     color: Colors.white,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  historyTitle: {
-    fontSize: 16,
+  sectionTitle: {
+    fontSize: 15,
     fontWeight: '800',
     color: Colors.text,
     marginBottom: 10,
+    letterSpacing: -0.2,
   },
   emptyBox: {
-    padding: 20,
+    backgroundColor: Colors.surface,
+    padding: 24,
+    borderRadius: 18,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   emptyText: {
-    color: Colors.textMuted,
     fontSize: 13,
+    color: Colors.textMuted,
+    fontWeight: '600',
   },
   contRow: {
     backgroundColor: Colors.surface,
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
   contDuration: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
     color: Colors.text,
   },
   contTime: {
-    fontSize: 11,
+    fontSize: 11.5,
     color: Colors.textMuted,
     marginTop: 2,
+    fontWeight: '500',
   },
   contIntervalBox: {
     flexDirection: 'row',
@@ -534,12 +562,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   contInterval: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '700',
-    color: Colors.secondary,
-    backgroundColor: Colors.secondaryLight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    color: Colors.primaryDark,
   },
 });

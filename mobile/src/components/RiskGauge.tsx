@@ -9,15 +9,14 @@ interface RiskGaugeProps {
   size?: number;
 }
 
-export const RiskGauge: React.FC<RiskGaugeProps> = ({ score, level, size = 180 }) => {
+export const RiskGauge: React.FC<RiskGaugeProps> = ({ score, level, size = 190 }) => {
   const safeScore = Math.min(100, Math.max(0, score || 0));
 
-  // Geometry
+  // Geometry matching base.php risk_gauge_svg()
   const cx = size / 2;
   const cy = size * 0.58;
   const r = size * 0.42;
 
-  // Convert angle (-90 deg to 90 deg)
   const angle = -90 + (safeScore / 100) * 180;
   const rad = ((angle - 90) * Math.PI) / 180;
   const nx = cx + r * 0.78 * Math.cos(rad);
@@ -44,11 +43,11 @@ export const RiskGauge: React.FC<RiskGaugeProps> = ({ score, level, size = 180 }
   const getColor = () => {
     switch (level) {
       case 'Severe':
-        return Colors.riskSevere;
+        return Colors.riskHigh;   // #E15D74
       case 'High':
-        return Colors.riskHigh;
+        return Colors.riskMod;    // #E0A24A
       case 'Low':
-        return Colors.riskLow;
+        return Colors.riskLow;    // #6FAE82
       default:
         return Colors.textMuted;
     }
@@ -57,13 +56,13 @@ export const RiskGauge: React.FC<RiskGaugeProps> = ({ score, level, size = 180 }
   const getBgColor = () => {
     switch (level) {
       case 'Severe':
-        return Colors.riskSevereLight;
+        return Colors.riskHighBg; // #FCE4E9
       case 'High':
-        return Colors.riskHighLight;
+        return Colors.riskModBg;  // #FCF1DD
       case 'Low':
-        return Colors.riskLowLight;
+        return Colors.riskLowBg;  // #E7F4EB
       default:
-        return Colors.surfaceSoft;
+        return Colors.backgroundSoft;
     }
   };
 
@@ -74,16 +73,20 @@ export const RiskGauge: React.FC<RiskGaugeProps> = ({ score, level, size = 180 }
   return (
     <View style={[styles.container, { width: size }]}>
       <Svg width={size} height={height} viewBox={`0 0 ${size} ${height}`}>
-        <Path d={trackPath} fill="none" stroke={Colors.border} strokeWidth="14" strokeLinecap="round" />
-        <Path d={fillPath} fill="none" stroke={color} strokeWidth="14" strokeLinecap="round" />
+        <Path d={trackPath} fill="none" stroke={Colors.backgroundSoft} strokeWidth="16" strokeLinecap="round" />
+        <Path d={fillPath} fill="none" stroke={color} strokeWidth="16" strokeLinecap="round" />
         <Circle cx={cx} cy={cy} r="6" fill={Colors.text} />
-        <Line x1={cx} y1={cy} x2={nx} y2={ny} stroke={Colors.text} strokeWidth="3" strokeLinecap="round" />
+        <Line x1={cx} y1={cy} x2={nx} y2={ny} stroke={Colors.text} strokeWidth="3.5" strokeLinecap="round" />
       </Svg>
 
       <View style={styles.infoRow}>
-        <Text style={[styles.scoreText, { color }]}>{score !== null && score !== undefined ? score : '—'}</Text>
+        <Text style={[styles.scoreText, { color: Colors.text }]}>
+          {score !== null && score !== undefined ? score : '—'}
+        </Text>
         <View style={[styles.badge, { backgroundColor: bgColor }]}>
-          <Text style={[styles.badgeText, { color }]}>{level || 'No Assessment'}</Text>
+          <Text style={[styles.badgeText, { color }]}>
+            {level ? `${level} Risk` : 'No Assessment'}
+          </Text>
         </View>
       </View>
     </View>
@@ -96,24 +99,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   infoRow: {
-    marginTop: -8,
+    marginTop: -18,
     alignItems: 'center',
   },
   scoreText: {
-    fontSize: 28,
+    fontSize: 38,
     fontWeight: '800',
-    letterSpacing: -0.5,
+    letterSpacing: -1,
+    fontVariant: ['tabular-nums'],
   },
   badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 12,
-    marginTop: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginTop: 4,
   },
   badgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
+    fontSize: 11.5,
+    fontWeight: '800',
     letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
 });

@@ -10,11 +10,13 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Shadows } from '../theme/colors';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors, Shadows, Gradients } from '../theme/colors';
 import { api } from '../services/api';
 
 export const WellnessScreen: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'bag' | 'meds' | 'plan' | 'weight'>('bag');
+  const [activeTab, setActiveTab] = useState<'education' | 'bag' | 'meds' | 'plan' | 'weight'>('education');
+  const [activeTrimester, setActiveTrimester] = useState<1 | 2 | 3>(2);
   const [loading, setLoading] = useState(false);
 
   // Hospital Bag State
@@ -109,80 +111,153 @@ export const WellnessScreen: React.FC = () => {
     }
   };
 
+  // Trimester education guidelines from web
+  const trimesterGuides = {
+    1: [
+      { icon: 'nutrition-outline', title: 'Folic Acid & Nutrition', text: 'Start taking 400-800mcg of folic acid daily to prevent neural tube defects.' },
+      { icon: 'water-outline', title: 'Hydration & Morning Sickness', text: 'Drink 8-10 glasses of water; eat small frequent snacks like ginger or crackers.' },
+      { icon: 'calendar-outline', title: 'First Prenatal Checkup', text: 'Schedule your initial blood panel, ultrasound, and confirmation visit.' },
+      { icon: 'warning-outline', title: 'Warning Signs', text: 'Contact your doctor immediately if experiencing heavy bleeding or severe cramping.' },
+    ],
+    2: [
+      { icon: 'fitness-outline', title: 'Gentle Exercise & Walking', text: 'Pelvic floor exercises (Kegels), light prenatal yoga, and daily walking.' },
+      { icon: 'footsteps-outline', title: 'First Baby Kicks', text: 'You will start feeling fluttering movements between weeks 18 to 22.' },
+      { icon: 'pulse-outline', title: 'Anatomy Scan (Week 20)', text: 'Detailed ultrasound checking fetal development, organs, and placenta position.' },
+      { icon: 'medkit-outline', title: 'Glucose Screening', text: 'Screening for gestational diabetes between weeks 24 and 28.' },
+    ],
+    3: [
+      { icon: 'bag-handle-outline', title: 'Hospital Bag Packing', text: 'Pack baby clothes, nursing essentials, documents, and hospital slippers.' },
+      { icon: 'timer-outline', title: 'Contraction Timing (5-1-1)', text: 'Head to the hospital when contractions are 5 min apart, 1 min long, for 1 hour.' },
+      { icon: 'document-text-outline', title: 'Birth Preferences & Plan', text: 'Discuss labor pain relief, delivery location, and partner support with your OB.' },
+      { icon: 'bed-outline', title: 'Sleep & Left Side Rest', text: 'Sleep on your left side to optimize blood flow to the placenta and baby.' },
+    ],
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Header */}
       <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.headerTitle}>Wellness & Preparation</Text>
-          <Text style={styles.headerSubtitle}>Hospital bag, medications, & birth plan</Text>
-        </View>
+        <Text style={styles.headerEyebrow}>WELLNESS & PREPARATION</Text>
+        <Text style={styles.headerTitle}>Pregnancy Wellness</Text>
+        <Text style={styles.headerSubtitle}>Education hub, hospital checklist, medications, and birth plan</Text>
       </View>
 
-      {/* Tabs */}
+      {/* Top Tab Bar (.tabs from style.css) */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll}>
-        <TouchableOpacity
-          style={[styles.pillBtn, activeTab === 'bag' && styles.pillBtnActive]}
-          onPress={() => setActiveTab('bag')}
-        >
-          <Ionicons name="bag-handle" size={14} color={activeTab === 'bag' ? Colors.white : Colors.textMuted} />
-          <Text style={[styles.pillText, activeTab === 'bag' && styles.pillTextActive]}>Hospital Bag</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.pillBtn, activeTab === 'meds' && styles.pillBtnActive]}
-          onPress={() => setActiveTab('meds')}
-        >
-          <Ionicons name="medkit" size={14} color={activeTab === 'meds' ? Colors.white : Colors.textMuted} />
-          <Text style={[styles.pillText, activeTab === 'meds' && styles.pillTextActive]}>Medications</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.pillBtn, activeTab === 'plan' && styles.pillBtnActive]}
-          onPress={() => setActiveTab('plan')}
-        >
-          <Ionicons name="document-text" size={14} color={activeTab === 'plan' ? Colors.white : Colors.textMuted} />
-          <Text style={[styles.pillText, activeTab === 'plan' && styles.pillTextActive]}>Birth Plan</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.pillBtn, activeTab === 'weight' && styles.pillBtnActive]}
-          onPress={() => setActiveTab('weight')}
-        >
-          <Ionicons name="trending-up" size={14} color={activeTab === 'weight' ? Colors.white : Colors.textMuted} />
-          <Text style={[styles.pillText, activeTab === 'weight' && styles.pillTextActive]}>Weight Guide</Text>
-        </TouchableOpacity>
+        {[
+          { key: 'education', label: 'Education Hub', icon: 'library' },
+          { key: 'bag', label: 'Hospital Bag', icon: 'bag-handle' },
+          { key: 'meds', label: 'Medications', icon: 'medkit' },
+          { key: 'plan', label: 'Birth Plan', icon: 'document-text' },
+          { key: 'weight', label: 'Weight Guide', icon: 'trending-up' },
+        ].map((t) => {
+          const isActive = activeTab === t.key;
+          return (
+            <TouchableOpacity
+              key={t.key}
+              style={[styles.pillBtn, isActive && styles.pillBtnActive]}
+              onPress={() => setActiveTab(t.key as any)}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name={t.icon as any}
+                size={14}
+                color={isActive ? Colors.white : Colors.textSoft}
+              />
+              <Text style={[styles.pillText, isActive && styles.pillTextActive]}>
+                {t.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
 
-      {loading && <ActivityIndicator color={Colors.primary} style={{ marginVertical: 20 }} />}
+      {loading && (
+        <ActivityIndicator color={Colors.primaryDark} style={{ marginVertical: 20 }} />
+      )}
+
+      {/* --- TAB 0: EDUCATION HUB (.ed-grid & .trimester-tabs from style.css) --- */}
+      {activeTab === 'education' && !loading && (
+        <View>
+          {/* Trimester Tabs */}
+          <View style={styles.trimesterTabBar}>
+            {[1, 2, 3].map((tri) => {
+              const isTriActive = activeTrimester === tri;
+              return (
+                <TouchableOpacity
+                  key={tri}
+                  style={[styles.trimesterBtn, isTriActive && styles.trimesterBtnActive]}
+                  onPress={() => setActiveTrimester(tri as 1 | 2 | 3)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.trimesterBtnText, isTriActive && styles.trimesterBtnTextActive]}>
+                    Trimester {tri}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Educational Guidance Cards */}
+          <Text style={styles.sectionTitle}>
+            Key Milestones for Trimester {activeTrimester}
+          </Text>
+          <View style={styles.edGrid}>
+            {trimesterGuides[activeTrimester].map((guide, idx) => (
+              <View key={idx} style={[styles.edCard, Shadows.card]}>
+                <View style={styles.edIconWrap}>
+                  <Ionicons name={guide.icon as any} size={20} color={Colors.primaryDark} />
+                </View>
+                <Text style={styles.edCardTitle}>{guide.title}</Text>
+                <Text style={styles.edCardDesc}>{guide.text}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
 
       {/* --- TAB 1: HOSPITAL BAG --- */}
       {activeTab === 'bag' && !loading && (
         <View>
-          {/* Progress Card */}
-          <View style={[styles.card, Shadows.small]}>
+          {/* Progress Card (.progress-track & .progress-fill) */}
+          <View style={[styles.card, Shadows.card]}>
             <View style={styles.progressHeader}>
               <Text style={styles.progressTitle}>Packing Readiness</Text>
               <Text style={styles.progressPct}>{bagProgress}%</Text>
             </View>
             <View style={styles.progressBarTrack}>
-              <View style={[styles.progressBarFill, { width: `${bagProgress}%` }]} />
+              <LinearGradient
+                colors={Gradients.hero}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[styles.progressBarFill, { width: `${bagProgress}%` }]}
+              />
             </View>
           </View>
 
           {/* Add Item Box */}
-          <View style={[styles.card, Shadows.small]}>
+          <View style={[styles.card, Shadows.card]}>
             <Text style={styles.addItemTitle}>Add Custom Item</Text>
             <View style={styles.addItemRow}>
               <TextInput
                 style={styles.addInput}
                 placeholder="e.g. Extra pillows, Nursing tea..."
-                placeholderTextColor={Colors.textLight}
+                placeholderTextColor={Colors.textMuted}
                 value={newItemLabel}
                 onChangeText={setNewItemLabel}
               />
-              <TouchableOpacity style={styles.addPlusBtn} onPress={addBagItem}>
-                <Ionicons name="add" size={20} color={Colors.white} />
+              <TouchableOpacity
+                onPress={addBagItem}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={Gradients.primaryBtn}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.addPlusBtn}
+                >
+                  <Ionicons name="add" size={20} color={Colors.white} />
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </View>
@@ -194,13 +269,14 @@ export const WellnessScreen: React.FC = () => {
               {items.map((item) => (
                 <TouchableOpacity
                   key={item.id}
-                  style={[styles.bagItemRow, Shadows.small]}
+                  style={[styles.bagItemRow, Shadows.card]}
                   onPress={() => toggleBagItem(item.id)}
+                  activeOpacity={0.7}
                 >
                   <Ionicons
                     name={item.isChecked ? 'checkbox' : 'square-outline'}
                     size={22}
-                    color={item.isChecked ? Colors.primary : Colors.textLight}
+                    color={item.isChecked ? Colors.primaryDark : Colors.textMuted}
                   />
                   <Text style={[styles.bagItemText, item.isChecked && styles.bagItemTextChecked]}>
                     {item.label}
@@ -215,22 +291,23 @@ export const WellnessScreen: React.FC = () => {
       {/* --- TAB 2: MEDICATIONS --- */}
       {activeTab === 'meds' && !loading && (
         <View>
-          <Text style={styles.catHeader}>Daily Prescribed Vitamins & Meds</Text>
+          <Text style={styles.sectionTitle}>Daily Prescribed Vitamins & Meds</Text>
           {meds.length === 0 ? (
-            <View style={styles.emptyCard}>
+            <View style={[styles.emptyCard, Shadows.card]}>
               <Text style={styles.emptyText}>No active medications scheduled.</Text>
             </View>
           ) : (
             meds.map((m) => (
               <TouchableOpacity
                 key={m.id}
-                style={[styles.medCard, Shadows.small]}
+                style={[styles.medCard, Shadows.card]}
                 onPress={() => toggleMed(m.id)}
+                activeOpacity={0.7}
               >
                 <Ionicons
                   name={m.takenToday ? 'checkmark-circle' : 'ellipse-outline'}
                   size={26}
-                  color={m.takenToday ? Colors.riskLow : Colors.textLight}
+                  color={m.takenToday ? Colors.riskLow : Colors.textMuted}
                 />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.medName}>{m.name}</Text>
@@ -252,7 +329,7 @@ export const WellnessScreen: React.FC = () => {
 
       {/* --- TAB 3: BIRTH PLAN --- */}
       {activeTab === 'plan' && !loading && (
-        <View style={[styles.card, Shadows.small]}>
+        <View style={[styles.card, Shadows.card]}>
           <Text style={styles.formTitle}>Birth Preferences Form</Text>
 
           <View style={styles.fieldGroup}>
@@ -260,7 +337,8 @@ export const WellnessScreen: React.FC = () => {
             <TextInput
               style={styles.fieldInput}
               value={birthPlan.delivery_location || ''}
-              placeholder="e.g. City Hospital, Birthing Clinic"
+              placeholder="e.g. St. Luke's Medical Center, Birthing Clinic"
+              placeholderTextColor={Colors.textMuted}
               onChangeText={(t) => setBirthPlan({ ...birthPlan, delivery_location: t })}
             />
           </View>
@@ -271,6 +349,7 @@ export const WellnessScreen: React.FC = () => {
               style={styles.fieldInput}
               value={birthPlan.support_people || ''}
               placeholder="e.g. Husband, Doula, Mother"
+              placeholderTextColor={Colors.textMuted}
               onChangeText={(t) => setBirthPlan({ ...birthPlan, support_people: t })}
             />
           </View>
@@ -280,7 +359,8 @@ export const WellnessScreen: React.FC = () => {
             <TextInput
               style={styles.fieldInput}
               value={birthPlan.pain_management || ''}
-              placeholder="e.g. Natural breathing, Epidural if needed"
+              placeholder="e.g. Natural breathing, Epidural if necessary"
+              placeholderTextColor={Colors.textMuted}
               onChangeText={(t) => setBirthPlan({ ...birthPlan, pain_management: t })}
             />
           </View>
@@ -291,6 +371,7 @@ export const WellnessScreen: React.FC = () => {
               style={styles.fieldInput}
               value={birthPlan.who_cuts_cord || ''}
               placeholder="e.g. Partner / Doctor"
+              placeholderTextColor={Colors.textMuted}
               onChangeText={(t) => setBirthPlan({ ...birthPlan, who_cuts_cord: t })}
             />
           </View>
@@ -301,13 +382,25 @@ export const WellnessScreen: React.FC = () => {
               style={[styles.fieldInput, { height: 80 }]}
               multiline
               value={birthPlan.special_requests || ''}
-              placeholder="Music, delayed cord clamping, dim lights, etc."
+              placeholder="Music, delayed cord clamping, skin-to-skin contact, dim lighting..."
+              placeholderTextColor={Colors.textMuted}
               onChangeText={(t) => setBirthPlan({ ...birthPlan, special_requests: t })}
             />
           </View>
 
-          <TouchableOpacity style={styles.savePlanBtn} onPress={saveBirthPlan}>
-            <Text style={styles.savePlanBtnText}>Save Birth Preferences</Text>
+          <TouchableOpacity
+            onPress={saveBirthPlan}
+            activeOpacity={0.85}
+            style={{ marginTop: 10 }}
+          >
+            <LinearGradient
+              colors={Gradients.primaryBtn}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.savePlanBtn, Shadows.glow]}
+            >
+              <Text style={styles.savePlanBtnText}>Save Birth Preferences</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       )}
@@ -315,7 +408,7 @@ export const WellnessScreen: React.FC = () => {
       {/* --- TAB 4: WEIGHT GAIN GUIDANCE --- */}
       {activeTab === 'weight' && !loading && weightData && (
         <View>
-          <View style={[styles.card, Shadows.small]}>
+          <View style={[styles.card, Shadows.card]}>
             <Text style={styles.weightCardTitle}>IOM Maternal Weight Guidance</Text>
             <View style={styles.weightStatGrid}>
               <View style={styles.weightTile}>
@@ -332,14 +425,14 @@ export const WellnessScreen: React.FC = () => {
             </View>
           </View>
 
-          <Text style={styles.catHeader}>Weight History & Trimester Ranges</Text>
+          <Text style={styles.sectionTitle}>Weight History & Trimester Ranges</Text>
           {(!weightData.weightHistory || weightData.weightHistory.length === 0) ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No weight records found in vitals logs.</Text>
+            <View style={[styles.emptyCard, Shadows.card]}>
+              <Text style={styles.emptyText}>No weight records logged in vitals yet.</Text>
             </View>
           ) : (
             weightData.weightHistory.map((w: any, idx: number) => (
-              <View key={idx} style={[styles.weightLogRow, Shadows.small]}>
+              <View key={idx} style={[styles.weightLogRow, Shadows.card]}>
                 <View>
                   <Text style={styles.weightLogVal}>{w.weightKg} kg</Text>
                   <Text style={styles.weightLogDate}>{w.date} (Week {w.gestationalWeek})</Text>
@@ -369,21 +462,29 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   content: {
-    padding: 18,
+    padding: 16,
     paddingBottom: 40,
   },
   headerRow: {
     marginBottom: 16,
-    marginTop: 8,
+  },
+  headerEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.9,
+    color: Colors.primaryDark,
+    textTransform: 'uppercase',
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     color: Colors.text,
+    letterSpacing: -0.3,
+    marginTop: 2,
   },
   headerSubtitle: {
-    fontSize: 12,
-    color: Colors.textMuted,
+    fontSize: 12.5,
+    color: Colors.textSoft,
     marginTop: 2,
   },
   tabScroll: {
@@ -395,30 +496,95 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 9,
+    borderRadius: 999,
     backgroundColor: Colors.surface,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Colors.border,
     marginRight: 8,
   },
   pillBtnActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: Colors.primaryDark,
+    borderColor: Colors.primaryDark,
   },
   pillText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textMuted,
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: Colors.textSoft,
   },
   pillTextActive: {
     color: Colors.white,
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  card: {
+  trimesterTabBar: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  trimesterBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+  },
+  trimesterBtnActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+    ...Shadows.glow,
+  },
+  trimesterBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textSoft,
+  },
+  trimesterBtnTextActive: {
+    color: Colors.white,
+    fontWeight: '800',
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.text,
+    marginBottom: 10,
+    letterSpacing: -0.2,
+  },
+  edGrid: {
+    gap: 10,
+  },
+  edCard: {
     backgroundColor: Colors.surface,
     borderRadius: 18,
     padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  edIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  edCardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  edCardDesc: {
+    fontSize: 12.5,
+    color: Colors.textSoft,
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  card: {
+    backgroundColor: Colors.surface,
+    borderRadius: 22,
+    padding: 18,
     borderWidth: 1,
     borderColor: Colors.border,
     marginBottom: 16,
@@ -435,23 +601,22 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   progressPct: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '800',
-    color: Colors.primary,
+    color: Colors.primaryDark,
   },
   progressBarTrack: {
     height: 8,
-    backgroundColor: Colors.surfaceSoft,
+    backgroundColor: Colors.backgroundSoft,
     borderRadius: 4,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: Colors.primary,
     borderRadius: 4,
   },
   addItemTitle: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '700',
     color: Colors.text,
     marginBottom: 8,
@@ -462,19 +627,19 @@ const styles = StyleSheet.create({
   },
   addInput: {
     flex: 1,
-    backgroundColor: Colors.surfaceSoft,
+    backgroundColor: Colors.backgroundSoft,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 10,
+    borderRadius: 11,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 13,
+    paddingVertical: 9,
+    fontSize: 13.5,
+    color: Colors.text,
   },
   addPlusBtn: {
-    backgroundColor: Colors.primary,
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+    width: 42,
+    height: 42,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -489,28 +654,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surface,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 6,
+    borderRadius: 14,
+    padding: 13,
+    marginBottom: 7,
     borderWidth: 1,
     borderColor: Colors.border,
     gap: 10,
   },
   bagItemText: {
-    fontSize: 13,
+    fontSize: 13.5,
     color: Colors.text,
-    fontWeight: '500',
+    fontWeight: '600',
     flex: 1,
   },
   bagItemTextChecked: {
     textDecorationLine: 'line-through',
-    color: Colors.textLight,
+    color: Colors.textMuted,
   },
   medCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surface,
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 14,
     marginBottom: 8,
     borderWidth: 1,
@@ -528,23 +693,28 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   takenBadge: {
-    backgroundColor: Colors.riskLowLight,
-    paddingHorizontal: 8,
+    backgroundColor: Colors.riskLowBg,
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: 999,
   },
   takenText: {
-    fontSize: 11,
+    fontSize: 11.5,
     color: Colors.riskLow,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   emptyCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 18,
     padding: 24,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   emptyText: {
     color: Colors.textMuted,
     fontSize: 13,
+    fontWeight: '600',
   },
   formTitle: {
     fontSize: 16,
@@ -556,32 +726,30 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   fieldLbl: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    color: Colors.text,
-    marginBottom: 4,
+    color: Colors.textSoft,
+    marginBottom: 5,
   },
   fieldInput: {
-    backgroundColor: Colors.surfaceSoft,
+    backgroundColor: Colors.backgroundSoft,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 10,
+    borderRadius: 11,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 13,
+    paddingVertical: 9,
+    fontSize: 13.5,
     color: Colors.text,
   },
   savePlanBtn: {
-    backgroundColor: Colors.primary,
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 13,
     alignItems: 'center',
-    marginTop: 6,
   },
   savePlanBtnText: {
     color: Colors.white,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 14.5,
+    fontWeight: '800',
   },
   weightCardTitle: {
     fontSize: 14,
@@ -595,13 +763,13 @@ const styles = StyleSheet.create({
   },
   weightTile: {
     flex: 1,
-    backgroundColor: Colors.surfaceSoft,
-    borderRadius: 12,
+    backgroundColor: Colors.backgroundSoft,
+    borderRadius: 14,
     padding: 12,
     alignItems: 'center',
   },
   weightTileLbl: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '700',
     color: Colors.textMuted,
     marginBottom: 4,
@@ -613,18 +781,18 @@ const styles = StyleSheet.create({
   },
   weightTileSub: {
     fontSize: 11,
-    color: Colors.primary,
-    fontWeight: '600',
+    color: Colors.primaryDark,
+    fontWeight: '700',
     marginTop: 2,
   },
   weightLogRow: {
     backgroundColor: Colors.surface,
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 14,
+    padding: 13,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 7,
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -634,7 +802,7 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   weightLogDate: {
-    fontSize: 11,
+    fontSize: 11.5,
     color: Colors.textMuted,
     marginTop: 2,
   },
@@ -642,12 +810,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   weightGainText: {
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: '800',
-    color: Colors.primary,
+    color: Colors.primaryDark,
   },
   weightRangeText: {
-    fontSize: 10,
+    fontSize: 10.5,
     color: Colors.textMuted,
     marginTop: 1,
   },

@@ -7,9 +7,11 @@ import {
   StyleSheet,
   ActivityIndicator,
   StatusBar,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Shadows } from './src/theme/colors';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors, Shadows, Gradients } from './src/theme/colors';
 import { api } from './src/services/api';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -54,12 +56,17 @@ export default function App() {
   if (initializing) {
     return (
       <View style={styles.splashContainer}>
-        <View style={styles.splashIconCircle}>
-          <Ionicons name="heart-circle" size={60} color={Colors.primary} />
-        </View>
+        <LinearGradient
+          colors={Gradients.brandMark}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.splashIconCircle}
+        >
+          <Ionicons name="heart" size={46} color="#FFFFFF" />
+        </LinearGradient>
         <Text style={styles.splashTitle}>PregnaCare</Text>
-        <Text style={styles.splashSubtitle}>Loading your health companion...</Text>
-        <ActivityIndicator color={Colors.primary} style={{ marginTop: 24 }} />
+        <Text style={styles.splashSubtitle}>Maternal Risk Monitoring & Decision Support</Text>
+        <ActivityIndicator color={Colors.primaryDark} style={{ marginTop: 28 }} />
       </View>
     );
   }
@@ -74,11 +81,19 @@ export default function App() {
     );
   }
 
-  // Logged In -> Bottom Tab Navigation
+  const tabs = [
+    { key: 'home', label: 'Home', icon: 'home-outline', iconActive: 'home' },
+    { key: 'vitals', label: 'Vitals', icon: 'pulse-outline', iconActive: 'pulse' },
+    { key: 'symptoms', label: 'Check-in', icon: 'shield-checkmark-outline', iconActive: 'shield-checkmark' },
+    { key: 'trackers', label: 'Trackers', icon: 'footsteps-outline', iconActive: 'footsteps' },
+    { key: 'wellness', label: 'Wellness', icon: 'library-outline', iconActive: 'library' },
+    { key: 'profile', label: 'Profile', icon: 'person-outline', iconActive: 'person' },
+  ];
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
-      
+
       {/* Screen Body */}
       <View style={styles.screenContainer}>
         {activeTab === 'home' && <HomeScreen onNavigate={(tab: any) => setActiveTab(tab)} />}
@@ -89,29 +104,24 @@ export default function App() {
         {activeTab === 'profile' && <ProfileScreen user={user} onLogout={handleLogout} />}
       </View>
 
-      {/* Bottom Navigation Bar */}
-      <View style={[styles.bottomBar, Shadows.medium]}>
-        {[
-          { key: 'home', label: 'Home', icon: 'home-outline', iconActive: 'home' },
-          { key: 'vitals', label: 'Vitals', icon: 'heart-outline', iconActive: 'heart' },
-          { key: 'symptoms', label: 'Check-in', icon: 'shield-checkmark-outline', iconActive: 'shield-checkmark' },
-          { key: 'trackers', label: 'Trackers', icon: 'footsteps-outline', iconActive: 'footsteps' },
-          { key: 'wellness', label: 'Wellness', icon: 'bag-handle-outline', iconActive: 'bag-handle' },
-          { key: 'profile', label: 'Profile', icon: 'person-outline', iconActive: 'person' },
-        ].map((tab) => {
+      {/* Bottom Navigation Bar (1:1 with style.css .bottom-nav) */}
+      <View style={[styles.bottomBar, Shadows.soft]}>
+        {tabs.map((tab) => {
           const isActive = activeTab === tab.key;
           return (
             <TouchableOpacity
               key={tab.key}
-              style={styles.tabItem}
+              style={[styles.tabItem, isActive && styles.tabItemActive]}
               onPress={() => setActiveTab(tab.key as any)}
               activeOpacity={0.7}
             >
-              <Ionicons
-                name={(isActive ? tab.iconActive : tab.icon) as any}
-                size={22}
-                color={isActive ? Colors.primary : Colors.textMuted}
-              />
+              <View style={[styles.tabIconWrap, isActive && styles.tabIconWrapActive]}>
+                <Ionicons
+                  name={(isActive ? tab.iconActive : tab.icon) as any}
+                  size={20}
+                  color={isActive ? Colors.primaryDark : Colors.textMuted}
+                />
+              </View>
               <Text style={[styles.tabItemText, isActive && styles.tabItemTextActive]}>
                 {tab.label}
               </Text>
@@ -130,6 +140,7 @@ const styles = StyleSheet.create({
   },
   screenContainer: {
     flex: 1,
+    backgroundColor: Colors.background,
   },
   splashContainer: {
     flex: 1,
@@ -139,24 +150,25 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   splashIconCircle: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: Colors.primaryLight,
+    width: 86,
+    height: 86,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
+    ...Shadows.glow,
   },
   splashTitle: {
-    fontSize: 30,
-    fontWeight: '900',
+    fontSize: 32,
+    fontWeight: '800',
     color: Colors.text,
     letterSpacing: -0.5,
   },
   splashSubtitle: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    marginTop: 4,
+    fontSize: 13,
+    color: Colors.textSoft,
+    marginTop: 6,
+    letterSpacing: 0.2,
   },
   bottomBar: {
     flexDirection: 'row',
@@ -164,7 +176,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Colors.border,
     paddingVertical: 8,
-    paddingBottom: 12,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 8,
     justifyContent: 'space-around',
     alignItems: 'center',
   },
@@ -172,15 +184,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
+    paddingVertical: 2,
+  },
+  tabItemActive: {},
+  tabIconWrap: {
+    width: 38,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+  },
+  tabIconWrapActive: {
+    backgroundColor: Colors.primaryLight,
   },
   tabItemText: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 10.5,
+    fontWeight: '700',
     color: Colors.textMuted,
-    marginTop: 3,
+    marginTop: 2,
+    letterSpacing: 0.1,
   },
   tabItemTextActive: {
-    color: Colors.primary,
+    color: Colors.primaryDark,
     fontWeight: '800',
   },
 });

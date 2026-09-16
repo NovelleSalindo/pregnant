@@ -158,7 +158,6 @@ export const SymptomsScreen: React.FC = () => {
       <View style={styles.headerRow}>
         <Text style={styles.headerEyebrow}>STEP 1 OF THE CLINICAL RISK PIPELINE</Text>
         <Text style={styles.headerTitle}>Symptom Check-in</Text>
-        <Text style={styles.headerSubtitle}>AHP + Fuzzy Inference + Clinical Safety Rule Engine</Text>
       </View>
 
       {/* Real-time Live Risk Preview Card */}

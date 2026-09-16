@@ -263,6 +263,91 @@ class ApiService {
   async getWeightGain() {
     return this.request('wellness.php?section=weight_gain');
   }
+
+  // --- Journal ---
+  async getJournalEntries() {
+    return this.request('wellness.php?section=journal');
+  }
+
+  async addJournalEntry(mood: string, content: string) {
+    return this.request('wellness.php?section=journal&action=add', {
+      method: 'POST',
+      body: JSON.stringify({ mood, content }),
+    });
+  }
+
+  async deleteJournalEntry(id: string) {
+    return this.request('wellness.php?section=journal&action=delete', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    });
+  }
+
+  // --- Bump Photos ---
+  async getBumpPhotos() {
+    return this.request('wellness.php?section=bump_photos');
+  }
+
+  async addBumpPhoto(weekNumber: number, note?: string, filename?: string) {
+    return this.request('wellness.php?section=bump_photos&action=add', {
+      method: 'POST',
+      body: JSON.stringify({ week_number: weekNumber, note, filename }),
+    });
+  }
+
+  async deleteBumpPhoto(id: string) {
+    return this.request('wellness.php?section=bump_photos&action=delete', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    });
+  }
+
+  // --- Postpartum & Baby Care ---
+  async getPostpartum() {
+    return this.request('wellness.php?section=postpartum');
+  }
+
+  async markDelivered(deliveryDate: string, deliveryType: string, babyName?: string) {
+    return this.request('wellness.php?section=postpartum&action=mark_delivered', {
+      method: 'POST',
+      body: JSON.stringify({ delivery_date: deliveryDate, delivery_type: deliveryType, baby_name: babyName }),
+    });
+  }
+
+  async updatePostpartumNotes(notes: string) {
+    return this.request('wellness.php?section=postpartum&action=update_notes', {
+      method: 'POST',
+      body: JSON.stringify({ recovery_notes: notes }),
+    });
+  }
+
+  async toggleBabyVaccine(vaxId: string, given: boolean) {
+    return this.request('wellness.php?section=postpartum&action=toggle_vaccine', {
+      method: 'POST',
+      body: JSON.stringify({ vax_id: vaxId, given: given ? 1 : 0 }),
+    });
+  }
+
+  // --- Education & Meal Planner ---
+  async getEducationGuidance() {
+    return this.request('wellness.php?section=education');
+  }
+
+  async getMealPlan() {
+    return this.request('wellness.php?section=meal_planner');
+  }
+
+  // --- Reminders ---
+  async getReminders() {
+    return this.request('wellness.php?section=reminders');
+  }
+
+  async setObVisit(nextObVisit: string) {
+    return this.request('wellness.php?section=reminders&action=set_ob_visit', {
+      method: 'POST',
+      body: JSON.stringify({ next_ob_visit: nextObVisit }),
+    });
+  }
 }
 
 export const api = new ApiService();

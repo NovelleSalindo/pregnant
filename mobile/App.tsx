@@ -35,7 +35,8 @@ export default function App() {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [wellnessSubTab, setWellnessSubTab] = useState<'education' | 'bag' | 'meds' | 'plan' | 'weight'>('education');
+  const [wellnessSubTab, setWellnessSubTab] = useState<'education' | 'meals' | 'meds' | 'plan' | 'bag' | 'weight' | 'postpartum' | 'reminders'>('education');
+  const [trackerSubTab, setTrackerSubTab] = useState<'kick' | 'contraction' | 'journal' | 'bump'>('kick');
 
   const fetchUserData = useCallback(async () => {
     try {
@@ -96,7 +97,7 @@ export default function App() {
         setActiveTab('wellness');
         break;
       case 'meal_planner':
-        setWellnessSubTab('education');
+        setWellnessSubTab('meals');
         setActiveTab('wellness');
         break;
       case 'medications':
@@ -116,11 +117,15 @@ export default function App() {
         setActiveTab('wellness');
         break;
       case 'journal':
+        setTrackerSubTab('journal');
+        setActiveTab('trackers');
+        break;
       case 'bump_photos':
+        setTrackerSubTab('bump');
         setActiveTab('trackers');
         break;
       case 'postpartum':
-        setWellnessSubTab('education');
+        setWellnessSubTab('postpartum');
         setActiveTab('wellness');
         break;
       default:
@@ -187,7 +192,7 @@ export default function App() {
         {activeTab === 'advice' && <AdviceScreen onNavigate={(tab: any) => setActiveTab(tab)} />}
         {activeTab === 'profile' && <ProfileScreen user={user} onLogout={handleLogout} />}
         {activeTab === 'wellness' && <WellnessScreen initialTab={wellnessSubTab} onNavigate={(tab: any) => setActiveTab(tab)} />}
-        {activeTab === 'trackers' && <TrackerScreen />}
+        {activeTab === 'trackers' && <TrackerScreen initialTab={trackerSubTab} />}
 
         {/* Floating Emergency Button (FAB) matching Screenshot 1 */}
         <EmergencyFab bottomOffset={Platform.OS === 'ios' ? 76 : 68} />

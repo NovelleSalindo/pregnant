@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
@@ -23,19 +22,23 @@ interface AuthScreenProps {
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   const [tab, setTab] = useState<'login' | 'register'>('login');
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Form Fields
+  // Form Fields (1:1 with login.php and register.php)
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [dob, setDob] = useState('');
   const [lmp, setLmp] = useState('');
-  const [age, setAge] = useState('');
+  const [height, setHeight] = useState('');
+  const [weight, setWeight] = useState('');
   const [showServerModal, setShowServerModal] = useState(false);
   const [serverUrl, setServerUrl] = useState(api.getBaseUrl());
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Required Fields', 'Please enter your email and password.');
+    setErrorMessage(null);
+    if (!email.trim() || !password) {
+      setErrorMessage('Please enter your email and password.');
       return;
     }
 
@@ -44,9 +47,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
       const res = await api.login(email.trim(), password);
       onLoginSuccess(res.user);
     } catch (err: any) {
-      Alert.alert(
-        'Login Failed',
-        err.message || 'Could not connect to PregnaCare API. Check your network or server URL.'
+      setErrorMessage(
+        err.message || 'Invalid email or password.'
       );
     } finally {
       setLoading(false);
@@ -54,9 +56,34 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   };
 
   const handleRegister = async () => {
-    if (!name || !email || !password) {
-      Alert.alert('Required Fields', 'Please fill in Name, Email, and Password.');
+    setErrorMessage(null);
+    if (!name.trim() || !email.trim() || !password) {
+      setErrorMessage('Please fill in name, email, and password.');
       return;
+    }
+    if (password.length < 6) {
+      setErrorMessage('Password must be at least 6 characters.');
+      return;
+    }
+
+    // Auto-compute EDD from LMP (+280 days) matching register.php
+    let edd: string | undefined = undefined;
+    if (lmp.trim()) {
+      const lmpDate = new Date(lmp.trim());
+      if (!isNaN(lmpDate.getTime())) {
+        lmpDate.setDate(lmpDate.getDate() + 280);
+        edd = lmpDate.toISOString().split('T')[0];
+      }
+    }
+
+    // Auto-compute Age from DOB matching register.php
+    let age: number | undefined = undefined;
+    if (dob.trim()) {
+      const dobDate = new Date(dob.trim());
+      if (!isNaN(dobDate.getTime())) {
+        const diffMs = Date.now() - dobDate.getTime();
+        age = Math.floor(diffMs / (365.25 * 86400000));
+      }
     }
 
     setLoading(true);
@@ -65,19 +92,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
         name: name.trim(),
         email: email.trim(),
         password,
+        dob: dob.trim() || undefined,
         lmp: lmp.trim() || undefined,
-        age: age ? parseInt(age, 10) : undefined,
+        edd,
+        age,
+        height_cm: height ? parseFloat(height) : undefined,
+        weight_kg: weight ? parseFloat(weight) : undefined,
       });
-      Alert.alert('Welcome to PregnaCare!', 'Your account has been created.');
       onLoginSuccess(res.user);
     } catch (err: any) {
-      Alert.alert('Registration Failed', err.message || 'Could not create account.');
+      setErrorMessage(err.message || 'An account with that email already exists.');
     } finally {
       setLoading(false);
     }
   };
 
   const fillDemo = (role: 'patient' | 'admin' = 'patient') => {
+    setErrorMessage(null);
     if (role === 'patient') {
       setEmail('ana@demo.com');
       setPassword('demo123');
@@ -90,7 +121,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   const saveServerUrl = async () => {
     await api.setBaseUrl(serverUrl);
     setShowServerModal(false);
-    Alert.alert('Saved', `API Base URL updated to:\n${serverUrl}`);
+    setErrorMessage(`API Base URL set to: ${serverUrl}`);
   };
 
   return (
@@ -103,7 +134,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
       <View style={styles.ambientSpotPink} />
 
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Brand Header */}
+        {/* Brand Header (.brand from style.css) */}
         <View style={styles.brandContainer}>
           <LinearGradient
             colors={Gradients.brandMark}
@@ -114,16 +145,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
             <Ionicons name="heart" size={28} color="#FFFFFF" />
           </LinearGradient>
           <Text style={styles.brandName}>PregnaCare</Text>
-          <Text style={styles.brandTagline}>Maternal Risk Monitoring & Recommendations</Text>
+          <Text style={styles.brandTagline}>Maternal Risk Monitoring</Text>
         </View>
 
         {/* Auth Card (.auth-card in style.css) */}
         <View style={[styles.card, Shadows.soft]}>
-          {/* Segmented Tab (.auth-tabs) */}
+          {/* Segmented Tab (.auth-tabs in style.css) */}
           <View style={styles.tabBar}>
             <TouchableOpacity
               style={[styles.tabBtn, tab === 'login' && styles.tabBtnActive]}
-              onPress={() => setTab('login')}
+              onPress={() => {
+                setTab('login');
+                setErrorMessage(null);
+              }}
               activeOpacity={0.8}
             >
               <Text style={[styles.tabText, tab === 'login' && styles.tabTextActive]}>Log In</Text>
@@ -131,79 +165,146 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
 
             <TouchableOpacity
               style={[styles.tabBtn, tab === 'register' && styles.tabBtnActive]}
-              onPress={() => setTab('register')}
+              onPress={() => {
+                setTab('register');
+                setErrorMessage(null);
+              }}
               activeOpacity={0.8}
             >
               <Text style={[styles.tabText, tab === 'register' && styles.tabTextActive]}>Register</Text>
             </TouchableOpacity>
           </View>
 
-          {tab === 'register' && (
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Full Name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Maria Santos"
-                placeholderTextColor={Colors.textMuted}
-                value={name}
-                onChangeText={setName}
-              />
+          {/* Error Message (.badge.badge-high) */}
+          {errorMessage && (
+            <View style={styles.errorBadge}>
+              <Ionicons name="alert-circle" size={16} color={Colors.riskHigh} />
+              <Text style={styles.errorText}>{errorMessage}</Text>
             </View>
           )}
 
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Email Address</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="you@example.com"
-              placeholderTextColor={Colors.textMuted}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              value={email}
-              onChangeText={setEmail}
-            />
-          </View>
-
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="••••••••"
-              placeholderTextColor={Colors.textMuted}
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-            />
-          </View>
-
+          {/* --- REGISTER FIELDS (1:1 with register.php) --- */}
           {tab === 'register' && (
             <>
               <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Last Menstrual Period (LMP) - Optional</Text>
+                <Text style={styles.fieldLabel}>Full Name</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="YYYY-MM-DD (e.g. 2026-03-10)"
+                  placeholder="e.g. Maria Santos"
                   placeholderTextColor={Colors.textMuted}
-                  value={lmp}
-                  onChangeText={setLmp}
+                  value={name}
+                  onChangeText={setName}
                 />
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Age - Optional</Text>
+                <Text style={styles.fieldLabel}>Email</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="e.g. 28"
+                  placeholder="you@example.com"
                   placeholderTextColor={Colors.textMuted}
-                  keyboardType="numeric"
-                  value={age}
-                  onChangeText={setAge}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={email}
+                  onChangeText={setEmail}
+                />
+              </View>
+
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Password</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="At least 6 characters"
+                  placeholderTextColor={Colors.textMuted}
+                  secureTextEntry
+                  value={password}
+                  onChangeText={setPassword}
+                />
+              </View>
+
+              <View style={styles.grid2}>
+                <View style={[styles.field, { flex: 1 }]}>
+                  <Text style={styles.fieldLabel}>Date of Birth</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={Colors.textMuted}
+                    value={dob}
+                    onChangeText={setDob}
+                  />
+                </View>
+
+                <View style={[styles.field, { flex: 1 }]}>
+                  <Text style={styles.fieldLabel}>Last Menstrual Period</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={Colors.textMuted}
+                    value={lmp}
+                    onChangeText={setLmp}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.grid2}>
+                <View style={[styles.field, { flex: 1 }]}>
+                  <Text style={styles.fieldLabel}>Height (cm)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. 160"
+                    placeholderTextColor={Colors.textMuted}
+                    keyboardType="numeric"
+                    value={height}
+                    onChangeText={setHeight}
+                  />
+                </View>
+
+                <View style={[styles.field, { flex: 1 }]}>
+                  <Text style={styles.fieldLabel}>Weight (kg)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. 62"
+                    placeholderTextColor={Colors.textMuted}
+                    keyboardType="numeric"
+                    value={weight}
+                    onChangeText={setWeight}
+                  />
+                </View>
+              </View>
+            </>
+          )}
+
+          {/* --- LOGIN FIELDS (1:1 with login.php) --- */}
+          {tab === 'login' && (
+            <>
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Email</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="you@example.com"
+                  placeholderTextColor={Colors.textMuted}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={email}
+                  onChangeText={setEmail}
+                />
+              </View>
+
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Password</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="••••••••"
+                  placeholderTextColor={Colors.textMuted}
+                  secureTextEntry
+                  value={password}
+                  onChangeText={setPassword}
                 />
               </View>
             </>
           )}
 
-          {/* Action Button (.btn-primary) */}
+          {/* Action Button (.btn-primary in style.css) */}
           <TouchableOpacity
             onPress={tab === 'login' ? handleLogin : handleRegister}
             disabled={loading}
@@ -219,14 +320,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
               {loading ? (
                 <ActivityIndicator color={Colors.white} />
               ) : (
-                <Text style={styles.actionBtnText}>
-                  {tab === 'login' ? 'Sign In' : 'Create Account'}
-                </Text>
+                <View style={styles.btnContent}>
+                  <Ionicons
+                    name={tab === 'login' ? 'log-in-outline' : 'person-add-outline'}
+                    size={18}
+                    color={Colors.white}
+                  />
+                  <Text style={styles.actionBtnText}>
+                    {tab === 'login' ? 'Log In' : 'Create Account'}
+                  </Text>
+                </View>
               )}
             </LinearGradient>
           </TouchableOpacity>
 
-          {/* Demo Quick Fill */}
+          {/* Demo Quick Fill (from login.php demo accounts) */}
           {tab === 'login' && (
             <View style={styles.demoBox}>
               <Text style={styles.demoBoxTitle}>Quick Demo Sign-in:</Text>
@@ -248,7 +356,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
           onPress={() => setShowServerModal(!showServerModal)}
         >
           <Ionicons name="server-outline" size={14} color={Colors.textMuted} />
-          <Text style={styles.serverSettingsText}>Backend: {api.getBaseUrl()}</Text>
+          <Text style={styles.serverSettingsText}>Server: {api.getBaseUrl()}</Text>
         </TouchableOpacity>
 
         {showServerModal && (
@@ -298,14 +406,14 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   scrollContent: {
-    padding: 24,
-    paddingTop: 36,
+    padding: 20,
+    paddingTop: 32,
     paddingBottom: 48,
     alignItems: 'center',
   },
   brandContainer: {
     alignItems: 'center',
-    marginBottom: 26,
+    marginBottom: 22,
   },
   brandMark: {
     width: 56,
@@ -313,7 +421,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
     ...Shadows.glow,
   },
   brandName: {
@@ -323,27 +431,28 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   brandTagline: {
-    fontSize: 12.5,
-    color: Colors.textSoft,
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMuted,
     marginTop: 4,
-    textAlign: 'center',
-    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   card: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 440,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 22,
-    padding: 24,
+    padding: 22,
   },
   tabBar: {
     flexDirection: 'row',
     backgroundColor: Colors.backgroundSoft,
     padding: 4,
     borderRadius: 12,
-    marginBottom: 20,
+    marginBottom: 18,
   },
   tabBtn: {
     flex: 1,
@@ -364,14 +473,29 @@ const styles = StyleSheet.create({
     color: Colors.primaryDark,
     fontWeight: '800',
   },
-  field: {
+  errorBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.riskHighBg,
+    padding: 10,
+    borderRadius: 10,
     marginBottom: 14,
+    gap: 8,
+  },
+  errorText: {
+    fontSize: 12.5,
+    color: Colors.riskHigh,
+    fontWeight: '700',
+    flex: 1,
+  },
+  field: {
+    marginBottom: 12,
   },
   fieldLabel: {
-    fontSize: 12.5,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.textSoft,
-    marginBottom: 6,
+    marginBottom: 5,
   },
   input: {
     backgroundColor: Colors.backgroundSoft,
@@ -379,9 +503,18 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     borderRadius: 11,
     paddingHorizontal: 13,
-    paddingVertical: 11,
+    paddingVertical: 10,
     fontSize: 14,
     color: Colors.text,
+  },
+  grid2: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  btnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   actionBtn: {
     borderRadius: 12,
@@ -397,10 +530,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   demoBox: {
-    marginTop: 20,
-    paddingTop: 16,
+    marginTop: 18,
+    paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: Colors.borderSoft,
     alignItems: 'center',
   },
   demoBoxTitle: {
@@ -422,7 +555,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   demoPillText: {
-    fontSize: 12.5,
+    fontSize: 12,
     color: Colors.primaryDark,
     fontWeight: '700',
   },
@@ -440,7 +573,7 @@ const styles = StyleSheet.create({
   },
   serverConfigBox: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 440,
     backgroundColor: Colors.surface,
     padding: 16,
     borderRadius: 16,

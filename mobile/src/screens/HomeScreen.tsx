@@ -200,6 +200,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
                 </Text>
               </View>
             ))}
+            <TouchableOpacity
+              style={styles.btnBlockOutline}
+              onPress={() => onNavigate('analyze')}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="analytics-outline" size={16} color={Colors.primaryDark} />
+              <Text style={[styles.btnBlockOutlineText, { color: Colors.primaryDark }]}>
+                View Full Breakdown &amp; Guidance
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>

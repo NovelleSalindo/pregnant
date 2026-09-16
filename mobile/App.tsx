@@ -20,11 +20,12 @@ import { SymptomsScreen } from './src/screens/SymptomsScreen';
 import { TrackerScreen } from './src/screens/TrackerScreen';
 import { WellnessScreen } from './src/screens/WellnessScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
+import { AnalyzeScreen } from './src/screens/AnalyzeScreen';
 
 export default function App() {
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'vitals' | 'symptoms' | 'trackers' | 'wellness' | 'profile'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'vitals' | 'symptoms' | 'trackers' | 'wellness' | 'profile' | 'analyze'>('home');
 
   useEffect(() => {
     async function setup() {
@@ -102,6 +103,7 @@ export default function App() {
         {activeTab === 'trackers' && <TrackerScreen />}
         {activeTab === 'wellness' && <WellnessScreen />}
         {activeTab === 'profile' && <ProfileScreen user={user} onLogout={handleLogout} />}
+        {activeTab === 'analyze' && <AnalyzeScreen onNavigate={(tab: any) => setActiveTab(tab)} />}
       </View>
 
       {/* Bottom Navigation Bar (1:1 with style.css .bottom-nav) */}

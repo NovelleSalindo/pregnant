@@ -101,16 +101,17 @@ switch ($action) {
             $stmt = $pdo->prepare("INSERT INTO users (id, role, name, email, password_hash, created_at) VALUES (?, 'patient', ?, ?, ?, ?)");
             $stmt->execute([$userId, $name, $email, $hash, now_iso()]);
 
-            // Optional profile fields
+            // Optional profile fields matching register.php
+            $dob = !empty($input['dob']) ? $input['dob'] : null;
+            $age = !empty($input['age']) ? (int)$input['age'] : ($dob ? (int)((strtotime('now') - strtotime($dob)) / (365.25*86400)) : null);
             $lmp = !empty($input['lmp']) ? $input['lmp'] : null;
             $edd = !empty($input['edd']) ? $input['edd'] : ($lmp ? date('Y-m-d', strtotime($lmp . ' + 280 days')) : null);
-            $age = !empty($input['age']) ? (int)$input['age'] : null;
             $phone = $input['phone'] ?? null;
-            $height = !empty($input['height_cm']) ? (float)$input['height_cm'] : null;
-            $weight = !empty($input['weight_kg']) ? (float)$input['weight_kg'] : null;
+            $height = !empty($input['height_cm']) ? (float)$input['height_cm'] : (!empty($input['height']) ? (float)$input['height'] : null);
+            $weight = !empty($input['weight_kg']) ? (float)$input['weight_kg'] : (!empty($input['weight']) ? (float)$input['weight'] : null);
 
-            $stmt = $pdo->prepare("INSERT INTO patient_profiles (user_id, lmp, edd, age, phone, height_cm, weight_kg) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$userId, $lmp, $edd, $age, $phone, $height, $weight]);
+            $stmt = $pdo->prepare("INSERT INTO patient_profiles (user_id, dob, lmp, edd, age, phone, height_cm, weight_kg) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$userId, $dob, $lmp, $edd, $age, $phone, $height, $weight]);
 
             // Seed default hospital bag items
             seed_default_hospital_bag($pdo, $userId);

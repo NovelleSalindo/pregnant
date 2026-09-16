@@ -103,7 +103,18 @@ class ApiService {
     return data;
   }
 
-  async register(payload: { name: string; email: string; password: string; lmp?: string; edd?: string; age?: number }) {
+  async register(payload: {
+    name: string;
+    email: string;
+    password: string;
+    dob?: string;
+    lmp?: string;
+    edd?: string;
+    age?: number;
+    height_cm?: number;
+    weight_kg?: number;
+    phone?: string;
+  }) {
     const data = await this.request('auth.php?action=register', {
       method: 'POST',
       body: JSON.stringify(payload),

@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Switch,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,28 +24,31 @@ export const SymptomsScreen: React.FC = () => {
 
   // Selected state: symptomId -> 'None' | 'Mild' | 'Moderate' | 'Severe'
   const [selectedSeverities, setSelectedSeverities] = useState<Record<string, 'None' | 'Mild' | 'Moderate' | 'Severe'>>({});
+  const [selectedDurations, setSelectedDurations] = useState<Record<string, 'Today' | '1–3 Days' | 'More than 3 Days'>>({});
+  const [selectedFrequencies, setSelectedFrequencies] = useState<Record<string, 'Rare' | 'Sometimes' | 'Often' | 'Always'>>({});
 
-  // Present Pregnancy Problems (PP) switches
+  // 10 Present Pregnancy Problems (PP Rules from base.php & symptoms.php)
   const [ppFactors, setPpFactors] = useState<Record<string, boolean>>({
     bleeding_lt_20wks: false,
     bleeding_gt_20wks: false,
+    postmaturity_prematurity: false,
     hypertension: false,
     prom: false,
+    poly_oligohydramnios: false,
     iugr: false,
     multiple_pregnancy: false,
+    breech_malpresentation: false,
     rh_isoimmunization: false,
   });
 
-  const [lastResult, setLastResult] = useState<any>(null);
+  const [assessmentResult, setAssessmentResult] = useState<any>(null);
+  const [showResultModal, setShowResultModal] = useState(false);
 
   useEffect(() => {
     async function loadCatalog() {
       try {
         const res = await api.getSymptomCatalog();
         setCatalog(res.catalog || []);
-        if (res.history && res.history.length > 0) {
-          setLastResult(res.history[0]);
-        }
       } catch (e: any) {
         console.warn('Error loading symptom catalog:', e.message);
       } finally {
@@ -79,6 +83,20 @@ export const SymptomsScreen: React.FC = () => {
       ...prev,
       [symptomId]: level,
     }));
+    if (!selectedDurations[symptomId]) {
+      setSelectedDurations((prev) => ({ ...prev, [symptomId]: 'Today' }));
+    }
+    if (!selectedFrequencies[symptomId]) {
+      setSelectedFrequencies((prev) => ({ ...prev, [symptomId]: 'Rare' }));
+    }
+  };
+
+  const setDuration = (symptomId: string, dur: 'Today' | '1–3 Days' | 'More than 3 Days') => {
+    setSelectedDurations((prev) => ({ ...prev, [symptomId]: dur }));
+  };
+
+  const setFrequency = (symptomId: string, freq: 'Rare' | 'Sometimes' | 'Often' | 'Always') => {
+    setSelectedFrequencies((prev) => ({ ...prev, [symptomId]: freq }));
   };
 
   const togglePP = (key: string) => {
@@ -94,8 +112,8 @@ export const SymptomsScreen: React.FC = () => {
       const formattedSymptoms = catalog.map((c) => ({
         id: c.id,
         severity: selectedSeverities[c.id] || 'None',
-        duration: 'Today',
-        frequency: 'Rare',
+        duration: selectedDurations[c.id] || 'Today',
+        frequency: selectedFrequencies[c.id] || 'Rare',
       }));
 
       const res = await api.submitSymptoms({
@@ -103,11 +121,8 @@ export const SymptomsScreen: React.FC = () => {
         pregnancy_problems: ppFactors,
       });
 
-      setLastResult(res);
-      Alert.alert(
-        `Assessment Complete: ${res.level} Risk`,
-        `Clinical Score: ${res.score}/100\n\n${res.recommendations?.[0]?.text || 'Review recommendations below.'}`
-      );
+      setAssessmentResult(res);
+      setShowResultModal(true);
     } catch (e: any) {
       Alert.alert('Submission Error', e.message || 'Could not submit assessment.');
     } finally {
@@ -124,11 +139,24 @@ export const SymptomsScreen: React.FC = () => {
     );
   }
 
+  const ppRulesList = [
+    { key: 'bleeding_lt_20wks', label: 'Vaginal bleeding before 20 weeks', cat: 'PP-01' },
+    { key: 'bleeding_gt_20wks', label: 'Vaginal bleeding after 20 weeks', cat: 'PP-02' },
+    { key: 'postmaturity_prematurity', label: 'Premature labor or post-term pregnancy', cat: 'PP-03' },
+    { key: 'hypertension', label: 'Gestational hypertension (BP ≥ 140/90)', cat: 'PP-04' },
+    { key: 'prom', label: 'Premature rupture of membrane (PROM)', cat: 'PP-05' },
+    { key: 'poly_oligohydramnios', label: 'Amniotic fluid imbalance (Poly / Oligo)', cat: 'PP-06' },
+    { key: 'iugr', label: 'Intrauterine growth restriction (IUGR)', cat: 'PP-07' },
+    { key: 'multiple_pregnancy', label: 'Multiple pregnancy (twins / triplets)', cat: 'PP-08' },
+    { key: 'breech_malpresentation', label: 'Breech or transverse fetal presentation', cat: 'PP-09' },
+    { key: 'rh_isoimmunization', label: 'Rh negative isoimmunization', cat: 'PP-10' },
+  ];
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Header */}
       <View style={styles.headerRow}>
-        <Text style={styles.headerEyebrow}>CLINICAL DECISION SUPPORT</Text>
+        <Text style={styles.headerEyebrow}>STEP 1 OF THE CLINICAL RISK PIPELINE</Text>
         <Text style={styles.headerTitle}>Symptom Check-in</Text>
         <Text style={styles.headerSubtitle}>AHP + Fuzzy Inference + Clinical Safety Rule Engine</Text>
       </View>
@@ -156,10 +184,12 @@ export const SymptomsScreen: React.FC = () => {
       </View>
 
       {/* Symptoms Checklist */}
-      <Text style={styles.sectionHeader}>Select Current Symptoms</Text>
+      <Text style={styles.sectionHeader}>How are you feeling today?</Text>
       {catalog.map((item) => {
         const currentSev = selectedSeverities[item.id] || 'None';
         const isSelected = currentSev !== 'None';
+        const currentDur = selectedDurations[item.id] || 'Today';
+        const currentFreq = selectedFrequencies[item.id] || 'Rare';
 
         return (
           <View
@@ -218,22 +248,75 @@ export const SymptomsScreen: React.FC = () => {
                 );
               })}
             </View>
+
+            {/* Duration & Frequency Select Pills (.select-pill in style.css) */}
+            {isSelected && (
+              <View style={styles.extraPillSection}>
+                {/* Duration */}
+                <View style={styles.pillGroup}>
+                  <Text style={styles.subPillLabel}>Duration:</Text>
+                  <View style={styles.pillRow}>
+                    {(['Today', '1–3 Days', 'More than 3 Days'] as const).map((dur) => (
+                      <TouchableOpacity
+                        key={dur}
+                        style={[
+                          styles.selectPillBtn,
+                          currentDur === dur && styles.selectPillBtnActive,
+                        ]}
+                        onPress={() => setDuration(item.id, dur)}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.selectPillText,
+                            currentDur === dur && styles.selectPillTextActive,
+                          ]}
+                        >
+                          {dur}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Frequency */}
+                <View style={styles.pillGroup}>
+                  <Text style={styles.subPillLabel}>Frequency:</Text>
+                  <View style={styles.pillRow}>
+                    {(['Rare', 'Sometimes', 'Often', 'Always'] as const).map((freq) => (
+                      <TouchableOpacity
+                        key={freq}
+                        style={[
+                          styles.selectPillBtn,
+                          currentFreq === freq && styles.selectPillBtnActive,
+                        ]}
+                        onPress={() => setFrequency(item.id, freq)}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.selectPillText,
+                            currentFreq === freq && styles.selectPillTextActive,
+                          ]}
+                        >
+                          {freq}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </View>
+            )}
           </View>
         );
       })}
 
-      {/* Present Pregnancy Conditions (PP Rules) */}
+      {/* Present Pregnancy Conditions (PP Rules 1:1 with symptoms.php) */}
       <Text style={[styles.sectionHeader, { marginTop: 24 }]}>
         Present Pregnancy Conditions (PP Rules)
       </Text>
       <View style={[styles.ppCard, Shadows.card]}>
-        {[
-          { key: 'bleeding_lt_20wks', label: 'Vaginal bleeding before 20 weeks' },
-          { key: 'bleeding_gt_20wks', label: 'Vaginal bleeding after 20 weeks' },
-          { key: 'hypertension', label: 'Diagnosed gestational hypertension' },
-          { key: 'prom', label: 'Premature rupture of membrane (PROM)' },
-          { key: 'multiple_pregnancy', label: 'Multiple pregnancy (twins / triplets)' },
-        ].map((item, idx, arr) => (
+        {ppRulesList.map((item, idx, arr) => (
           <View
             key={item.key}
             style={[
@@ -241,7 +324,10 @@ export const SymptomsScreen: React.FC = () => {
               idx === arr.length - 1 && { borderBottomWidth: 0 },
             ]}
           >
-            <Text style={styles.ppLabel}>{item.label}</Text>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={styles.ppCodeBadge}>{item.cat}</Text>
+              <Text style={styles.ppLabel}>{item.label}</Text>
+            </View>
             <Switch
               value={!!ppFactors[item.key]}
               onValueChange={() => togglePP(item.key)}
@@ -268,10 +354,70 @@ export const SymptomsScreen: React.FC = () => {
           {submitting ? (
             <ActivityIndicator color={Colors.white} />
           ) : (
-            <Text style={styles.submitBtnText}>Submit Clinical Assessment</Text>
+            <Text style={styles.submitBtnText}>Submit Symptom Check-in & Assess</Text>
           )}
         </LinearGradient>
       </TouchableOpacity>
+
+      {/* Clinical Assessment Breakdown Modal (1:1 with analyze.php & recommendations.php) */}
+      <Modal visible={showResultModal} animationType="slide" transparent>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, Shadows.soft]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalEyebrow}>CLINICAL ASSESSMENT COMPLETE</Text>
+                <Text style={styles.modalTitle}>
+                  {assessmentResult?.level || 'Low'} Risk Status
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowResultModal(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={20} color={Colors.textSoft} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
+              <View style={styles.gaugeContainer}>
+                <RiskGauge
+                  score={assessmentResult?.score || 0}
+                  level={assessmentResult?.level || 'Low'}
+                  size={160}
+                />
+              </View>
+
+              {/* Priority Recommendations */}
+              <Text style={styles.modalSubHeader}>Personalized Recommendations</Text>
+              {(assessmentResult?.recommendations || []).map((rec: any, idx: number) => (
+                <View
+                  key={idx}
+                  style={[
+                    styles.recItem,
+                    rec.urgent && styles.recItemUrgent,
+                  ]}
+                >
+                  <Ionicons
+                    name={rec.urgent ? 'alert-circle' : 'checkmark-circle'}
+                    size={18}
+                    color={rec.urgent ? Colors.riskHigh : Colors.primaryDark}
+                  />
+                  <Text style={[styles.recText, rec.urgent && styles.recTextUrgent]}>
+                    {rec.text}
+                  </Text>
+                </View>
+              ))}
+
+              <TouchableOpacity
+                onPress={() => setShowResultModal(false)}
+                style={styles.modalDoneBtn}
+              >
+                <Text style={styles.modalDoneBtnText}>Done</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -357,6 +503,7 @@ const styles = StyleSheet.create({
   },
   gaugeContainer: {
     alignItems: 'center',
+    marginVertical: 4,
   },
   rulesAlertBox: {
     flexDirection: 'row',
@@ -384,7 +531,7 @@ const styles = StyleSheet.create({
   },
   symptomCard: {
     backgroundColor: Colors.surface,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 14,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -398,7 +545,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   iconCircle: {
     width: 36,
@@ -452,6 +599,48 @@ const styles = StyleSheet.create({
     color: Colors.riskHigh,
     fontWeight: '800',
   },
+  extraPillSection: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderSoft,
+    gap: 8,
+  },
+  pillGroup: {
+    gap: 4,
+  },
+  subPillLabel: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+  },
+  pillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  selectPillBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.backgroundSoft,
+  },
+  selectPillBtnActive: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primary,
+  },
+  selectPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textSoft,
+  },
+  selectPillTextActive: {
+    color: Colors.primaryDark,
+    fontWeight: '800',
+  },
   ppCard: {
     backgroundColor: Colors.surface,
     borderRadius: 20,
@@ -468,12 +657,17 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderSoft,
   },
+  ppCodeBadge: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: Colors.primaryDark,
+    letterSpacing: 0.5,
+  },
   ppLabel: {
     fontSize: 13,
     fontWeight: '600',
     color: Colors.text,
-    flex: 1,
-    marginRight: 10,
+    marginTop: 1,
   },
   submitBtn: {
     borderRadius: 14,
@@ -487,5 +681,89 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     letterSpacing: 0.2,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(43, 34, 41, 0.45)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  modalEyebrow: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    letterSpacing: 0.8,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: Colors.text,
+    letterSpacing: -0.3,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSubHeader: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.text,
+    marginVertical: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  recItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.backgroundSoft,
+    padding: 10,
+    borderRadius: 12,
+    marginBottom: 6,
+    gap: 10,
+  },
+  recItemUrgent: {
+    backgroundColor: Colors.riskHighBg,
+    borderWidth: 1,
+    borderColor: Colors.riskHigh,
+  },
+  recText: {
+    fontSize: 12.5,
+    color: Colors.text,
+    flex: 1,
+    fontWeight: '600',
+  },
+  recTextUrgent: {
+    color: Colors.riskHigh,
+    fontWeight: '700',
+  },
+  modalDoneBtn: {
+    backgroundColor: Colors.primaryDark,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  modalDoneBtnText: {
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

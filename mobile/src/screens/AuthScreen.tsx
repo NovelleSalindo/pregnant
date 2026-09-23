@@ -9,7 +9,10 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Image,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Shadows, Gradients } from '../theme/colors';
@@ -17,28 +20,41 @@ import { api } from '../services/api';
 
 interface AuthScreenProps {
   onLoginSuccess: (user: any) => void;
+  initialTab?: 'login' | 'register';
+  onBack?: () => void;
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
-  const [tab, setTab] = useState<'login' | 'register'>('login');
+export const AuthScreen: React.FC<AuthScreenProps> = ({
+  onLoginSuccess,
+  initialTab = 'login',
+  onBack,
+}) => {
+  const insets = useSafeAreaInsets();
+  const topPadding = Platform.OS === 'ios' ? insets.top : 10;
+  const [tab, setTab] = useState<'login' | 'register'>(initialTab);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    if (initialTab) {
+      setTab(initialTab);
+    }
+  }, [initialTab]);
+
   // Form Fields (1:1 with login.php and register.php)
-  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [middleName, setMiddleName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [dob, setDob] = useState('');
   const [lmp, setLmp] = useState('');
-  const [height, setHeight] = useState('');
-  const [weight, setWeight] = useState('');
-  const [showServerModal, setShowServerModal] = useState(false);
-  const [serverUrl, setServerUrl] = useState(api.getBaseUrl());
 
   const handleLogin = async () => {
     setErrorMessage(null);
     if (!email.trim() || !password) {
-      setErrorMessage('Please enter your email and password.');
+      setErrorMessage('Please enter your email or username and password.');
       return;
     }
 
@@ -48,7 +64,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
       onLoginSuccess(res.user);
     } catch (err: any) {
       setErrorMessage(
-        err.message || 'Invalid email or password.'
+        err.message || 'Invalid email/username or password.'
       );
     } finally {
       setLoading(false);
@@ -57,14 +73,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
 
   const handleRegister = async () => {
     setErrorMessage(null);
-    if (!name.trim() || !email.trim() || !password) {
-      setErrorMessage('Please fill in name, email, and password.');
+    if (!username.trim() || !firstName.trim() || !lastName.trim() || !email.trim() || !password) {
+      setErrorMessage('Please fill in username, first name, last name, email, and password.');
       return;
     }
     if (password.length < 6) {
       setErrorMessage('Password must be at least 6 characters.');
       return;
     }
+
+    const fullName = `${firstName.trim()} ${middleName.trim() ? middleName.trim() + ' ' : ''}${lastName.trim()}`;
 
     // Auto-compute EDD from LMP (+280 days) matching register.php
     let edd: string | undefined = undefined;
@@ -89,39 +107,28 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
     setLoading(true);
     try {
       const res = await api.register({
-        name: name.trim(),
+        username: username.trim(),
+        first_name: firstName.trim(),
+        middle_name: middleName.trim() || undefined,
+        last_name: lastName.trim(),
+        name: fullName,
         email: email.trim(),
         password,
         dob: dob.trim() || undefined,
         lmp: lmp.trim() || undefined,
         edd,
         age,
-        height_cm: height ? parseFloat(height) : undefined,
-        weight_kg: weight ? parseFloat(weight) : undefined,
       });
-      onLoginSuccess(res.user);
+      import('react-native').then(({ Alert }) => {
+        Alert.alert('Registration Successful', 'Your account has been created. You can now log in.');
+      });
+      setTab('login');
+      setPassword('');
     } catch (err: any) {
-      setErrorMessage(err.message || 'An account with that email already exists.');
+      setErrorMessage(err.message || 'An account with that email or username already exists.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const fillDemo = (role: 'patient' | 'admin' = 'patient') => {
-    setErrorMessage(null);
-    if (role === 'patient') {
-      setEmail('ana@demo.com');
-      setPassword('demo123');
-    } else {
-      setEmail('admin@demo.com');
-      setPassword('demo123');
-    }
-  };
-
-  const saveServerUrl = async () => {
-    await api.setBaseUrl(serverUrl);
-    setShowServerModal(false);
-    setErrorMessage(`API Base URL set to: ${serverUrl}`);
   };
 
   return (
@@ -133,17 +140,32 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
       <View style={styles.ambientSpotSky} />
       <View style={styles.ambientSpotPink} />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingTop: topPadding + 10 }]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Back Button */}
+        {onBack && (
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={onBack}
+            activeOpacity={0.7}
+            accessibilityLabel="Back to Front page"
+          >
+            <Ionicons name="arrow-back" size={22} color={Colors.text} />
+          </TouchableOpacity>
+        )}
+
         {/* Brand Header (.brand from style.css) */}
         <View style={styles.brandContainer}>
-          <LinearGradient
-            colors={Gradients.brandMark}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.brandMark}
-          >
-            <Ionicons name="heart" size={28} color="#FFFFFF" />
-          </LinearGradient>
+          <View style={styles.logoBadge}>
+            <Image
+              source={require('../../assets/heart-logo.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+          </View>
           <Text style={styles.brandName}>PregnaCare</Text>
           <Text style={styles.brandTagline}>Maternal Risk Monitoring</Text>
         </View>
@@ -187,13 +209,49 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
           {tab === 'register' && (
             <>
               <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Full Name</Text>
+                <Text style={styles.fieldLabel}>Username</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="e.g. Maria Santos"
+                  placeholder="e.g. mariasantos"
                   placeholderTextColor={Colors.textMuted}
-                  value={name}
-                  onChangeText={setName}
+                  autoCapitalize="none"
+                  value={username}
+                  onChangeText={setUsername}
+                />
+              </View>
+
+              <View style={styles.grid2}>
+                <View style={[styles.field, { flex: 1 }]}>
+                  <Text style={styles.fieldLabel}>First Name</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Maria"
+                    placeholderTextColor={Colors.textMuted}
+                    value={firstName}
+                    onChangeText={setFirstName}
+                  />
+                </View>
+
+                <View style={[styles.field, { flex: 1 }]}>
+                  <Text style={styles.fieldLabel}>Middle Name</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Optional"
+                    placeholderTextColor={Colors.textMuted}
+                    value={middleName}
+                    onChangeText={setMiddleName}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Last Name</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. Santos"
+                  placeholderTextColor={Colors.textMuted}
+                  value={lastName}
+                  onChangeText={setLastName}
                 />
               </View>
 
@@ -245,32 +303,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                   />
                 </View>
               </View>
-
-              <View style={styles.grid2}>
-                <View style={[styles.field, { flex: 1 }]}>
-                  <Text style={styles.fieldLabel}>Height (cm)</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="e.g. 160"
-                    placeholderTextColor={Colors.textMuted}
-                    keyboardType="numeric"
-                    value={height}
-                    onChangeText={setHeight}
-                  />
-                </View>
-
-                <View style={[styles.field, { flex: 1 }]}>
-                  <Text style={styles.fieldLabel}>Weight (kg)</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="e.g. 62"
-                    placeholderTextColor={Colors.textMuted}
-                    keyboardType="numeric"
-                    value={weight}
-                    onChangeText={setWeight}
-                  />
-                </View>
-              </View>
             </>
           )}
 
@@ -278,12 +310,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
           {tab === 'login' && (
             <>
               <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Email</Text>
+                <Text style={styles.fieldLabel}>Email or Username</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="you@example.com"
+                  placeholder="you@example.com or username"
                   placeholderTextColor={Colors.textMuted}
-                  keyboardType="email-address"
                   autoCapitalize="none"
                   value={email}
                   onChangeText={setEmail}
@@ -333,47 +364,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
               )}
             </LinearGradient>
           </TouchableOpacity>
-
-          {/* Demo Quick Fill (from login.php demo accounts) */}
-          {tab === 'login' && (
-            <View style={styles.demoBox}>
-              <Text style={styles.demoBoxTitle}>Quick Demo Sign-in:</Text>
-              <View style={styles.demoBtnRow}>
-                <TouchableOpacity style={styles.demoPill} onPress={() => fillDemo('patient')}>
-                  <Text style={styles.demoPillText}>Ana (Patient)</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.demoPill} onPress={() => fillDemo('admin')}>
-                  <Text style={styles.demoPillText}>Admin</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
         </View>
-
-        {/* Server Setting Link */}
-        <TouchableOpacity
-          style={styles.serverSettingsBtn}
-          onPress={() => setShowServerModal(!showServerModal)}
-        >
-          <Ionicons name="server-outline" size={14} color={Colors.textMuted} />
-          <Text style={styles.serverSettingsText}>Server: {api.getBaseUrl()}</Text>
-        </TouchableOpacity>
-
-        {showServerModal && (
-          <View style={[styles.serverConfigBox, Shadows.card]}>
-            <Text style={styles.serverConfigTitle}>Configure Backend API URL:</Text>
-            <TextInput
-              style={styles.input}
-              value={serverUrl}
-              onChangeText={setServerUrl}
-              placeholder="https://pregnant-production.up.railway.app/api"
-              autoCapitalize="none"
-            />
-            <TouchableOpacity style={styles.saveServerBtn} onPress={saveServerUrl}>
-              <Text style={styles.saveServerBtnText}>Update Server URL</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -415,14 +406,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 22,
   },
-  brandMark: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
+  logoBadge: {
+    width: 68,
+    height: 68,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
-    ...Shadows.glow,
+    shadowColor: '#C2577D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  logoImage: {
+    width: 68,
+    height: 68,
+    borderRadius: 20,
   },
   brandName: {
     fontSize: 28,
@@ -529,74 +529,21 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.2,
   },
-  demoBox: {
-    marginTop: 18,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderSoft,
-    alignItems: 'center',
-  },
-  demoBoxTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.textMuted,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  demoBtnRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  demoPill: {
-    backgroundColor: Colors.primaryLight,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-  demoPillText: {
-    fontSize: 12,
-    color: Colors.primaryDark,
-    fontWeight: '700',
-  },
-  serverSettingsBtn: {
-    flexDirection: 'row',
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 20,
-    gap: 6,
-  },
-  serverSettingsText: {
-    fontSize: 11.5,
-    color: Colors.textMuted,
-    fontWeight: '600',
-  },
-  serverConfigBox: {
-    width: '100%',
-    maxWidth: 440,
-    backgroundColor: Colors.surface,
-    padding: 16,
-    borderRadius: 16,
-    marginTop: 12,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
     borderWidth: 1,
     borderColor: Colors.border,
-  },
-  serverConfigTitle: {
-    fontSize: 12.5,
-    fontWeight: '700',
     marginBottom: 8,
-    color: Colors.text,
-  },
-  saveServerBtn: {
-    backgroundColor: Colors.secondaryDark,
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  saveServerBtnText: {
-    color: Colors.white,
-    fontSize: 13,
-    fontWeight: '700',
+    shadowColor: '#2B2229',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 1,
   },
 });

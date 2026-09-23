@@ -26,6 +26,9 @@ if ($section === 'hospital_bag') {
         // Ensure default items exist
         seed_default_hospital_bag($pdo, $u['id']);
 
+        // Auto-update legacy item label if present
+        $pdo->prepare("UPDATE hospital_bag_items SET label = 'Phil Health/ MDR/Marriage Contract and PSA Birth Certificate' WHERE category = 'For Mom' AND (label = 'ID and hospital documents' OR label LIKE '%ID and hospital%')")->execute();
+
         $stmt = $pdo->prepare("SELECT * FROM hospital_bag_items WHERE user_id = ? ORDER BY category, sort_order, id");
         $stmt->execute([$u['id']]);
         $items = $stmt->fetchAll();
@@ -34,9 +37,13 @@ if ($section === 'hospital_bag') {
         $totalChecked = 0;
         foreach ($items as $item) {
             $cat = $item['category'] ?: 'General';
+            $label = $item['label'];
+            if ($cat === 'For Mom' && (stripos($label, 'ID and hospital') !== false || $label === 'ID and hospital documents')) {
+                $label = 'Phil Health/ MDR/Marriage Contract and PSA Birth Certificate';
+            }
             $grouped[$cat][] = [
                 'id' => $item['id'],
-                'label' => $item['label'],
+                'label' => $label,
                 'isChecked' => (bool)$item['is_checked'],
                 'isCustom' => (bool)$item['is_custom'],
             ];
@@ -143,6 +150,14 @@ if ($section === 'medications') {
             $stmt = $pdo->prepare("INSERT INTO medications (id, user_id, name, dosage, schedule_time, active) VALUES (?, ?, ?, ?, ?, 1)");
             $stmt->execute([$id, $u['id'], $name, $dosage, $schedule]);
             json_success(['id' => $id, 'name' => $name], 'Medication added', 201);
+        } elseif ($action === 'delete' || $action === 'deactivate') {
+            $medId = $input['medication_id'] ?? ($input['id'] ?? ($_GET['id'] ?? null));
+            if ($medId) {
+                $pdo->prepare("UPDATE medications SET active = 0 WHERE id = ? AND user_id = ?")->execute([$medId, $u['id']]);
+                json_success([], 'Medication removed');
+            } else {
+                json_error('Medication ID required', 422);
+            }
         }
     }
 }
@@ -290,13 +305,28 @@ if ($section === 'bump_photos') {
         if ($action === 'add') {
             $weekNumber = (int)($input['week_number'] ?? 20);
             $note = trim($input['note'] ?? '');
+            
+            // Handle base64 image if provided
             $filename = trim($input['filename'] ?? ('bump_week_' . $weekNumber . '.jpg'));
+            if (!empty($input['image_base64'])) {
+                $base64_string = $input['image_base64'];
+                @list($type, $base64_string) = explode(';', $base64_string);
+                @list(, $base64_string)      = explode(',', $base64_string);
+                $image_data = base64_decode($base64_string);
+                
+                if ($image_data) {
+                    $uploadDir = __DIR__ . '/../uploads/bumps/' . $u['id'];
+                    if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+                    $filename = uid('bump') . '.jpg';
+                    file_put_contents($uploadDir . '/' . $filename, $image_data);
+                }
+            }
 
             $id = uid('bmp');
             $date = today_iso();
             $stmt = $pdo->prepare("INSERT INTO bump_photos (id, user_id, week_number, date, filename, note) VALUES (?, ?, ?, ?, ?, ?)");
             $stmt->execute([$id, $u['id'], $weekNumber, $date, $filename, $note]);
-            json_success(['id' => $id, 'week_number' => $weekNumber, 'date' => $date, 'note' => $note], 'Bump photo logged', 201);
+            json_success(['id' => $id, 'week_number' => $weekNumber, 'date' => $date, 'note' => $note, 'filename' => $filename], 'Bump photo logged', 201);
         } elseif ($action === 'delete') {
             $id = $input['id'] ?? ($_GET['id'] ?? null);
             if (!$id) json_error('Photo ID required', 422);
@@ -406,7 +436,7 @@ if ($section === 'education') {
                 ],
                 'hospital_information' => [
                     'explain' => "You likely won't need delivery logistics yet, but a little prep now helps.",
-                    'recommendations' => ["Save your OB-GYN's direct line.", 'Save a 24/7 nurse hotline in your contacts.'],
+                    'recommendations' => ["Save your OB-GYN's direct line.", 'Save your delivery hospital contact in your contacts.'],
                     'reminders' => ["Confirm which hospital or birthing center your OB-GYN is affiliated with."],
                 ],
                 'faqs' => [
@@ -437,7 +467,7 @@ if ($section === 'education') {
                 'hospital_information' => [
                     'explain' => "Start getting familiar with where you'll deliver.",
                     'recommendations' => ["Research your delivery hospital's labor & delivery unit.", 'Ask about registration or pre-admission paperwork.'],
-                    'reminders' => ["Save your OB-GYN's office number and a maternal nurse hotline for quick access."],
+                    'reminders' => ["Save your OB-GYN's office number and emergency contact for quick access."],
                 ],
                 'faqs' => [
                     'explain' => 'Common second-trimester questions.',
@@ -539,7 +569,7 @@ if ($section === 'reminders') {
         $stmt->execute([$u['id']]);
         $nextVisit = $stmt->fetchColumn();
 
-        $daysToVisit = $nextVisit ? (int)ceil((strtotime($nextVisit) - time()) / 86400) : null;
+        $daysToVisit = $nextVisit ? (int)round((strtotime($nextVisit) - strtotime(today_iso())) / 86400) : null;
 
         $stmt = $pdo->prepare("SELECT m.*, 
                                       (SELECT taken FROM medication_logs l WHERE l.medication_id = m.id AND l.date = ?) as taken_today
@@ -551,19 +581,65 @@ if ($section === 'reminders') {
 
         json_success([
             'nextObVisit' => $nextVisit,
+            'formattedVisit' => $nextVisit ? fmt_date($nextVisit) : null,
             'daysToVisit' => $daysToVisit,
             'medications' => $meds,
         ]);
     }
 
     if ($method === 'POST') {
-        $action = $_GET['action'] ?? ($input['action'] ?? '');
+        $action = $_GET['action'] ?? ($input['action'] ?? ($_POST['action'] ?? ''));
 
         if ($action === 'set_ob_visit') {
-            $nextVisit = $input['next_ob_visit'] ?? null;
+            $nextVisit = $input['next_ob_visit'] ?? ($_POST['next_ob_visit'] ?? null);
             $stmt = $pdo->prepare("UPDATE patient_profiles SET next_ob_visit = ? WHERE user_id = ?");
             $stmt->execute([$nextVisit ?: null, $u['id']]);
-            json_success(['next_ob_visit' => $nextVisit], 'OB-GYN checkup date saved');
+            $daysToVisit = $nextVisit ? (int)round((strtotime($nextVisit) - strtotime(today_iso())) / 86400) : null;
+
+            if ($nextVisit && $daysToVisit !== null) {
+                $visitLabel = fmt_date($nextVisit);
+                $body = $daysToVisit === 0
+                    ? "Your prenatal checkup is today ({$visitLabel})."
+                    : ($daysToVisit > 0
+                        ? "Your prenatal checkup is scheduled in {$daysToVisit} day(s), on {$visitLabel}."
+                        : "Your scheduled prenatal checkup on {$visitLabel} has passed.");
+
+                $stmtNtf = $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)");
+                $stmtNtf->execute([uid('ntf'), $u['id'], 'OB-GYN Visit Reminder', $body, now_iso(), 'ob_visit']);
+            }
+
+            json_success([
+                'next_ob_visit' => $nextVisit,
+                'daysToVisit' => $daysToVisit,
+                'formattedDate' => $nextVisit ? fmt_date($nextVisit) : null,
+            ], 'OB-GYN checkup date saved');
+        } elseif ($action === 'add_supplement') {
+            $name = trim($input['name'] ?? ($_POST['name'] ?? ''));
+            $dosage = trim($input['dosage'] ?? ($_POST['dosage'] ?? ''));
+            $schedule = trim($input['schedule_time'] ?? ($_POST['schedule_time'] ?? 'Daily with breakfast'));
+            if (empty($name)) json_error('Supplement name required', 422);
+
+            $id = uid('med');
+            $stmt = $pdo->prepare("INSERT INTO medications (id, user_id, name, dosage, schedule_time, active) VALUES (?,?,?,?,?,1)");
+            $stmt->execute([$id, $u['id'], $name, $dosage, $schedule]);
+            json_success(['id' => $id, 'name' => $name], 'Supplement added', 201);
+        } elseif ($action === 'toggle_taken') {
+            $medId = $input['medication_id'] ?? ($_POST['medication_id'] ?? '');
+            if (!$medId) json_error('Medication ID required', 422);
+
+            $today = today_iso();
+            $stmt = $pdo->prepare("SELECT * FROM medication_logs WHERE medication_id = ? AND date = ?");
+            $stmt->execute([$medId, $today]);
+            $existing = $stmt->fetch();
+            if ($existing) {
+                $pdo->prepare("DELETE FROM medication_logs WHERE id = ?")->execute([$existing['id']]);
+                $taken = false;
+            } else {
+                $pdo->prepare("INSERT INTO medication_logs (id, medication_id, user_id, date, taken, taken_at) VALUES (?,?,?,?,1,?)")
+                    ->execute([uid('mlg'), $medId, $u['id'], $today, now_iso()]);
+                $taken = true;
+            }
+            json_success(['medication_id' => $medId, 'taken' => $taken], $taken ? 'Marked as taken' : 'Unmarked');
         }
     }
 }

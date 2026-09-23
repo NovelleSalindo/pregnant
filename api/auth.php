@@ -28,7 +28,7 @@ if (empty($action)) {
 
 // Helper to fetch complete user profile
 function fetch_user_payload($pdo, $userId) {
-    $stmt = $pdo->prepare("SELECT id, role, name, email, created_at FROM users WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT id, role, username, first_name, middle_name, last_name, name, email, created_at FROM users WHERE id = ?");
     $stmt->execute([$userId]);
     $user = $stmt->fetch();
 
@@ -46,15 +46,15 @@ function fetch_user_payload($pdo, $userId) {
 
 switch ($action) {
     case 'login':
-        $email = trim($input['email'] ?? '');
+        $loginInput = trim($input['email'] ?? $input['username'] ?? '');
         $password = $input['password'] ?? '';
 
-        if (empty($email) || empty($password)) {
-            json_error('Email and password are required.', 422);
+        if (empty($loginInput) || empty($password)) {
+            json_error('Email or username, and password are required.', 422);
         }
 
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
-        $stmt->execute([$email]);
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? OR username = ?");
+        $stmt->execute([$loginInput, $loginInput]);
         $user = $stmt->fetch();
 
         if (!$user || !password_verify($password, $user['password_hash'])) {
@@ -73,12 +73,24 @@ switch ($action) {
         break;
 
     case 'register':
+        $username = trim($input['username'] ?? '');
+        $firstName = trim($input['first_name'] ?? $input['firstname'] ?? '');
+        $middleName = trim($input['middle_name'] ?? $input['middlename'] ?? '');
+        $lastName = trim($input['last_name'] ?? $input['lastname'] ?? '');
+
         $name = trim($input['name'] ?? '');
+        if (empty($name)) {
+            $name = trim($firstName . ($middleName !== '' ? ' ' . $middleName : '') . ' ' . $lastName);
+        }
+
         $email = trim($input['email'] ?? '');
         $password = $input['password'] ?? '';
 
-        if (empty($name) || empty($email) || empty($password)) {
-            json_error('Name, email, and password are required.', 422);
+        if ((empty($username) || empty($firstName) || empty($lastName)) && empty($name)) {
+            json_error('Username, first name, last name, email, and password are required.', 422);
+        }
+        if (empty($email) || empty($password)) {
+            json_error('Email and password are required.', 422);
         }
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             json_error('Please enter a valid email address.', 422);
@@ -87,10 +99,10 @@ switch ($action) {
             json_error('Password must be at least 6 characters.', 422);
         }
 
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
-        $stmt->execute([$email]);
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? OR (username IS NOT NULL AND username != '' AND username = ?)");
+        $stmt->execute([$email, $username]);
         if ($stmt->fetch()) {
-            json_error('An account with this email already exists.', 409);
+            json_error('An account with this email or username already exists.', 409);
         }
 
         $userId = uid('usr');
@@ -98,10 +110,10 @@ switch ($action) {
 
         $pdo->beginTransaction();
         try {
-            $stmt = $pdo->prepare("INSERT INTO users (id, role, name, email, password_hash, created_at) VALUES (?, 'patient', ?, ?, ?, ?)");
-            $stmt->execute([$userId, $name, $email, $hash, now_iso()]);
+            $stmt = $pdo->prepare("INSERT INTO users (id, role, username, first_name, middle_name, last_name, name, email, password_hash, created_at) VALUES (?, 'patient', ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$userId, $username ?: null, $firstName ?: null, $middleName ?: null, $lastName ?: null, $name, $email, $hash, now_iso()]);
 
-            // Optional profile fields matching register.php
+            // Optional profile fields matching register.php (Weight & Height removed from register)
             $dob = !empty($input['dob']) ? $input['dob'] : null;
             $age = !empty($input['age']) ? (int)$input['age'] : ($dob ? (int)((strtotime('now') - strtotime($dob)) / (365.25*86400)) : null);
             $lmp = !empty($input['lmp']) ? $input['lmp'] : null;

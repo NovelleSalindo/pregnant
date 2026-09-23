@@ -7,8 +7,10 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Image,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Shadows, Gradients } from '../theme/colors';
@@ -18,6 +20,7 @@ type TrackerTab = 'kick' | 'contraction' | 'journal' | 'bump';
 
 interface TrackerScreenProps {
   initialTab?: TrackerTab;
+  onTabChange?: (tab: TrackerTab) => void;
 }
 
 const MOODS = [
@@ -30,7 +33,7 @@ const MOODS = [
   { key: 'Uncomfortable', emoji: '😣' },
 ];
 
-export const TrackerScreen: React.FC<TrackerScreenProps> = ({ initialTab = 'kick' }) => {
+export const TrackerScreen: React.FC<TrackerScreenProps> = ({ initialTab = 'kick', onTabChange }) => {
   const [activeTab, setActiveTab] = useState<TrackerTab>(initialTab);
 
   // --- Kick Counter State ---
@@ -176,11 +179,46 @@ export const TrackerScreen: React.FC<TrackerScreenProps> = ({ initialTab = 'kick
       Alert.alert('Invalid Week', 'Please enter a gestational week between 1 and 42.');
       return;
     }
+
     try {
-      await api.addBumpPhoto(wk, bumpNote.trim(), `bump_week_${wk}.jpg`);
-      setBumpNote('');
-      loadTabData('bump');
-      Alert.alert('Uploaded', `Bump photo recorded for Week ${wk}.`);
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert('Permission needed', 'You need to grant camera permissions to log a bump photo.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [3, 4],
+        quality: 0.7,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const localUri = result.assets[0].uri;
+        const base64Data = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        
+        await api.addBumpPhoto(wk, bumpNote.trim(), base64Data);
+        
+        // Optimistically add to UI so it displays instantly
+        setBumpPhotos((prev) => {
+          const newPhoto = {
+            id: `temp_${Date.now()}`,
+            user_id: null,
+            week_number: wk,
+            date: new Date().toISOString().split('T')[0],
+            note: bumpNote.trim(),
+            filename: localUri,
+          };
+          return [...prev, newPhoto].sort((a, b) => a.week_number - b.week_number);
+        });
+
+        setBumpNote('');
+        // Re-fetch data (may return [] if offline, but optimistic update keeps it visible)
+        loadTabData('bump');
+        Alert.alert('Uploaded', `Bump photo recorded for Week ${wk}.`);
+      }
     } catch (e: any) {
       Alert.alert('Error', e.message);
     }
@@ -210,12 +248,6 @@ export const TrackerScreen: React.FC<TrackerScreenProps> = ({ initialTab = 'kick
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Header */}
-      <View style={styles.headerRow}>
-        <Text style={styles.headerEyebrow}>MONITORING & LOGS</Text>
-        <Text style={styles.headerTitle}>Pregnancy Trackers</Text>
-      </View>
-
       {/* Horizontal Tab Navigation */}
       <ScrollView
         horizontal
@@ -228,7 +260,10 @@ export const TrackerScreen: React.FC<TrackerScreenProps> = ({ initialTab = 'kick
             <TouchableOpacity
               key={t.key}
               style={[styles.tabChip, isActive && styles.tabChipActive]}
-              onPress={() => setActiveTab(t.key)}
+              onPress={() => {
+                setActiveTab(t.key);
+                onTabChange?.(t.key);
+              }}
               activeOpacity={0.7}
             >
               <Ionicons
@@ -491,8 +526,14 @@ export const TrackerScreen: React.FC<TrackerScreenProps> = ({ initialTab = 'kick
                 {bumpPhotos.map((p) => (
                   <View key={p.id} style={[styles.bumpCard, Shadows.card]}>
                     <View style={styles.bumpVisualBox}>
-                      <Ionicons name="camera-outline" size={36} color={Colors.primaryDark} />
-                      <Text style={styles.bumpVisualWeek}>Week {p.week_number}</Text>
+                      {p.filename ? (
+                        <Image 
+                          source={{ uri: p.filename.startsWith('file://') ? p.filename : `${api.getBaseUrl().replace('/api', '')}/uploads/bumps/${p.user_id || ''}/${p.filename}` }} 
+                          style={{ width: '100%', height: '100%', borderRadius: 12, position: 'absolute' }} 
+                        />
+                      ) : null}
+                      <Ionicons name="camera-outline" size={36} color={Colors.primaryDark} style={{ opacity: p.filename ? 0.3 : 1 }} />
+                      <Text style={[styles.bumpVisualWeek, p.filename ? { color: '#FFFFFF', backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 6, borderRadius: 4 } : {}]}>Week {p.week_number}</Text>
                     </View>
                     <View style={styles.bumpCardBody}>
                       <View style={styles.bumpWeekBadge}>

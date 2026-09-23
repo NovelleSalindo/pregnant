@@ -34,6 +34,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$id, $u['id']]);
         }
         json_success(['message' => 'Notification marked as read']);
+    } elseif ($action === 'resolve_visit') {
+        $assessmentId = $body['assessment_id'] ?? ($_POST['assessment_id'] ?? '');
+        if (!$assessmentId) {
+            $stmt = $pdo->prepare("SELECT id FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 1");
+            $stmt->execute([$u['id']]);
+            $assessmentId = $stmt->fetchColumn();
+        }
+        if (!$assessmentId) {
+            $assessmentId = uid('asm');
+            $pdo->prepare("INSERT INTO assessments (id, user_id, date, score, level, weighted_score, centroid, ahp_json, fuzzy_json, rules_json, recommendations_json, status)
+                           VALUES (?, ?, NOW(), 70, 'Severe', 0.70, 70, '{}', '{}', '[]', '[]', 'active')")
+                ->execute([$assessmentId, $u['id']]);
+        }
+        try {
+            $res = record_clinical_visit($pdo, $u['id'], $assessmentId, [
+                'facility' => $body['facility'] ?? ($_POST['facility'] ?? ''),
+                'doctor_name' => $body['doctor_name'] ?? ($_POST['doctor_name'] ?? ''),
+                'visit_date' => $body['visit_date'] ?? ($_POST['visit_date'] ?? now_iso()),
+                'notes' => $body['notes'] ?? ($_POST['notes'] ?? ''),
+            ]);
+            json_success(['message' => 'Clinical visit recorded and severe alert archived successfully', 'result' => $res]);
+        } catch (Exception $e) {
+            json_error($e->getMessage(), 400);
+        }
     }
 }
 
@@ -75,18 +99,119 @@ $trimester = $weeksPregnant < 14 ? 1 : ($weeksPregnant < 28 ? 2 : 3);
 $babySize = baby_size_for_week($weeksPregnant);
 $daysToEdd = !empty($profile['edd']) ? (int)ceil((strtotime($profile['edd']) - time()) / 86400) : 53;
 
-// 2. Latest Risk Assessment
+// 2. Latest Risk Assessment (Based on Assess Risk / Coopland Evaluation)
 $latestAssessment = null;
+$latestCoopland = null;
 $topRecs = [];
 try {
-    $stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 1");
+    // 2.1 Fetch latest Coopland assessment (definitive maternal risk classifier)
+    $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
     $stmt->execute([$u['id']]);
-    $latestAssessment = $stmt->fetch();
-    if ($latestAssessment && !empty($latestAssessment['recommendations_json'])) {
-        $decodedRecs = json_decode($latestAssessment['recommendations_json'], true);
-        if (is_array($decodedRecs)) {
-            $topRecs = array_slice($decodedRecs, 0, 4);
+    $latestCoopland = $stmt->fetch();
+
+    if (!$latestCoopland) {
+        require_once __DIR__ . '/../coopland_engine.php';
+        $eval = evaluate_coopland($u['id'], $pdo, [], []);
+        if ($eval) {
+            $initId = 'ca-' . uniqid();
+            $pdo->prepare("INSERT INTO coopland_assessments (id, user_id, date, score, risk_level, factors_json) VALUES (?, ?, NOW(), ?, ?, ?)")
+                ->execute([
+                    $initId,
+                    $u['id'],
+                    $eval['coopland_score'],
+                    $eval['coopland_risk'],
+                    json_encode($eval['contributing_factors'] ?? [])
+                ]);
+            $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
+            $stmt->execute([$u['id']]);
+            $latestCoopland = $stmt->fetch();
         }
+    }
+
+    // 2.2 Also fetch previous Coopland assessment if available
+    $stmtPrev = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1 OFFSET 1");
+    $stmtPrev->execute([$u['id']]);
+    $prevCoopland = $stmtPrev->fetch();
+
+    // 2.3 Also fetch latest general assessment for clinical visit status
+    $stmtAsm = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 1");
+    $stmtAsm->execute([$u['id']]);
+    $latestAssessment = $stmtAsm->fetch();
+
+    $coopScore = $latestCoopland ? (int)$latestCoopland['score'] : 0;
+    $coopLevel = $latestCoopland ? ucfirst(strtolower($latestCoopland['risk_level'])) : 'Low';
+    $coopFactors = $latestCoopland ? json_decode($latestCoopland['factors_json'] ?? '[]', true) : [];
+
+    // Calculate gauge percentage needle position:
+    // Low (0-2): 10% - 30%
+    // High (3-6): 40% - 64%
+    // Severe (>=7): 72% - 95%
+    if ($coopLevel === 'Severe') {
+        $gaugeScore = min(95, 72 + max(0, $coopScore - 7) * 4);
+    } elseif ($coopLevel === 'High') {
+        $gaugeScore = min(64, max(40, 40 + max(0, $coopScore - 3) * 8));
+    } else {
+        $gaugeScore = min(30, max(10, 10 + $coopScore * 10));
+    }
+
+    // Build obstetric recommendations based on Coopland risk classification
+    if ($coopLevel === 'Severe') {
+        $topRecs[] = [
+            'text' => 'Contact your OB-GYN or go to the nearest hospital now',
+            'category' => 'Urgent Action',
+            'urgent' => true,
+            'icon' => 'alert-circle'
+        ];
+        $topRecs[] = [
+            'text' => 'Do not wait for your next scheduled appointment',
+            'category' => 'Urgent Action',
+            'urgent' => true,
+            'icon' => 'alert-circle'
+        ];
+        $topRecs[] = [
+            'text' => 'High-risk tertiary hospital evaluation and continuous monitoring required',
+            'category' => 'Clinical Guidance',
+            'urgent' => false,
+            'icon' => 'medkit'
+        ];
+    } elseif ($coopLevel === 'High') {
+        $topRecs[] = [
+            'text' => 'Schedule an OB-GYN checkup within 24 to 48 hours',
+            'category' => 'Priority Care',
+            'urgent' => true,
+            'icon' => 'warning'
+        ];
+        $topRecs[] = [
+            'text' => 'More frequent prenatal checkups and specialized maternal-fetal assessments recommended',
+            'category' => 'Clinical Guidance',
+            'urgent' => false,
+            'icon' => 'checkmark-circle'
+        ];
+        $topRecs[] = [
+            'text' => 'Closely monitor blood pressure, blood glucose, and daily fetal kick counts',
+            'category' => 'Daily Monitoring',
+            'urgent' => false,
+            'icon' => 'checkmark-circle'
+        ];
+    } else {
+        $topRecs[] = [
+            'text' => 'Routine prenatal checkup schedule: monthly until 28 wks, every 2 wks until 36 wks, weekly after',
+            'category' => 'Routine Care',
+            'urgent' => false,
+            'icon' => 'checkmark-circle'
+        ];
+        $topRecs[] = [
+            'text' => 'Continue daily prenatal vitamins, iron, and folic acid supplements',
+            'category' => 'Daily Nutrition',
+            'urgent' => false,
+            'icon' => 'checkmark-circle'
+        ];
+        $topRecs[] = [
+            'text' => 'Drink plenty of water and rest when tired. Log daily vitals and symptoms',
+            'category' => 'Wellness',
+            'urgent' => false,
+            'icon' => 'checkmark-circle'
+        ];
     }
 } catch (Exception $e) {}
 
@@ -135,12 +260,27 @@ try {
     $kicksToday = 0;
 }
 
+// 7. Active Medications/Supplements for Today's Reminder Checklist
+$medsList = [];
+try {
+    $stmt = $pdo->prepare("SELECT m.*, 
+                                  (SELECT taken FROM medication_logs l WHERE l.medication_id = m.id AND l.date = ?) as taken_today
+                           FROM medications m 
+                           WHERE m.user_id = ? AND m.active = 1 
+                           ORDER BY m.name");
+    $stmt->execute([$today, $u['id']]);
+    $medsList = $stmt->fetchAll();
+} catch (Exception $e) {
+    $medsList = [];
+}
+
 json_success([
     'user' => [
         'id' => $u['id'],
         'name' => $u['name'],
         'email' => $u['email'],
     ],
+    'medications' => $medsList,
     'pregnancy' => [
         'weeks' => $weeksPregnant,
         'days' => $daysPregnant,
@@ -150,13 +290,30 @@ json_success([
         'formattedEdd' => !empty($profile['edd']) ? fmt_date($profile['edd']) : 'Nov 8, 2026',
         'daysToEdd' => $daysToEdd,
         'nextObVisit' => $profile['next_ob_visit'] ?? null,
+        'daysToVisit' => !empty($profile['next_ob_visit']) ? (int)ceil((strtotime($profile['next_ob_visit']) - time()) / 86400) : null,
         'babyFruit' => $babySize ? $babySize[0] : 'Rutabaga',
         'babyEmoji' => $babySize ? $babySize[1] : '🥬',
     ],
     'risk' => [
-        'latestScore' => $latestAssessment ? (int)$latestAssessment['score'] : null,
-        'level' => $latestAssessment ? $latestAssessment['level'] : 'None',
-        'assessmentDate' => $latestAssessment ? $latestAssessment['date'] : null,
+        'assessmentId' => $latestCoopland ? $latestCoopland['id'] : ($latestAssessment ? $latestAssessment['id'] : null),
+        'latestScore' => $gaugeScore ?? 20,
+        'cooplandScore' => $coopScore ?? 0,
+        'level' => $coopLevel ?? 'Low',
+        'factors' => $coopFactors ?? [],
+        'status' => ($latestAssessment && ($latestAssessment['status'] ?? 'active') === 'resolved') ? 'resolved' : 'active',
+        'isResolved' => ($latestAssessment && ($latestAssessment['status'] ?? 'active') === 'resolved'),
+        'canResolveVisit' => in_array(strtoupper($coopLevel ?? 'Low'), ['SEVERE', 'HIGH']) && !($latestAssessment && ($latestAssessment['status'] ?? 'active') === 'resolved'),
+        'visitedFacility' => $latestAssessment ? $latestAssessment['visited_facility'] : null,
+        'doctorName' => $latestAssessment ? $latestAssessment['doctor_name'] : null,
+        'visitDate' => $latestAssessment ? $latestAssessment['visit_date'] : null,
+        'doctorNotes' => $latestAssessment ? $latestAssessment['doctor_notes'] : null,
+        'assessmentDate' => $latestCoopland ? $latestCoopland['date'] : ($latestAssessment ? $latestAssessment['date'] : null),
+        'previousCoopland' => $prevCoopland ? [
+            'id' => $prevCoopland['id'],
+            'score' => (int)$prevCoopland['score'],
+            'level' => ucfirst(strtolower($prevCoopland['risk_level'])),
+            'date' => $prevCoopland['date'],
+        ] : null,
         'topRecommendations' => $topRecs,
     ],
     'vitals' => [

@@ -10,8 +10,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { RefreshControl } from 'react-native';
 import { Colors, Shadows, Gradients } from '../theme/colors';
 import { api } from '../services/api';
+import { buildRecommendations } from '../services/riskEngine';
 
 interface AdviceScreenProps {
   onNavigate?: (tab: string) => void;
@@ -20,20 +22,28 @@ interface AdviceScreenProps {
 export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadAdvice = async () => {
+    try {
+      const res = await api.getDashboard();
+      setData(res);
+    } catch (e: any) {
+      console.warn('Advice load error:', e.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    async function load() {
-      try {
-        const res = await api.getDashboard();
-        setData(res);
-      } catch (e: any) {
-        console.warn('Advice load error:', e.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+    loadAdvice();
   }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadAdvice();
+  };
 
   if (loading) {
     return (
@@ -45,12 +55,33 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate }) => {
   }
 
   const risk = data?.risk || {};
-  const recs = risk.topRecommendations || [];
-  const urgentRecs = recs.filter((r: any) => r.urgent);
-  const generalRecs = recs.filter((r: any) => !r.urgent);
+  let recs: any[] = risk.topRecommendations || [];
+
+  // Fallback to offline engine if recs is empty
+  if (recs.length === 0) {
+    const defaultLevel = risk.level === 'Severe' || risk.level === 'High' ? risk.level : 'Low';
+    recs = buildRecommendations(defaultLevel as any, {
+      age: 28,
+      bp_sys: 120,
+      bp_dia: 80,
+      bmi: 22,
+      symptoms: [],
+    });
+  }
+
+  const urgentRecs = recs.filter((r: any) =>
+    Boolean(r.urgent || r.category === 'Urgent Action' || (typeof r === 'string' && r.toLowerCase().includes('urgent')))
+  );
+  const generalRecs = recs.filter(
+    (r: any) => !r.urgent && r.category !== 'Urgent Action' && !(typeof r === 'string' && r.toLowerCase().includes('urgent'))
+  );
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primaryDark} />}
+    >
       {/* Hero Assessment Summary */}
       <LinearGradient
         colors={Gradients.hero}
@@ -81,12 +112,22 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate }) => {
               URGENT — ACT ON THESE FIRST
             </Text>
           </View>
-          {urgentRecs.map((rec: any, idx: number) => (
-            <View key={idx} style={styles.recItem}>
-              <Ionicons name="alert-circle" size={18} color={Colors.riskHigh} />
-              <Text style={styles.urgentRecText}>{rec.text}</Text>
-            </View>
-          ))}
+          {urgentRecs.map((rec: any, idx: number) => {
+            const text = typeof rec === 'string' ? rec : (rec.text || '');
+            return (
+              <View key={idx} style={styles.recItem}>
+                <Ionicons name="alert-circle" size={18} color={Colors.riskHigh} />
+                <View style={{ flex: 1 }}>
+                  {rec.category && (
+                    <Text style={[styles.recCategory, { color: Colors.riskHigh }]}>
+                      {rec.category}
+                    </Text>
+                  )}
+                  <Text style={styles.urgentRecText}>{text}</Text>
+                </View>
+              </View>
+            );
+          })}
         </View>
       )}
 
@@ -94,12 +135,22 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate }) => {
       <View style={[styles.card, Shadows.card]}>
         <Text style={styles.eyebrow}>DAILY CARE RECOMMENDATIONS</Text>
         {generalRecs.length > 0 ? (
-          generalRecs.map((rec: any, idx: number) => (
-            <View key={idx} style={styles.recItem}>
-              <Ionicons name="checkmark-circle" size={18} color={Colors.primaryDark} />
-              <Text style={styles.recText}>{rec.text}</Text>
-            </View>
-          ))
+          generalRecs.map((rec: any, idx: number) => {
+            const text = typeof rec === 'string' ? rec : (rec.text || '');
+            return (
+              <View key={idx} style={styles.recItem}>
+                <Ionicons name="checkmark-circle" size={18} color={Colors.primaryDark} />
+                <View style={{ flex: 1 }}>
+                  {rec.category && (
+                    <Text style={styles.recCategory}>
+                      {rec.category}
+                    </Text>
+                  )}
+                  <Text style={styles.recText}>{text}</Text>
+                </View>
+              </View>
+            );
+          })
         ) : (
           <View style={styles.emptyState}>
             <Ionicons name="leaf-outline" size={24} color={Colors.primaryLight} />
@@ -125,33 +176,7 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate }) => {
         </View>
       </View>
 
-      {/* Emergency Hotlines */}
-      <View style={[styles.card, Shadows.card]}>
-        <Text style={styles.eyebrow}>EMERGENCY CONTACTS</Text>
-        <TouchableOpacity
-          style={styles.contactRow}
-          onPress={() => Linking.openURL('tel:911')}
-          activeOpacity={0.7}
-        >
-          <View>
-            <Text style={styles.contactName}>Local Emergency Services</Text>
-            <Text style={styles.contactNumber}>911</Text>
-          </View>
-          <Ionicons name="call" size={20} color={Colors.riskHigh} />
-        </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.contactRow}
-          onPress={() => Linking.openURL('tel:5550109100')}
-          activeOpacity={0.7}
-        >
-          <View>
-            <Text style={styles.contactName}>Maternal Nurse Hotline (24/7)</Text>
-            <Text style={styles.contactNumber}>(555) 010-9100</Text>
-          </View>
-          <Ionicons name="call" size={20} color={Colors.secondaryDark} />
-        </TouchableOpacity>
-      </View>
     </ScrollView>
   );
 };
@@ -237,6 +262,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 10,
     marginBottom: 10,
+  },
+  recCategory: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.primaryDark,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 2,
   },
   recText: {
     fontSize: 14,

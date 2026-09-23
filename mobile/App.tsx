@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  SafeAreaView,
   View,
   Text,
   TouchableOpacity,
@@ -8,11 +7,16 @@ import {
   ActivityIndicator,
   StatusBar,
   Platform,
+  SafeAreaView,
+  LogBox,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
 import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Shadows, Gradients } from './src/theme/colors';
 import { api } from './src/services/api';
+import { FrontScreen } from './src/screens/FrontScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { VitalsScreen } from './src/screens/VitalsScreen';
@@ -25,6 +29,13 @@ import { AdviceScreen } from './src/screens/AdviceScreen';
 import { WellnessDrawer } from './src/components/WellnessDrawer';
 import { NotificationModal } from './src/components/NotificationModal';
 import { EmergencyFab } from './src/components/EmergencyFab';
+import { HeaderBar } from './src/components/HeaderBar';
+import { HeartSplash } from './src/components/HeartSplash';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+LogBox.ignoreLogs([
+  'setLayoutAnimationEnabledExperimental',
+]);
 
 type NavTab = 'home' | 'vitals' | 'symptoms' | 'analyze' | 'advice' | 'profile' | 'wellness' | 'trackers';
 
@@ -35,15 +46,23 @@ const DEFAULT_USER = {
   role: 'patient',
 };
 
-export default function App() {
+function MainApp() {
+  const insets = useSafeAreaInsets();
+  // Ensure we use the proper top inset for both iOS and Android to prevent status bar overlap
+  const topInset = Platform.OS === 'ios' ? insets.top : Math.max(insets.top, 24);
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 20 : 10);
   const [initializing, setInitializing] = useState(true);
-  const [user, setUser] = useState<any>(DEFAULT_USER);
+  const [showSplash, setShowSplash] = useState(true);
+  const [user, setUser] = useState<any>(null);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [wellnessSubTab, setWellnessSubTab] = useState<'education' | 'meals' | 'meds' | 'plan' | 'bag' | 'weight' | 'postpartum' | 'reminders'>('education');
   const [trackerSubTab, setTrackerSubTab] = useState<'kick' | 'contraction' | 'journal' | 'bump'>('kick');
+  const [authView, setAuthView] = useState<'front' | 'auth'>('front');
+  const [authInitialTab, setAuthInitialTab] = useState<'login' | 'register'>('login');
 
   const fetchUserData = useCallback(async () => {
     try {
@@ -56,6 +75,11 @@ export default function App() {
       }
     } catch (e: any) {
       console.warn('Dashboard fetch error:', e.message);
+      const msg = (e?.message || '').toLowerCase();
+      if (msg.includes('401') || msg.includes('unauthorized') || msg.includes('invalid token') || msg.includes('session expired')) {
+        await api.logout();
+        setUser(null);
+      }
     }
   }, []);
 
@@ -63,11 +87,24 @@ export default function App() {
     async function setup() {
       try {
         await api.init();
-        const cachedUser = await api.getCachedUser();
-        if (cachedUser) {
-          setUser(cachedUser);
+        // Sync any offline queued mutations from previous sessions
+        api.syncOfflineQueue().catch(() => {});
+
+        const savedTheme = await AsyncStorage.getItem('@pregnacare_dark_mode');
+        if (savedTheme === 'dark') {
+          setIsDarkMode(true);
         }
-        fetchUserData();
+
+        // Auto-login: if the user already logged in / created an account, restore session and go straight to Dashboard
+        const token = api.getToken();
+        const cachedUser = await api.getCachedUser();
+
+        if (token && cachedUser) {
+          setUser(cachedUser);
+          setActiveTab('home');
+          // Silently sync latest dashboard data & notifications in the background
+          fetchUserData();
+        }
       } catch (e) {
         console.warn('Init error:', e);
       } finally {
@@ -76,6 +113,16 @@ export default function App() {
     }
     setup();
   }, [fetchUserData]);
+
+  const handleToggleDarkMode = async () => {
+    const nextMode = !isDarkMode;
+    setIsDarkMode(nextMode);
+    try {
+      await AsyncStorage.setItem('@pregnacare_dark_mode', nextMode ? 'dark' : 'light');
+    } catch (e) {
+      console.warn('Dark mode persist error:', e);
+    }
+  };
 
   const handleLoginSuccess = (loggedInUser: any) => {
     setUser(loggedInUser);
@@ -86,6 +133,7 @@ export default function App() {
   const handleLogout = async () => {
     await api.logout();
     setUser(null);
+    setAuthView('front');
   };
 
   const handleMarkAllNotificationsRead = async () => {
@@ -99,6 +147,10 @@ export default function App() {
 
   const handleSelectTool = (key: string) => {
     switch (key) {
+      case 'reminders':
+        setWellnessSubTab('reminders');
+        setActiveTab('wellness');
+        break;
       case 'education':
         setWellnessSubTab('education');
         setActiveTab('wellness');
@@ -141,37 +193,121 @@ export default function App() {
     }
   };
 
-  if (initializing) {
-    return (
-      <View style={styles.splashContainer}>
-        <LinearGradient
-          colors={Gradients.brandMark}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.splashIconCircle}
-        >
-          <Ionicons name="heart" size={46} color="#FFFFFF" />
-        </LinearGradient>
-        <Text style={styles.splashTitle}>PregnaCare</Text>
-        <Text style={styles.splashSubtitle}>Maternal Risk Monitoring & Decision Support</Text>
-        <ActivityIndicator color={Colors.primaryDark} style={{ marginTop: 28 }} />
-      </View>
-    );
+  const handleNavigate = (tab: any, subTab?: any) => {
+    if (tab === 'reminders') {
+      setWellnessSubTab('reminders');
+      setActiveTab('wellness');
+      return;
+    }
+    if (tab === 'medications' || tab === 'meds') {
+      setWellnessSubTab('meds');
+      setActiveTab('wellness');
+      return;
+    }
+    if (tab === 'education' || tab === 'education_hub') {
+      setWellnessSubTab('education');
+      setActiveTab('wellness');
+      return;
+    }
+    if (tab === 'meals' || tab === 'meal_planner') {
+      setWellnessSubTab('meals');
+      setActiveTab('wellness');
+      return;
+    }
+    if (tab === 'weight' || tab === 'weight_tracker') {
+      setWellnessSubTab('weight');
+      setActiveTab('wellness');
+      return;
+    }
+    if (tab === 'plan' || tab === 'birth_plan') {
+      setWellnessSubTab('plan');
+      setActiveTab('wellness');
+      return;
+    }
+    if (tab === 'bag' || tab === 'hospital_bag') {
+      setWellnessSubTab('bag');
+      setActiveTab('wellness');
+      return;
+    }
+    if (tab === 'postpartum') {
+      setWellnessSubTab('postpartum');
+      setActiveTab('wellness');
+      return;
+    }
+    if (tab === 'journal') {
+      setTrackerSubTab('journal');
+      setActiveTab('trackers');
+      return;
+    }
+    if (tab === 'bump' || tab === 'bump_photos') {
+      setTrackerSubTab('bump');
+      setActiveTab('trackers');
+      return;
+    }
+    if (tab === 'kick' || tab === 'kick_counter') {
+      setTrackerSubTab('kick');
+      setActiveTab('trackers');
+      return;
+    }
+    if (tab === 'contraction' || tab === 'contraction_timer') {
+      setTrackerSubTab('contraction');
+      setActiveTab('trackers');
+      return;
+    }
+    if (subTab) {
+      if (tab === 'wellness') {
+        setWellnessSubTab(subTab);
+      } else if (tab === 'trackers') {
+        setTrackerSubTab(subTab);
+      }
+    }
+    setActiveTab(tab);
+  };
+
+  if (showSplash || initializing) {
+    return <HeartSplash onFinish={() => setShowSplash(false)} />;
   }
 
-  // Not logged in -> Show Auth Screen
+  const handleOfflineGuest = async () => {
+    const guestUser = {
+      id: 'guest_offline',
+      name: 'Guest User',
+      email: 'offline@local',
+      role: 'patient',
+    };
+    await api.setAuth('offline_token', guestUser);
+    handleLoginSuccess(guestUser);
+  };
+
+  // Not logged in -> Show Front Screen or Auth Screen
   if (!user) {
+    if (authView === 'front') {
+      return (
+        <FrontScreen
+          onNavigateToAuth={(initialTab) => {
+            setAuthInitialTab(initialTab);
+            setAuthView('auth');
+          }}
+          onNavigateToOffline={handleOfflineGuest}
+        />
+      );
+    }
+
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
-        <AuthScreen onLoginSuccess={handleLoginSuccess} />
-      </SafeAreaView>
+      <View style={[styles.safeArea, { paddingTop: topInset, paddingBottom: bottomInset }]}>
+        <StatusBar barStyle="dark-content" backgroundColor={Colors.background} translucent={false} />
+        <AuthScreen
+          initialTab={authInitialTab}
+          onLoginSuccess={handleLoginSuccess}
+          onBack={() => setAuthView('front')}
+        />
+      </View>
     );
   }
 
   // Exact 6 bottom navigation tabs matching Screenshot 1
   const tabs = [
-    { key: 'home' as const, label: 'Home', icon: 'speedometer-outline', iconActive: 'speedometer' },
+    { key: 'home' as const, label: 'Home', icon: 'home-outline', iconActive: 'home' },
     { key: 'vitals' as const, label: 'Vitals', icon: 'heart-outline', iconActive: 'heart' },
     { key: 'symptoms' as const, label: 'Check-in', icon: 'medkit-outline', iconActive: 'medkit' },
     { key: 'analyze' as const, label: 'Risk', icon: 'share-social-outline', iconActive: 'share-social' },
@@ -179,36 +315,129 @@ export default function App() {
     { key: 'profile' as const, label: 'Profile', icon: 'person-outline', iconActive: 'person' },
   ];
 
+  const unreadNotificationsCount = notifications.filter((n) => !n.is_read).length;
+
+  const getHeaderTitle = () => {
+    switch (activeTab) {
+      case 'home':
+        return 'Dashboard';
+      case 'vitals':
+        return '';
+      case 'symptoms':
+        return 'Symptom Check-in';
+      case 'analyze':
+        return 'Risk Analysis';
+      case 'advice':
+        return 'Recommendations';
+      case 'profile':
+        return 'Profile';
+      case 'wellness':
+        switch (wellnessSubTab) {
+          case 'education':
+            return 'Education Hub';
+          case 'meals':
+            return 'Meal Planner';
+          case 'meds':
+            return 'Medication & Vitamin Reminders';
+          case 'weight':
+            return 'Weight Gain Tracker';
+          case 'plan':
+            return 'Birth Plan';
+          case 'bag':
+            return 'Hospital Bag Checklist';
+          case 'postpartum':
+            return 'Postpartum & Baby Care';
+          case 'reminders':
+            return 'Reminders';
+          default:
+            return 'Education Hub';
+        }
+      case 'trackers':
+        switch (trackerSubTab) {
+          case 'journal':
+            return 'Pregnancy Journal';
+          case 'bump':
+            return 'Bump Photo Timeline';
+          case 'kick':
+            return 'Kick Counter';
+          case 'contraction':
+            return 'Contraction Timer';
+          default:
+            return 'Pregnancy Trackers';
+        }
+      default:
+        return 'Dashboard';
+    }
+  };
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
+    <View style={[styles.safeArea, { paddingTop: topInset }, isDarkMode && { backgroundColor: '#0A0A0C' }]}>
+      <StatusBar
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        backgroundColor={isDarkMode ? '#0A0A0C' : Colors.background}
+        translucent={false}
+      />
+
+      {/* Top Header Bar - persistent across screens and burger menu tools */}
+      <HeaderBar
+        title={getHeaderTitle()}
+        user={user}
+        unreadCount={unreadNotificationsCount}
+        onOpenDrawer={() => setDrawerVisible(true)}
+        onOpenNotifications={() => setNotificationsVisible(true)}
+        isDarkMode={isDarkMode}
+      />
 
       {/* Screen Body */}
-      <View style={styles.screenContainer}>
+      <View style={[styles.screenContainer, isDarkMode && { backgroundColor: '#0A0A0C' }]}>
         {activeTab === 'home' && (
           <HomeScreen
-            onNavigate={(tab: any) => setActiveTab(tab)}
+            onNavigate={handleNavigate}
             onOpenDrawer={() => setDrawerVisible(true)}
             onOpenNotifications={() => setNotificationsVisible(true)}
             currentUser={user}
+            isDarkMode={isDarkMode}
           />
         )}
-        {activeTab === 'vitals' && <VitalsScreen />}
-        {activeTab === 'symptoms' && <SymptomsScreen />}
-        {activeTab === 'analyze' && <AnalyzeScreen onNavigate={(tab: any) => setActiveTab(tab)} />}
-        {activeTab === 'advice' && <AdviceScreen onNavigate={(tab: any) => setActiveTab(tab)} />}
+        {activeTab === 'vitals' && <VitalsScreen isDarkMode={isDarkMode} />}
+        {activeTab === 'symptoms' && <SymptomsScreen onNavigate={handleNavigate} />}
+        {activeTab === 'analyze' && <AnalyzeScreen onNavigate={handleNavigate} />}
+        {activeTab === 'advice' && <AdviceScreen onNavigate={handleNavigate} />}
         {activeTab === 'profile' && <ProfileScreen user={user} onLogout={handleLogout} />}
-        {activeTab === 'wellness' && <WellnessScreen initialTab={wellnessSubTab} onNavigate={(tab: any) => setActiveTab(tab)} />}
-        {activeTab === 'trackers' && <TrackerScreen initialTab={trackerSubTab} />}
+        {activeTab === 'wellness' && (
+          <WellnessScreen
+            key={wellnessSubTab}
+            initialTab={wellnessSubTab}
+            onNavigate={handleNavigate}
+            onTabChange={(tab: any) => setWellnessSubTab(tab)}
+            isDarkMode={isDarkMode}
+          />
+        )}
+        {activeTab === 'trackers' && (
+          <TrackerScreen
+            key={trackerSubTab}
+            initialTab={trackerSubTab}
+            onTabChange={(tab: any) => setTrackerSubTab(tab)}
+          />
+        )}
 
         {/* Floating Emergency Button (FAB) matching Screenshot 1 */}
-        <EmergencyFab bottomOffset={Platform.OS === 'ios' ? 76 : 68} />
+        <EmergencyFab bottomOffset={Platform.OS === 'ios' ? 18 : 14} isDarkMode={isDarkMode} />
       </View>
 
       {/* Bottom Navigation Bar (1:1 with Screenshot 1) */}
-      <View style={[styles.bottomBar, Shadows.soft]}>
+      <View
+        style={[
+          styles.bottomBar,
+          { paddingBottom: bottomInset + 4 },
+          Shadows.soft,
+          isDarkMode && { backgroundColor: '#1A1A1E', borderTopColor: '#2C2C31' },
+        ]}
+      >
         {tabs.map((tab) => {
           const isActive = activeTab === tab.key;
+          const activeColor = isDarkMode ? '#FF94B8' : Colors.primaryDark;
+          const inactiveColor = isDarkMode ? '#85818A' : Colors.textMuted;
           return (
             <TouchableOpacity
               key={tab.key}
@@ -220,10 +449,17 @@ export default function App() {
                 <Ionicons
                   name={(isActive ? tab.iconActive : tab.icon) as any}
                   size={20}
-                  color={isActive ? Colors.primaryDark : Colors.textMuted}
+                  color={isActive ? activeColor : inactiveColor}
                 />
               </View>
-              <Text style={[styles.tabItemText, isActive && styles.tabItemTextActive]}>
+              <Text
+                style={[
+                  styles.tabItemText,
+                  isActive
+                    ? { color: activeColor, fontWeight: '800' }
+                    : { color: inactiveColor },
+                ]}
+              >
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -237,6 +473,8 @@ export default function App() {
         onClose={() => setDrawerVisible(false)}
         onSelectTool={handleSelectTool}
         onLogout={handleLogout}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={handleToggleDarkMode}
       />
 
       {/* Notifications Modal */}
@@ -245,8 +483,9 @@ export default function App() {
         notifications={notifications}
         onClose={() => setNotificationsVisible(false)}
         onMarkAllRead={handleMarkAllNotificationsRead}
+        isDarkMode={isDarkMode}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -294,8 +533,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    paddingVertical: 6,
-    paddingBottom: Platform.OS === 'ios' ? 12 : 6,
+    paddingTop: 6,
     justifyContent: 'space-around',
     alignItems: 'center',
   },
@@ -325,3 +563,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 });
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <MainApp />
+    </SafeAreaProvider>
+  );
+}

@@ -5,12 +5,32 @@ import { Colors } from '../theme/colors';
 
 interface RiskGaugeProps {
   score: number;
-  level: 'Low' | 'High' | 'Severe' | 'None';
+  level: string;
   size?: number;
+  showScore?: boolean;
+  cooplandScore?: number;
 }
 
-export const RiskGauge: React.FC<RiskGaugeProps> = ({ score, level, size = 190 }) => {
-  const safeScore = Math.min(100, Math.max(0, score || 0));
+export const RiskGauge: React.FC<RiskGaugeProps> = ({ score, level, size = 190, showScore = false, cooplandScore }) => {
+  const normalizedLevel = (level || 'Low').toString().toLowerCase();
+  const isSevere = normalizedLevel.includes('severe');
+  const isHigh = !isSevere && (normalizedLevel.includes('high') || normalizedLevel.includes('mod'));
+
+  // If score is a raw Coopland score (<= 15), map to gauge percentage (0-100)
+  // Low (0-2): 10% - 30% (Green zone)
+  // High (3-6): 40% - 64% (Yellow/Orange zone)
+  // Severe (>=7): 72% - 95% (Red zone)
+  let computedGaugeScore = score || 0;
+  if (computedGaugeScore <= 15) {
+    if (isSevere) {
+      computedGaugeScore = Math.min(95, 72 + Math.max(0, computedGaugeScore - 7) * 4);
+    } else if (isHigh) {
+      computedGaugeScore = Math.min(64, Math.max(40, 40 + Math.max(0, computedGaugeScore - 3) * 8));
+    } else {
+      computedGaugeScore = Math.min(30, Math.max(10, 10 + computedGaugeScore * 10));
+    }
+  }
+  const safeScore = Math.min(100, Math.max(0, computedGaugeScore));
 
   // Geometry matching base.php risk_gauge_svg()
   const cx = size / 2;
@@ -41,33 +61,26 @@ export const RiskGauge: React.FC<RiskGaugeProps> = ({ score, level, size = 190 }
   const fillPath = describeArc(cx, cy, r, -90, angle);
 
   const getColor = () => {
-    switch (level) {
-      case 'Severe':
-        return Colors.riskHigh;   // #E15D74
-      case 'High':
-        return Colors.riskMod;    // #E0A24A
-      case 'Low':
-        return Colors.riskLow;    // #6FAE82
-      default:
-        return Colors.textMuted;
-    }
+    if (isSevere) return '#DC2626'; // Vivid Red
+    if (isHigh) return '#D97706';   // Vivid Yellow / Amber
+    return '#15803D';               // Vivid Green
   };
 
   const getBgColor = () => {
-    switch (level) {
-      case 'Severe':
-        return Colors.riskHighBg; // #FCE4E9
-      case 'High':
-        return Colors.riskModBg;  // #FCF1DD
-      case 'Low':
-        return Colors.riskLowBg;  // #E7F4EB
-      default:
-        return Colors.backgroundSoft;
-    }
+    if (isSevere) return '#FEE2E2'; // Light Red
+    if (isHigh) return '#FEF3C7';   // Light Yellow
+    return '#DCFCE7';               // Light Green
+  };
+
+  const getBadgeLabel = () => {
+    if (isSevere) return 'SEVERE RISK';
+    if (isHigh) return 'HIGH RISK';
+    return 'LOW RISK';
   };
 
   const color = getColor();
   const bgColor = getBgColor();
+  const badgeLabel = getBadgeLabel();
   const height = size * 0.68;
 
   return (
@@ -80,12 +93,14 @@ export const RiskGauge: React.FC<RiskGaugeProps> = ({ score, level, size = 190 }
       </Svg>
 
       <View style={styles.infoRow}>
-        <Text style={[styles.scoreText, { color: Colors.text }]}>
-          {score !== null && score !== undefined ? score : '—'}
-        </Text>
+        {showScore && (
+          <Text style={[styles.scoreText, { color }]}>
+            {cooplandScore !== undefined ? cooplandScore : (score !== null && score !== undefined ? score : '—')}
+          </Text>
+        )}
         <View style={[styles.badge, { backgroundColor: bgColor }]}>
           <Text style={[styles.badgeText, { color }]}>
-            {level ? `${level} Risk` : 'No Assessment'}
+            {badgeLabel}
           </Text>
         </View>
       </View>

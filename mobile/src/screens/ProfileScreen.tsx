@@ -30,10 +30,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onLogout }) 
   const [emergencyPhone, setEmergencyPhone] = useState('');
   const [nextObVisit, setNextObVisit] = useState('');
 
-  // Server settings
-  const [serverUrl, setServerUrl] = useState(api.getBaseUrl());
-  const [showServerBox, setShowServerBox] = useState(false);
-
   useEffect(() => {
     async function loadProfile() {
       try {
@@ -66,12 +62,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onLogout }) 
     } catch (e: any) {
       Alert.alert('Error', e.message);
     }
-  };
-
-  const handleUpdateServer = async () => {
-    await api.setBaseUrl(serverUrl);
-    setShowServerBox(false);
-    Alert.alert('Updated', `API Base URL set to:\n${serverUrl}`);
   };
 
   const confirmLogout = () => {
@@ -111,9 +101,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onLogout }) 
         <View style={{ flex: 1 }}>
           <Text style={styles.userName}>{user?.name}</Text>
           <Text style={styles.userEmail}>{user?.email}</Text>
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>{(user?.role || 'patient').toUpperCase()}</Text>
-          </View>
         </View>
       </View>
 
@@ -130,14 +117,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onLogout }) 
             <Text style={styles.infoVal}>{profile.lmp || 'Not Set'}</Text>
           </View>
           <View style={styles.infoCol}>
-            <Text style={styles.infoLbl}>Blood Type</Text>
-            <Text style={styles.infoVal}>{profile.blood_type || '—'}</Text>
-          </View>
-          <View style={styles.infoCol}>
-            <Text style={styles.infoLbl}>Height / Weight</Text>
+            <Text style={styles.infoLbl}>Age</Text>
             <Text style={styles.infoVal}>
-              {profile.height_cm ? `${profile.height_cm} cm` : '—'} /{' '}
-              {profile.weight_kg ? `${profile.weight_kg} kg` : '—'}
+              {profile.age ? `${profile.age} yrs` : '—'}
             </Text>
           </View>
         </View>
@@ -207,43 +189,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ user, onLogout }) 
             </Text>
           )}
         </View>
-      </View>
-
-      {/* Network & Backend Server Settings */}
-      <View style={[styles.card, Shadows.card]}>
-        <TouchableOpacity
-          style={styles.serverRowToggle}
-          onPress={() => setShowServerBox(!showServerBox)}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="server" size={18} color={Colors.secondaryDark} />
-          <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={styles.serverTitle}>Backend API Server</Text>
-            <Text style={styles.serverSubtitle}>{api.getBaseUrl()}</Text>
-          </View>
-          <Ionicons
-            name={showServerBox ? 'chevron-up' : 'chevron-down'}
-            size={18}
-            color={Colors.textMuted}
-          />
-        </TouchableOpacity>
-
-        {showServerBox && (
-          <View style={styles.serverEditBox}>
-            <Text style={styles.serverHint}>
-              Configured for production Railway backend (https://pregnant-production.up.railway.app/api). You can point to your local XAMPP host for offline testing.
-            </Text>
-            <TextInput
-              style={styles.fieldInput}
-              value={serverUrl}
-              onChangeText={setServerUrl}
-              autoCapitalize="none"
-            />
-            <TouchableOpacity style={styles.updateServerBtn} onPress={handleUpdateServer} activeOpacity={0.8}>
-              <Text style={styles.updateServerBtnText}>Update API URL</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </View>
 
       {/* Sign Out Button (.btn-danger in style.css) */}
@@ -394,44 +339,6 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     fontSize: 13.5,
     color: Colors.text,
-  },
-  serverRowToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  serverTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Colors.text,
-  },
-  serverSubtitle: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  serverEditBox: {
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderSoft,
-  },
-  serverHint: {
-    fontSize: 12,
-    color: Colors.textSoft,
-    marginBottom: 10,
-    lineHeight: 16,
-  },
-  updateServerBtn: {
-    backgroundColor: Colors.secondaryDark,
-    borderRadius: 11,
-    paddingVertical: 10,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  updateServerBtnText: {
-    color: Colors.white,
-    fontSize: 13,
-    fontWeight: '700',
   },
   logoutBtn: {
     flexDirection: 'row',

@@ -10,9 +10,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     $action = $_POST['action'] ?? '';
 
     if ($action === 'set_ob_visit'){
+        $nextDate = $_POST['next_ob_visit'] ?: null;
         $pdo->prepare("UPDATE patient_profiles SET next_ob_visit=? WHERE user_id=?")
-            ->execute([$_POST['next_ob_visit'] ?: null, $u['id']]);
-        flash('OB visit reminder saved.', 'success');
+            ->execute([$nextDate, $u['id']]);
+
+        // Automatically trigger / update notification for this OB visit reminder
+        if ($nextDate) {
+            $daysToVisit = (int)ceil((strtotime($nextDate) - time()) / 86400);
+            $visitLabel = date('M j, Y', strtotime($nextDate));
+            if ($daysToVisit === 0) {
+                $body = "Your prenatal checkup is today ({$visitLabel})! Please don't forget your appointment.";
+            } else if ($daysToVisit > 0) {
+                $body = "Your prenatal checkup is in {$daysToVisit} day(s), scheduled for {$visitLabel}.";
+            } else {
+                $body = "Your prenatal checkup date was scheduled for {$visitLabel}. Please update your next visit.";
+            }
+
+            // Refresh notification for this OB visit
+            $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND kind='ob_visit'")->execute([$u['id']]);
+            $stmtNtf = $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)");
+            $stmtNtf->execute([uid('ntf'), $u['id'], 'OB-GYN Visit Reminder', $body, now_iso(), 'ob_visit']);
+        } else {
+            $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND kind='ob_visit'")->execute([$u['id']]);
+        }
+
+        flash('OB visit reminder saved. A notification has been scheduled.', 'success');
         log_action('set_ob_visit');
         redirect('reminders.php');
     }
@@ -55,27 +77,71 @@ $daysToVisit = $nextVisit ? (int)ceil((strtotime($nextVisit) - time()) / 86400) 
 render_header('Reminders', 'reminders');
 ?>
 
+<!-- Phone Notifications Status Banner -->
+<div id="phone_notif_banner" style="background:linear-gradient(135deg, #FFF0F5, #FFE4ED);border:1.5px solid #F8B6CE;border-radius:14px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+  <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:220px;">
+    <div style="width:36px;height:36px;border-radius:10px;background:var(--primary, #C2577D);color:#FFF;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">
+      <i class="fa-solid fa-mobile-screen-button"></i>
+    </div>
+    <div>
+      <strong style="font-size:13px;color:#9B2C52;display:block;">Phone Notifications</strong>
+      <span id="phone_notif_subtext" class="muted" style="font-size:12px;">Get checkup alerts on your phone screen &amp; lockscreen.</span>
+    </div>
+  </div>
+  <button type="button" id="phone_notif_btn" onclick="togglePhoneNotificationPermission()" class="btn btn-sm" style="background:var(--primary, #C2577D);color:#FFF;border:none;padding:7px 14px;font-size:12px;border-radius:999px;font-weight:700;">
+    <i class="fa-solid fa-bell"></i> Enable Phone Alerts
+  </button>
+</div>
+
 <div class="grid grid-2" style="align-items:start;">
 
-  <div class="card">
+  <div class="card" id="ob_visit_card">
     <div class="eyebrow">OB-GYN Visit Reminder</div>
     <h3 style="margin-top:6px;">Next Prenatal Checkup</h3>
-    <?php if ($nextVisit && $daysToVisit !== null): ?>
-      <div style="text-align:center;padding:10px 0;">
-        <?php if ($daysToVisit >= 0): ?>
-          <div style="font-family:var(--font-display);font-size:44px;font-weight:700;color:var(--teal-dark);"><?php echo $daysToVisit; ?></div>
-          <div class="muted"><?php echo $daysToVisit === 0 ? 'That\'s today!' : 'day(s) until your visit'; ?></div>
-        <?php else: ?>
-          <div class="badge badge-mod" style="font-size:13px;padding:8px 14px;">This date has passed — update it below</div>
-        <?php endif; ?>
-        <div style="margin-top:8px;font-weight:700;"><?php echo e(fmt_date($nextVisit)); ?></div>
+    
+    <div id="pc_countdown_section" style="text-align:center;padding:10px 0;<?php echo (!$nextVisit || $daysToVisit === null) ? 'display:none;' : ''; ?>">
+      <div id="pc_countdown_number" style="font-family:var(--font-display);font-size:44px;font-weight:700;color:var(--teal-dark);<?php echo ($daysToVisit !== null && $daysToVisit < 0) ? 'display:none;' : ''; ?>">
+        <?php echo ($daysToVisit !== null && $daysToVisit >= 0) ? $daysToVisit : ''; ?>
       </div>
-    <?php else: ?>
-      <div class="empty"><i class="fa-solid fa-calendar"></i>No upcoming visit set yet.</div>
-    <?php endif; ?>
-    <form method="post" action="reminders.php">
+      <div id="pc_countdown_label" class="muted" style="<?php echo ($daysToVisit !== null && $daysToVisit < 0) ? 'display:none;' : ''; ?>">
+        <?php echo $daysToVisit === 0 ? "That's today!" : 'day(s) until your visit'; ?>
+      </div>
+      <div id="pc_countdown_passed" class="badge badge-mod" style="font-size:13px;padding:8px 14px;<?php echo ($daysToVisit !== null && $daysToVisit < 0) ? '' : 'display:none;'; ?>">
+        This date has passed — update it below
+      </div>
+      <div id="pc_countdown_date" style="margin-top:8px;font-weight:700;">
+        <?php echo $nextVisit ? e(fmt_date($nextVisit)) : ''; ?>
+      </div>
+    </div>
+
+    <div id="pc_countdown_empty" class="empty" style="<?php echo ($nextVisit && $daysToVisit !== null) ? 'display:none;' : ''; ?>">
+      <i class="fa-solid fa-calendar"></i>No upcoming visit set yet.
+    </div>
+
+    <form method="post" action="reminders.php" id="pc_ob_form">
       <input type="hidden" name="action" value="set_ob_visit">
-      <div class="field"><label>Next OB-GYN Visit Date</label><input type="date" name="next_ob_visit" value="<?php echo e($nextVisit ?? ''); ?>"></div>
+      <div class="field">
+        <label for="next_ob_visit">Next OB-GYN Visit Date</label>
+        <div style="position:relative;display:flex;align-items:center;">
+          <input 
+            type="date" 
+            id="next_ob_visit" 
+            name="next_ob_visit" 
+            value="<?php echo e($nextVisit ?? ''); ?>"
+            style="width:100%;cursor:pointer;padding-right:42px;"
+            onclick="try{this.showPicker();}catch(e){}"
+            autocomplete="off"
+          >
+          <button 
+            type="button" 
+            onclick="var inp=document.getElementById('next_ob_visit');if(inp){try{inp.showPicker();}catch(e){inp.focus();}}"
+            style="position:absolute;right:8px;background:none;border:none;padding:6px;cursor:pointer;color:var(--primary, #C2577D);display:flex;align-items:center;justify-content:center;"
+            title="Open Calendar"
+          >
+            <i class="fa-solid fa-calendar-days" style="font-size:17px;"></i>
+          </button>
+        </div>
+      </div>
       <button class="btn btn-primary btn-block" type="submit"><i class="fa-solid fa-calendar-check"></i> Save Reminder</button>
     </form>
   </div>
@@ -98,62 +164,154 @@ render_header('Reminders', 'reminders');
     <?php endforeach; ?>
 
     <div class="divider"></div>
-    <details>
-      <summary style="cursor:pointer;font-weight:700;font-size:13.5px;color:var(--teal-dark);">+ Add a supplement/vitamin</summary>
-      <form method="post" action="reminders.php" style="margin-top:12px;">
-        <input type="hidden" name="action" value="add_supplement">
-
-        <div class="field">
-          <label>Name</label>
-          <select id="rem_name_select" name="name" required onchange="pcToggleOther(this,'rem_name_other')">
-            <option value="">Select an item…</option>
-            <option>Prenatal Vitamin</option>
-            <option>Iron Supplement</option>
-            <option>Folic Acid</option>
-            <option>Calcium</option>
-            <option>Vitamin D</option>
-            <option>DHA / Omega-3</option>
-            <option>Vitamin B6</option>
-            <option value="__other__">Other (type it in)</option>
-          </select>
-          <input type="text" id="rem_name_other" name="name" disabled style="display:none;margin-top:6px;" placeholder="Enter supplement/vitamin name">
-        </div>
-
-        <div class="field">
-          <label>Dosage</label>
-          <select id="rem_dosage_select" name="dosage" onchange="pcToggleOther(this,'rem_dosage_other')">
-            <option value="">Select a dosage…</option>
-            <option>1 tablet</option>
-            <option>2 tablets</option>
-            <option>1 capsule</option>
-            <option>250mg</option>
-            <option>500mg</option>
-            <option>1000mg</option>
-            <option value="__other__">Other (type it in)</option>
-          </select>
-          <input type="text" id="rem_dosage_other" name="dosage" disabled style="display:none;margin-top:6px;" placeholder="Enter dosage">
-        </div>
-
-        <div class="field">
-          <label>Schedule</label>
-          <select id="rem_schedule_select" name="schedule_time" onchange="pcToggleOther(this,'rem_schedule_other')">
-            <option value="">Select a schedule…</option>
-            <option>Morning, before breakfast</option>
-            <option>Morning, after breakfast</option>
-            <option>Afternoon, after lunch</option>
-            <option>Evening, after dinner</option>
-            <option>Before bedtime</option>
-            <option value="__other__">Other (type it in)</option>
-          </select>
-          <input type="text" id="rem_schedule_other" name="schedule_time" disabled style="display:none;margin-top:6px;" placeholder="Enter schedule">
-        </div>
-
-        <button class="btn btn-outline btn-block btn-sm" type="submit"><i class="fa-solid fa-plus"></i> Add</button>
-      </form>
-    </details>
+    <div style="margin: 8px 0;">
+      <a href="medications.php" style="display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:13.5px;color:var(--primary, #C2577D);text-decoration:none;">
+        <i class="fa-solid fa-angle-right" style="font-size:12px;"></i> + Add a supplement/vitamin
+      </a>
+    </div>
     <div class="muted" style="font-size:12px;margin-top:10px;">Manage your full list (remove items, etc.) in <a href="medications.php" style="color:var(--teal-dark);font-weight:700;">Medications &amp; Vitamins</a>.</div>
   </div>
 
 </div>
+
+<script>
+(function() {
+  var dateInput = document.getElementById('next_ob_visit');
+  var countdownSec = document.getElementById('pc_countdown_section');
+  var countdownNum = document.getElementById('pc_countdown_number');
+  var countdownLbl = document.getElementById('pc_countdown_label');
+  var countdownPassed = document.getElementById('pc_countdown_passed');
+  var countdownDate = document.getElementById('pc_countdown_date');
+  var countdownEmpty = document.getElementById('pc_countdown_empty');
+
+  function updateLiveCountdown(val) {
+    if (!val) {
+      if (countdownSec) countdownSec.style.display = 'none';
+      if (countdownEmpty) countdownEmpty.style.display = 'flex';
+      return;
+    }
+    
+    var parts = val.split('-');
+    if (parts.length === 3) {
+      var year = parseInt(parts[0], 10);
+      var month = parseInt(parts[1], 10) - 1;
+      var day = parseInt(parts[2], 10);
+      var target = new Date(year, month, day);
+      target.setHours(0,0,0,0);
+      var today = new Date();
+      today.setHours(0,0,0,0);
+      var diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      
+      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var formatted = months[target.getMonth()] + ' ' + target.getDate() + ', ' + target.getFullYear();
+
+      if (countdownSec) countdownSec.style.display = 'block';
+      if (countdownEmpty) countdownEmpty.style.display = 'none';
+
+      if (diffDays >= 0) {
+        if (countdownNum) {
+          countdownNum.style.display = 'block';
+          countdownNum.textContent = diffDays;
+        }
+        if (countdownLbl) {
+          countdownLbl.style.display = 'block';
+          countdownLbl.textContent = diffDays === 0 ? "That's today!" : "day(s) until your visit";
+        }
+        if (countdownPassed) countdownPassed.style.display = 'none';
+      } else {
+        if (countdownNum) countdownNum.style.display = 'none';
+        if (countdownLbl) countdownLbl.style.display = 'none';
+        if (countdownPassed) countdownPassed.style.display = 'inline-block';
+      }
+
+      if (countdownDate) {
+        countdownDate.textContent = formatted;
+      }
+    }
+  }
+
+  if (dateInput) {
+    dateInput.addEventListener('input', function() {
+      updateLiveCountdown(this.value);
+    });
+    dateInput.addEventListener('change', function() {
+      updateLiveCountdown(this.value);
+    });
+  }
+
+  // Handle Phone Notifications Banner & Save Hook
+  var phoneBtn = document.getElementById('phone_notif_btn');
+  var phoneSub = document.getElementById('phone_notif_subtext');
+
+  function updatePhoneNotifUI() {
+    if (!('Notification' in window)) {
+      var b = document.getElementById('phone_notif_banner');
+      if (b) b.style.display = 'none';
+      return;
+    }
+    if (Notification.permission === 'granted') {
+      if (phoneBtn) {
+        phoneBtn.innerHTML = '<i class="fa-solid fa-check"></i> Enabled';
+        phoneBtn.style.background = '#2E7D32';
+        phoneBtn.disabled = true;
+      }
+      if (phoneSub) phoneSub.textContent = 'Phone alerts are active! You will receive alerts on this phone.';
+    } else if (Notification.permission === 'denied') {
+      if (phoneBtn) {
+        phoneBtn.innerHTML = '<i class="fa-solid fa-lock"></i> Blocked';
+        phoneBtn.style.background = '#888';
+      }
+      if (phoneSub) phoneSub.textContent = 'Notifications blocked in browser. Unblock in your phone site settings.';
+    }
+  }
+  updatePhoneNotifUI();
+
+  window.togglePhoneNotificationPermission = function() {
+    if (typeof window.pcRequestPhoneNotifications === 'function') {
+      window.pcRequestPhoneNotifications(function(granted) {
+        updatePhoneNotifUI();
+      });
+    }
+  };
+
+  // When saving the reminder form, trigger a phone system notification
+  var obForm = document.getElementById('pc_ob_form');
+  if (obForm) {
+    obForm.addEventListener('submit', function(e) {
+      var dateVal = dateInput ? dateInput.value : '';
+      if (dateVal && typeof window.pcNotifyPhone === 'function') {
+        var parts = dateVal.split('-');
+        if (parts.length === 3) {
+          var target = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+          target.setHours(0,0,0,0);
+          var today = new Date();
+          today.setHours(0,0,0,0);
+          var diff = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          var dateLabel = months[target.getMonth()] + ' ' + target.getDate() + ', ' + target.getFullYear();
+          var bodyText = diff === 0
+            ? 'Your prenatal checkup is TODAY (' + dateLabel + ')! Please don\'t forget your clinic appointment.'
+            : 'Your prenatal checkup is in ' + diff + ' day(s), scheduled for ' + dateLabel + '.';
+
+          window.pcNotifyPhone('OB-GYN Visit Reminder 🩺', bodyText, 'reminders.php', 'ob_visit');
+        }
+      }
+    });
+  }
+
+  // Also if already granted and there is an upcoming visit today or approaching, trigger a reminder on load
+  <?php if ($nextVisit && $daysToVisit !== null && $daysToVisit >= 0 && $daysToVisit <= 7): ?>
+    if ('Notification' in window && Notification.permission === 'granted') {
+      var lastNotified = localStorage.getItem('pc_last_ob_phone_notif');
+      var todayKey = new Date().toISOString().split('T')[0];
+      if (lastNotified !== todayKey) {
+        localStorage.setItem('pc_last_ob_phone_notif', todayKey);
+        var visitText = <?php echo json_encode($daysToVisit === 0 ? "Your prenatal checkup is TODAY (" . fmt_date($nextVisit) . ")! Please don't forget your clinic appointment." : "Your prenatal checkup is in {$daysToVisit} day(s), on " . fmt_date($nextVisit) . "."); ?>;
+        window.pcNotifyPhone('OB-GYN Visit Reminder 🩺', visitText, 'reminders.php', 'ob_visit');
+      }
+    }
+  <?php endif; ?>
+})();
+</script>
 
 <?php render_footer(); ?>

@@ -3,6 +3,7 @@ require_once __DIR__ . '/base.php';
 $u = require_role('patient');
 
 seed_default_hospital_bag($pdo, $u['id']);
+$pdo->prepare("UPDATE hospital_bag_items SET label = 'Phil Health/ MDR/Marriage Contract and PSA Birth Certificate' WHERE category = 'For Mom' AND (label = 'ID and hospital documents' OR label LIKE '%ID and hospital%')")->execute();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     $action = $_POST['action'] ?? '';

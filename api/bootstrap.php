@@ -77,6 +77,28 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS bump_photos (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB");
 
+$pdo->exec("CREATE TABLE IF NOT EXISTS coopland_assessments (
+    id VARCHAR(32) PRIMARY KEY,
+    user_id VARCHAR(20) NOT NULL,
+    date DATETIME NOT NULL,
+    score INT NOT NULL DEFAULT 0,
+    risk_level VARCHAR(20) NOT NULL DEFAULT 'Low',
+    factors_json TEXT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB");
+
+$pdo->exec("CREATE TABLE IF NOT EXISTS clinical_visits (
+    id VARCHAR(20) PRIMARY KEY,
+    user_id VARCHAR(20) NOT NULL,
+    assessment_id VARCHAR(32) NOT NULL,
+    facility VARCHAR(150) NULL,
+    doctor_name VARCHAR(120) NULL,
+    visit_date DATETIME NOT NULL,
+    notes TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB");
+
 // 4. JSON Helper Functions
 function json_response($data, int $statusCode = 200) {
     http_response_code($statusCode);

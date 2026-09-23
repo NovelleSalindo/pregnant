@@ -13,6 +13,7 @@ interface HeaderBarProps {
   unreadCount?: number;
   onOpenDrawer: () => void;
   onOpenNotifications: () => void;
+  isDarkMode?: boolean;
 }
 
 function getInitials(name?: string): string {
@@ -28,45 +29,29 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   unreadCount = 0,
   onOpenDrawer,
   onOpenNotifications,
+  isDarkMode = false,
 }) => {
-  const displayName = user?.name || 'Ana Dela Cruz';
-  const displayEmail = user?.email || 'ana@demo.com';
+  const displayName = user?.name || 'Novelle B. Salindo';
+  const displayEmail = user?.email || 'novelle2023.salindo@gmail.com';
   const initials = getInitials(displayName);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isDarkMode && { backgroundColor: '#0A0A0C' }]}>
       {/* 1. Brand Name */}
       <View style={styles.brandRow}>
-        <Text style={styles.brandTitle}>PregnaCare</Text>
+        <Text style={[styles.brandTitle, isDarkMode && { color: '#FF94B8' }]}>PregnaCare</Text>
       </View>
 
       {/* 2. Action & User Row */}
       <View style={styles.actionRow}>
         {/* Hamburger Menu Button */}
         <TouchableOpacity
-          style={styles.iconBtn}
+          style={[styles.iconBtn, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}
           onPress={onOpenDrawer}
           activeOpacity={0.7}
           accessibilityLabel="Open wellness tools menu"
         >
-          <Ionicons name="menu" size={21} color={Colors.text} />
-        </TouchableOpacity>
-
-        {/* Notification Bell Button */}
-        <TouchableOpacity
-          style={styles.iconBtn}
-          onPress={onOpenNotifications}
-          activeOpacity={0.7}
-          accessibilityLabel="Open notifications"
-        >
-          <Ionicons name="notifications" size={18} color={Colors.text} />
-          {unreadCount > 0 && (
-            <View style={styles.badgeWrap}>
-              <Text style={styles.badgeText}>
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </Text>
-            </View>
-          )}
+          <Ionicons name="menu" size={21} color={isDarkMode ? '#F0EEF0' : Colors.text} />
         </TouchableOpacity>
 
         {/* Avatar Initials Badge */}
@@ -81,17 +66,34 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
         {/* User Name & Email */}
         <View style={styles.userInfo}>
-          <Text style={styles.userName} numberOfLines={1} ellipsizeMode="tail">
+          <Text style={[styles.userName, isDarkMode && { color: '#F0EEF0' }]} numberOfLines={1} ellipsizeMode="tail">
             {displayName}
           </Text>
-          <Text style={styles.userEmail} numberOfLines={1} ellipsizeMode="tail">
+          <Text style={[styles.userEmail, isDarkMode && { color: '#85818A' }]} numberOfLines={1} ellipsizeMode="tail">
             {displayEmail}
           </Text>
         </View>
+
+        {/* Notification Bell Button */}
+        <TouchableOpacity
+          style={[styles.iconBtn, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}
+          onPress={onOpenNotifications}
+          activeOpacity={0.7}
+          accessibilityLabel="Open notifications"
+        >
+          <Ionicons name="notifications" size={18} color={isDarkMode ? '#F0EEF0' : Colors.text} />
+          {unreadCount > 0 && (
+            <View style={[styles.badgeWrap, isDarkMode && { borderColor: '#1A1A1E' }]}>
+              <Text style={styles.badgeText}>
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* 3. Page Title */}
-      <Text style={styles.pageTitle}>{title}</Text>
+      {!!title && <Text style={[styles.pageTitle, isDarkMode && { color: '#F0EEF0' }]}>{title}</Text>}
     </View>
   );
 };
@@ -99,7 +101,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
-    paddingTop: 10,
+    paddingTop: 4,
     paddingBottom: 4,
     backgroundColor: Colors.background,
   },

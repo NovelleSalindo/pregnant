@@ -59,17 +59,191 @@
   --bg: #0A0A0C;
   --bg-soft: #131316;
   --surface: #1A1A1E;
-  --surface-glass: rgba(20,20,23,0.78);
+  --surface-glass: rgba(20,20,23,0.85);
   --border: #2C2C31;
+  --border-soft: #232328;
   --ink: #F0EEF0;
   --ink-soft: #B8B4BA;
   --muted: #85818A;
+  --teal: #FF94B8;
+  --teal-dark: #FF94B8;
   --teal-light: #3A2530;
+  --sky: #A2D2FF;
+  --sky-dark: #6BA5E7;
   --sky-light: #1D2836;
+  --green: #CDB4DB;
+  --green-dark: #CDB4DB;
   --green-light: #2A2434;
+  --risk-low: #7BC490;
   --risk-low-bg: #16261C;
+  --risk-mod: #F0B254;
   --risk-mod-bg: #3A2C15;
+  --risk-high: #F06E84;
   --risk-high-bg: #3A1F26;
+}
+
+[data-theme="dark"] body{
+  background: var(--bg);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .card{
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] #dailyReminderBanner{
+  background: #1A1A1E !important;
+  border-color: #2C2C31 !important;
+}
+
+[data-theme="dark"] #dailyReminderBanner strong{
+  color: #F0EEF0 !important;
+}
+
+[data-theme="dark"] #dailyReminderBanner .muted{
+  color: #B8B4BA !important;
+}
+
+[data-theme="dark"] #dailyReminderBanner i{
+  color: #A2D2FF !important;
+}
+
+[data-theme="dark"] .btn-outline{
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .btn-outline:hover{
+  background: #2C2C31 !important;
+  color: var(--teal) !important;
+  border-color: var(--teal) !important;
+}
+
+[data-theme="dark"] .hero-gradient{
+  background: linear-gradient(120deg, #5C233C 0%, #172D45 100%) !important;
+}
+
+[data-theme="dark"] .symptom-tile{
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .symptom-tile.on{
+  border-color: var(--teal) !important;
+  background: var(--teal-light) !important;
+}
+
+[data-theme="dark"] .select-pill{
+  background-color: var(--teal-light) !important;
+  border-color: var(--teal) !important;
+  color: var(--teal) !important;
+}
+
+[data-theme="dark"] .csel-btn{
+  background-color: var(--teal-light) !important;
+  border-color: var(--teal) !important;
+  color: var(--teal) !important;
+}
+
+[data-theme="dark"] .csel-list{
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+[data-theme="dark"] .csel-opt{
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .csel-opt:hover,
+[data-theme="dark"] .csel-opt.is-selected{
+  background: var(--teal-light) !important;
+  color: var(--teal) !important;
+}
+
+[data-theme="dark"] .chip{
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--ink-soft) !important;
+}
+
+[data-theme="dark"] .chip.on,
+[data-theme="dark"] .chip:has(input:checked){
+  border-color: var(--teal) !important;
+  background: var(--teal-light) !important;
+  color: var(--teal) !important;
+}
+
+[data-theme="dark"] .field input,
+[data-theme="dark"] .field select,
+[data-theme="dark"] .field textarea{
+  background: var(--bg-soft) !important;
+  border-color: var(--border) !important;
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .field input:focus,
+[data-theme="dark"] .field select:focus,
+[data-theme="dark"] .field textarea:focus{
+  background: var(--surface) !important;
+  border-color: var(--teal) !important;
+}
+
+[data-theme="dark"] table th{
+  border-color: var(--border) !important;
+  color: var(--muted) !important;
+}
+
+[data-theme="dark"] table td{
+  border-color: var(--border) !important;
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .kv{
+  border-color: var(--border) !important;
+}
+
+[data-theme="dark"] .kv .v{
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .kv .k{
+  color: var(--muted) !important;
+}
+
+[data-theme="dark"] .eyebrow{
+  color: var(--teal) !important;
+}
+
+[data-theme="dark"] .wt-drawer{
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+}
+
+[data-theme="dark"] .wt-drawer-link{
+  color: var(--ink) !important;
+}
+
+[data-theme="dark"] .wt-drawer-link:hover{
+  background: var(--teal-light) !important;
+  color: var(--teal) !important;
+}
+
+[data-theme="dark"] .wt-drawer-divider{
+  background: var(--border) !important;
+}
+
+[data-theme="dark"] .topbar{
+  background: var(--surface-glass) !important;
+  border-color: var(--border) !important;
+}
+
+[data-theme="dark"] .bottom-nav{
+  background: var(--surface-glass) !important;
+  border-color: var(--border) !important;
 }
 
 *{box-sizing:border-box;}
@@ -216,6 +390,8 @@ button{ font-family: inherit; cursor:pointer; }
   font-family:inherit; font-size:14px; color:var(--ink); width:100%;
 }
 .field input:focus, .field select:focus, .field textarea:focus{ background: var(--surface); border-color: var(--teal); }
+.field input[type="date"]{ cursor: pointer; }
+.field input[type="date"]::-webkit-calendar-picker-indicator{ cursor: pointer; opacity: 0.85; padding: 4px; }
 .hint{ font-size:11.5px; color: var(--muted); }
 
 /* Button-style select — used for compact choices like symptom duration/frequency,
@@ -291,6 +467,7 @@ button{ font-family: inherit; cursor:pointer; }
 .ed-card{
   background: var(--surface); border:1.5px solid var(--border); border-radius:18px; cursor:pointer;
   transition: border-color .15s, box-shadow .15s, transform .1s;
+  display: flex; flex-direction: column; justify-content: center; min-height: 125px;
 }
 .ed-card:hover{ border-color: var(--teal); }
 .ed-card:active{ border-color: var(--teal); box-shadow: 0 4px 12px -4px rgba(210,83,111,.35); transform: scale(.97); }

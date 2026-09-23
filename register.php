@@ -6,32 +6,37 @@ if (current_user()) redirect(role_home(current_user()['role']));
 $error = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST'){
-    $name = trim($_POST['name'] ?? '');
+    $username = trim($_POST['username'] ?? '');
+    $firstName = trim($_POST['first_name'] ?? '');
+    $middleName = trim($_POST['middle_name'] ?? '');
+    $lastName = trim($_POST['last_name'] ?? '');
+    $name = trim($firstName . ($middleName !== '' ? ' ' . $middleName : '') . ' ' . $lastName);
+    if ($name === '') {
+        $name = trim($_POST['name'] ?? '');
+    }
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
     $dob = $_POST['dob'] ?? '';
     $lmp = $_POST['lmp'] ?? '';
-    $height = (float)($_POST['height'] ?? 0);
-    $weight = (float)($_POST['weight'] ?? 0);
 
-    if ($name === '' || $email === '' || strlen($password) < 6){
-        $error = 'Please fill in name, email, and a password of at least 6 characters.';
+    if ($username === '' || $firstName === '' || $lastName === '' || $email === '' || strlen($password) < 6){
+        $error = 'Please fill in username, first name, last name, email, and a password of at least 6 characters.';
     } else {
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
-        $stmt->execute([$email]);
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? OR username = ?");
+        $stmt->execute([$email, $username]);
         if ($stmt->fetch()){
-            $error = 'An account with that email already exists.';
+            $error = 'An account with that email or username already exists.';
         } else {
             $id = uid('u');
             $age = $dob ? (int)((strtotime('now') - strtotime($dob)) / (365.25*86400)) : null;
             $edd = $lmp ? date('Y-m-d', strtotime($lmp . ' + 280 days')) : null;
 
             $pdo->beginTransaction();
-            $pdo->prepare("INSERT INTO users (id, role, name, email, password_hash) VALUES (?, 'patient', ?, ?, ?)")
-                ->execute([$id, $name, $email, password_hash($password, PASSWORD_DEFAULT)]);
+            $pdo->prepare("INSERT INTO users (id, role, username, first_name, middle_name, last_name, name, email, password_hash) VALUES (?, 'patient', ?, ?, ?, ?, ?, ?, ?)")
+                ->execute([$id, $username, $firstName, $middleName ?: null, $lastName, $name, $email, password_hash($password, PASSWORD_DEFAULT)]);
             $pdo->prepare("INSERT INTO patient_profiles (user_id, dob, age, height_cm, weight_kg, lmp, edd, gravida, conditions)
-                           VALUES (?,?,?,?,?,?,?,1,'None')")
-                ->execute([$id, $dob ?: null, $age, $height ?: null, $weight ?: null, $lmp ?: null, $edd]);
+                           VALUES (?,?,?,NULL,NULL,?,?,1,'None')")
+                ->execute([$id, $dob ?: null, $age, $lmp ?: null, $edd]);
             $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, kind) VALUES (?,?,?,?,?,?)")
                 ->execute([uid('ntf'), $id, 'Welcome to PregnaCare', 'Complete your profile and log your first symptom check-in to see your risk assessment.', now_iso(), 'info']);
             $pdo->commit();
@@ -57,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
 </head>
 <body>
 <div class="auth-wrap">
-  <div class="auth-card" style="max-width:460px;">
+  <div class="auth-card" style="max-width:480px;">
     <div class="brand" style="padding:0 0 18px;">
       <div class="mark"><i class="fa-solid fa-heart-pulse"></i></div>
       <div class="name">PregnaCare<small>Maternal Risk Monitoring</small></div>
@@ -73,24 +78,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
 
     <form method="post" action="register.php">
       <div class="field">
-        <label>Full Name</label>
-        <input type="text" name="name" required value="<?php echo e($_POST['name'] ?? ''); ?>">
+        <label>Username</label>
+        <input type="text" name="username" required placeholder="e.g. maria_santos" value="<?php echo e($_POST['username'] ?? ''); ?>">
+      </div>
+      <div class="grid grid-2">
+        <div class="field">
+          <label>First Name</label>
+          <input type="text" name="first_name" required placeholder="e.g. Maria" value="<?php echo e($_POST['first_name'] ?? ''); ?>">
+        </div>
+        <div class="field">
+          <label>Middle Name</label>
+          <input type="text" name="middle_name" placeholder="Optional" value="<?php echo e($_POST['middle_name'] ?? ''); ?>">
+        </div>
+      </div>
+      <div class="field">
+        <label>Last Name</label>
+        <input type="text" name="last_name" required placeholder="e.g. Santos" value="<?php echo e($_POST['last_name'] ?? ''); ?>">
       </div>
       <div class="field">
         <label>Email</label>
-        <input type="email" name="email" required value="<?php echo e($_POST['email'] ?? ''); ?>">
+        <input type="email" name="email" required placeholder="you@example.com" value="<?php echo e($_POST['email'] ?? ''); ?>">
       </div>
       <div class="field">
         <label>Password</label>
         <input type="password" name="password" required minlength="6" placeholder="At least 6 characters">
       </div>
       <div class="grid grid-2">
-        <div class="field"><label>Date of Birth</label><input type="date" name="dob"></div>
-        <div class="field"><label>Last Menstrual Period</label><input type="date" name="lmp"></div>
-      </div>
-      <div class="grid grid-2">
-        <div class="field"><label>Height (cm)</label><input type="number" step="0.1" name="height"></div>
-        <div class="field"><label>Weight (kg)</label><input type="number" step="0.1" name="weight"></div>
+        <div class="field"><label>Date of Birth</label><input type="date" name="dob" value="<?php echo e($_POST['dob'] ?? ''); ?>"></div>
+        <div class="field"><label>Last Menstrual Period</label><input type="date" name="lmp" value="<?php echo e($_POST['lmp'] ?? ''); ?>"></div>
       </div>
       <button class="btn btn-primary btn-block" type="submit"><i class="fa-solid fa-user-plus"></i> Create Account</button>
     </form>

@@ -6,11 +6,11 @@ if (current_user()) redirect(role_home(current_user()['role']));
 $error = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST'){
-    $email = trim($_POST['email'] ?? '');
+    $login = trim($_POST['email'] ?? $_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
 
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
-    $stmt->execute([$email]);
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? OR username = ?");
+    $stmt->execute([$login, $login]);
     $user = $stmt->fetch();
 
     if ($user && password_verify($password, $user['password_hash'])){
@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
         log_action('login');
         redirect(role_home($user['role']));
     } else {
-        $error = 'Invalid email or password.';
+        $error = 'Invalid email/username or password.';
     }
 }
 ?>
@@ -52,8 +52,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
 
     <form method="post" action="login.php">
       <div class="field">
-        <label>Email</label>
-        <input type="email" name="email" required placeholder="you@example.com" value="<?php echo e($_POST['email'] ?? ''); ?>">
+        <label>Email or Username</label>
+        <input type="text" name="email" required placeholder="you@example.com or username" value="<?php echo e($_POST['email'] ?? ''); ?>">
       </div>
       <div class="field">
         <label>Password</label>

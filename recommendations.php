@@ -6,7 +6,22 @@ $stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date
 $stmt->execute([$u['id']]);
 $latest = $stmt->fetch();
 
-$recs = $latest ? (json_decode($latest['recommendations_json'], true) ?: []) : [];
+$rawRecs = $latest ? (json_decode($latest['recommendations_json'], true) ?: []) : [];
+$recs = [];
+foreach ($rawRecs as $item) {
+    if (is_string($item)) {
+        $recs[] = ['text' => $item, 'icon' => 'fa-circle-check', 'urgent' => false];
+    } elseif (is_array($item) && !empty($item['text'])) {
+        $icon = $item['icon'] ?? (!empty($item['urgent']) ? 'fa-triangle-exclamation' : 'fa-circle-check');
+        if (strpos($icon, 'fa-') !== 0) $icon = 'fa-' . $icon;
+        $recs[] = [
+            'text' => $item['text'],
+            'category' => $item['category'] ?? '',
+            'icon' => $icon,
+            'urgent' => !empty($item['urgent']) || (($item['category'] ?? '') === 'Urgent Action')
+        ];
+    }
+}
 $urgentRecs = array_filter($recs, fn($r) => !empty($r['urgent']));
 $generalRecs = array_filter($recs, fn($r) => empty($r['urgent']));
 
@@ -57,8 +72,20 @@ render_header('Recommendations', 'recommendations');
 <div class="grid grid-2" style="margin-bottom:16px;align-items:start;">
   <div class="card">
     <div class="eyebrow">Emergency Contacts</div>
+    <?php
+    try {
+        $stmtProfRec = $pdo->prepare("SELECT emergency_name, emergency_phone FROM patient_profiles WHERE user_id = ?");
+        $stmtProfRec->execute([$u['id']]);
+        $profRec = $stmtProfRec->fetch();
+        if (!empty($profRec['emergency_phone'])):
+    ?>
+      <div class="kv"><span class="k"><i class="fa-solid fa-heart" style="color:var(--danger);margin-right:6px;"></i><?php echo e($profRec['emergency_name'] ?: 'Emergency Contact'); ?></span><span class="v"><a href="tel:<?php echo e($profRec['emergency_phone']); ?>"><?php echo e($profRec['emergency_phone']); ?></a></span></div>
+    <?php
+        endif;
+    } catch (Exception $e) {}
+    ?>
     <?php foreach (EMERGENCY_HOTLINES as $h): ?>
-      <div class="kv"><span class="k"><?php echo e($h['name']); ?></span><span class="v"><a href="tel:<?php echo e($h['number']); ?>"><?php echo e($h['number']); ?></a></span></div>
+      <div class="kv"><span class="k"><?php echo e($h['name']); ?></span><span class="v"><?php if (!empty($h['number'])): ?><a href="tel:<?php echo e($h['number']); ?>"><?php echo e($h['number']); ?></a><?php else: ?><a href="profile.php" class="muted" style="font-size:12px;">Add clinic contact in Profile</a><?php endif; ?></span></div>
     <?php endforeach; ?>
   </div>
   <div class="card">

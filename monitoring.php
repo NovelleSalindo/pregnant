@@ -7,20 +7,89 @@ $stmt->execute([$u['id']]);
 $heightCm = (float)($stmt->fetchColumn() ?: 160);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST'){
+    $valErrors = validate_maternal_inputs($_POST);
+    if (!empty($valErrors)){
+        foreach ($valErrors as $e){ flash($e, 'danger'); }
+        redirect('monitoring.php');
+    }
+
     $weight = (float)$_POST['weight_kg'];
     $bmi = bmi_of($weight, $heightCm);
+    $bpSys = (int)$_POST['bp_sys'];
+    $bpDia = (int)$_POST['bp_dia'];
+    $tempVal = (float)($_POST['temp'] ?: 36.8);
+    $hrVal = (int)($_POST['heart_rate'] ?: 78);
+    $sugarVal = (int)$_POST['blood_sugar'];
+    $hemoVal = (float)$_POST['hemoglobin'];
+
     $stmt = $pdo->prepare("INSERT INTO monitoring
         (id, user_id, date, bp_sys, bp_dia, weight_kg, bmi, hemoglobin, blood_sugar, temp, heart_rate, fetal_movement, sleep_hours, water_intake, mood, activity)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
     $stmt->execute([
         uid('mon'), $u['id'], now_iso(),
-        (int)$_POST['bp_sys'], (int)$_POST['bp_dia'], $weight, $bmi,
-        (float)$_POST['hemoglobin'], (int)$_POST['blood_sugar'], (float)($_POST['temp'] ?: 36.8),
-        (int)($_POST['heart_rate'] ?: 78), (int)($_POST['fetal_movement'] ?: 0),
+        $bpSys, $bpDia, $weight, $bmi,
+        $hemoVal, $sugarVal, $tempVal,
+        $hrVal, (int)($_POST['fetal_movement'] ?: 0),
         (float)($_POST['sleep_hours'] ?: 7), (int)($_POST['water_intake'] ?: 6),
         trim($_POST['mood'] ?? ''), trim($_POST['activity'] ?? ''),
     ]);
-    flash('Vitals logged successfully.', 'success');
+
+    // Recalculate Risk Assessment with latest vitals
+    $stmt = $pdo->prepare("SELECT * FROM patient_profiles WHERE user_id = ?");
+    $stmt->execute([$u['id']]);
+    $profile = $stmt->fetch() ?: [];
+
+    $riskHistory = get_risk_history($pdo, $u['id']);
+    $riskHistory['prev_cesarean'] = !empty($profile['prior_csection']);
+    $pp = get_latest_pregnancy_problems($pdo, $u['id']);
+    $catalog = get_symptom_catalog();
+    $ruleBase = get_rule_base();
+
+    $age = $profile['age'] ?? 28;
+    $trimester = 2;
+    if (!empty($profile['lmp'])){
+        $weeks = floor((time() - strtotime($profile['lmp'])) / (7*86400));
+        $trimester = $weeks < 14 ? 1 : ($weeks < 28 ? 2 : 3);
+    }
+
+    // Get latest symptoms if any
+    $stmt = $pdo->prepare("SELECT sli.symptom_id as id, sli.severity, sli.duration, sli.frequency
+                           FROM symptom_logs sl
+                           JOIN symptom_log_items sli ON sl.id = sli.symptom_log_id
+                           WHERE sl.user_id = ? ORDER BY sl.date DESC LIMIT 30");
+    $stmt->execute([$u['id']]);
+    $latestSymptoms = $stmt->fetchAll() ?: [];
+
+    $engineInput = [
+        'user_id' => $u['id'],
+        'age' => (int)$age,
+        'trimester' => $trimester,
+        'bp_sys' => $bpSys,
+        'bp_dia' => $bpDia,
+        'temp' => $tempVal,
+        'heart_rate' => $hrVal,
+        'blood_sugar' => $sugarVal,
+        'glucose_timing' => 'preprandial',
+        'bmi' => $bmi,
+        'hemoglobin' => $hemoVal,
+        'riskHistory' => $riskHistory,
+        'pregnancyProblems' => $pp,
+        'symptoms' => $latestSymptoms,
+    ];
+
+    $result = assess_risk($engineInput, $ruleBase, $catalog, $pdo);
+
+    $asmId = uid('asm');
+    $pdo->prepare("INSERT INTO assessments (id, user_id, date, score, level, weighted_score, centroid, ahp_json, fuzzy_json, rules_json, recommendations_json)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+        ->execute([
+            $asmId, $u['id'], now_iso(), $result['score'], $result['level'],
+            $result['structural']['total'], $result['fuzzy']['centroid'],
+            json_encode($result['structural']), json_encode($result['fuzzy']),
+            json_encode($result['main_contributors']), json_encode($result['recommendations']),
+        ]);
+
+    flash('Vitals logged and risk assessment updated.', 'success');
     log_action('add_monitoring');
     redirect('monitoring.php');
 }
@@ -37,8 +106,56 @@ $riskRows = $stmt->fetchAll();
 $riskChartRows = array_reverse($riskRows);
 $latestRisk = $riskRows[0] ?? null;
 
+$isSevereRisk = false;
+if ($latestRisk) {
+    $lvl = strtoupper($latestRisk['level']);
+    $isSevereRisk = ($lvl === 'SEVERE' || $lvl === 'HIGH' || strpos($lvl, 'HIGH') !== false || (int)($latestRisk['score'] ?? 0) >= 70);
+}
+$isResolvedRisk = ($latestRisk && ($latestRisk['status'] ?? 'active') === 'resolved');
+$canResolveRisk = ($isSevereRisk && !$isResolvedRisk);
+
 render_header('Vitals & Risk Monitoring', 'monitoring');
 ?>
+
+<?php if ($canResolveRisk): ?>
+<div class="card" style="margin-bottom:16px;border-left:5px solid var(--risk-high);background:#fff5f5;border-color:rgba(220,53,69,0.3);">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+    <div style="display:flex;gap:14px;align-items:center;">
+      <div style="width:46px;height:46px;border-radius:50%;background:rgba(220,53,69,0.15);display:flex;align-items:center;justify-content:center;color:var(--risk-high);font-size:22px;flex-shrink:0;">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:16px;color:#b02a37;">Severe Risk Alert Active</div>
+        <div class="muted" style="font-size:13px;margin-top:2px;">
+          Your recent health readings flagged critical indicators requiring medical attention. Have you already consulted an OB-GYN or visited a hospital?
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button type="button" class="btn btn-danger btn-sm" onclick="pcOpenVisitModal()">
+        <i class="fa-solid fa-hospital-user"></i> I Already Visited Hospital / OB-GYN
+      </button>
+      <a class="btn btn-outline btn-sm" href="analyze.php">View Full Analysis</a>
+    </div>
+  </div>
+</div>
+<?php elseif ($isResolvedRisk): ?>
+<div class="card" style="margin-bottom:16px;border-left:5px solid var(--teal);background:rgba(20,184,166,0.06);border-color:rgba(20,184,166,0.3);">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+    <div style="display:flex;gap:12px;align-items:center;">
+      <div style="width:42px;height:42px;border-radius:50%;background:rgba(20,184,166,0.18);display:flex;align-items:center;justify-content:center;color:var(--teal-dark);font-size:20px;flex-shrink:0;">
+        <i class="fa-solid fa-clipboard-check"></i>
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:15px;color:var(--teal-dark);">Severe Risk Alert Attended &amp; Archived</div>
+        <div class="muted" style="font-size:13px;margin-top:2px;">
+          Your visit to <strong><?php echo e($latestRisk['visited_facility'] ?: ($latestRisk['doctor_name'] ?: 'Healthcare Provider')); ?></strong> on <?php echo e(fmt_date($latestRisk['visit_date'])); ?> was recorded. You can log new vitals below to evaluate your recovery.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
 
 <div class="grid grid-2" style="align-items:start;">
   <div class="card">
@@ -205,5 +322,11 @@ new Chart(ctx, {
   options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
 });
 </script>
+
+<?php 
+if ($canResolveRisk && $latestRisk) {
+    render_clinical_visit_modal($latestRisk['id'], 'monitoring');
+}
+?>
 
 <?php render_footer(); ?>

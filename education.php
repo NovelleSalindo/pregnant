@@ -42,7 +42,7 @@ $guidance = [
       ],
       'hospital_information' => [
         'explain' => "You likely won't need delivery logistics yet, but a little prep now helps.",
-        'recommendations' => ["Save your OB-GYN's direct line.", 'Save a 24/7 nurse hotline in your contacts.'],
+        'recommendations' => ["Save your OB-GYN's direct line.", 'Save your delivery hospital contact in your contacts.'],
         'reminders' => ["Confirm which hospital or birthing center your OB-GYN is affiliated with."],
       ],
       'faqs' => [
@@ -73,7 +73,7 @@ $guidance = [
       'hospital_information' => [
         'explain' => "Start getting familiar with where you'll deliver.",
         'recommendations' => ["Research your delivery hospital's labor & delivery unit.", 'Ask about registration or pre-admission paperwork.'],
-        'reminders' => ["Save your OB-GYN's office number and a maternal nurse hotline for quick access."],
+        'reminders' => ["Save your OB-GYN's office number and emergency contact for quick access."],
       ],
       'faqs' => [
         'explain' => 'Common second-trimester questions.',

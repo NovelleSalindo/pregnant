@@ -26,6 +26,7 @@ interface NotificationModalProps {
   onClose: () => void;
   onMarkAllRead: () => void;
   onItemPress?: (item: NotificationItem) => void;
+  isDarkMode?: boolean;
 }
 
 export const NotificationModal: React.FC<NotificationModalProps> = ({
@@ -34,6 +35,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   onClose,
   onMarkAllRead,
   onItemPress,
+  isDarkMode = false,
 }) => {
   const getIconForKind = (kind?: string) => {
     switch (kind) {
@@ -56,11 +58,18 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
       onRequestClose={onClose}
     >
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={[styles.modalCard, Shadows.large]} onPress={(e) => e.stopPropagation()}>
+        <Pressable
+          style={[
+            styles.modalCard,
+            Shadows.large,
+            isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' },
+          ]}
+          onPress={(e) => e.stopPropagation()}
+        >
           {/* Header */}
           <View style={styles.headerRow}>
             <View style={styles.titleWrap}>
-              <Text style={styles.title}>Notifications</Text>
+              <Text style={[styles.title, isDarkMode && { color: '#F0EEF0' }]}>Notifications</Text>
               <View style={styles.countBadge}>
                 <Text style={styles.countText}>{notifications.length}</Text>
               </View>
@@ -77,11 +86,11 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                style={styles.closeBtn}
+                style={[styles.closeBtn, isDarkMode && { backgroundColor: '#2C2C31' }]}
                 onPress={onClose}
                 activeOpacity={0.7}
               >
-                <Ionicons name="close" size={20} color={Colors.textSoft} />
+                <Ionicons name="close" size={20} color={isDarkMode ? '#F0EEF0' : Colors.textSoft} />
               </TouchableOpacity>
             </View>
           </View>
@@ -94,8 +103,8 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
             {notifications.length === 0 ? (
               <View style={styles.emptyWrap}>
                 <Ionicons name="notifications-off-outline" size={36} color={Colors.textMuted} />
-                <Text style={styles.emptyTitle}>All Caught Up</Text>
-                <Text style={styles.emptyDesc}>No new notifications right now.</Text>
+                <Text style={[styles.emptyTitle, isDarkMode && { color: '#F0EEF0' }]}>All Caught Up</Text>
+                <Text style={[styles.emptyDesc, isDarkMode && { color: '#85818A' }]}>No new notifications right now.</Text>
               </View>
             ) : (
               notifications.map((item) => {
@@ -104,7 +113,11 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                 return (
                   <TouchableOpacity
                     key={item.id}
-                    style={[styles.itemCard, isUnread && styles.itemUnread]}
+                    style={[
+                      styles.itemCard,
+                      isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31' },
+                      isUnread && (isDarkMode ? { backgroundColor: '#2A1F26', borderColor: '#FF94B8' } : styles.itemUnread),
+                    ]}
                     onPress={() => onItemPress?.(item)}
                     activeOpacity={0.7}
                   >
@@ -113,10 +126,10 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                     </View>
                     <View style={styles.itemBody}>
                       <View style={styles.itemHeader}>
-                        <Text style={styles.itemTitle}>{item.title}</Text>
-                        <Text style={styles.itemDate}>{item.date?.slice(5, 16) || ''}</Text>
+                        <Text style={[styles.itemTitle, isDarkMode && { color: '#F0EEF0' }]}>{item.title}</Text>
+                        <Text style={[styles.itemDate, isDarkMode && { color: '#85818A' }]}>{item.date?.slice(5, 16) || ''}</Text>
                       </View>
-                      <Text style={styles.itemText}>{item.body}</Text>
+                      <Text style={[styles.itemText, isDarkMode && { color: '#B8B4BA' }]}>{item.body}</Text>
                     </View>
                   </TouchableOpacity>
                 );

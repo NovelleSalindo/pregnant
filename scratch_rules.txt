@@ -1,0 +1,208 @@
+IF systolic_blood_pressure is outside 110–130 mmHg OR diastolic_blood_pressure is outside 75–85 mmHg, THEN trigger Red_Alert.
+IF body_temperature ≥ 38°C, THEN trigger Red_Alert.
+IF heart_rate is outside 60–100 bpm, THEN trigger Red_Alert.
+IF measurement_timing == "preprandial" AND (blood_glucose < 70 mg/dL OR blood_glucose > 120 mg/dL), THEN trigger Red_Alert.
+IF measurement_timing == "postprandial" AND blood_glucose > 180 mg/dL, THEN trigger Red_Alert.
+IF fever_with_chills == True OR fever_with_sweating == True, THEN trigger Red_Alert.
+IF breathing_difficulty == True OR breathing_with_sound == True, THEN trigger Red_Alert.
+IF headache_intensity ≥ 6, THEN trigger Red_Alert.
+IF swollen_locations_count ≥ 4 (out of legs, arms, face, hands), THEN trigger Red_Alert.
+IF belly_pain_with_hard_abdomen == True OR belly_pain_with_bleeding == True, THEN trigger Red_Alert.
+IF belly_pain_intensity > 6, THEN trigger Red_Alert.
+IF loss_of_vaginal_fluid == True OR decreased_fetal_movement == True, THEN trigger Red_Alert.
+IF diabetes_symptoms_count ≥ 4 (out of urine frequency, water intake, fatigue, sweating, nausea, vomiting, muscle stiffness, lightheadedness, fruity breath, fainting sensation, fainting), THEN trigger Red_Alert.
+IF preeclampsia_symptoms_count ≥ 2, THEN trigger Yellow_Alert.
+IF swollen_locations_count == 2 OR swollen_locations_count == 3, THEN trigger Yellow_Alert.
+IF headache_symptoms == True AND headache_intensity < 6, THEN trigger Yellow_Alert.
+IF vaginal_bleeding_intensity > 0, THEN trigger Yellow_Alert.
+IF discomfort_during_urination == True (pain, burning, or bloody urine), THEN trigger Yellow_Alert.
+IF belly_pain_symptoms_count ≥ 3 AND belly_pain_intensity < 6, THEN trigger Yellow_Alert.
+IF diabetes_symptoms_count ≤ 3 (and greater than 0), THEN trigger Yellow_Alert.
+IF blood_pressure is within 110\text{–}130 \mathbin{/} 75\text{–}85 \text{ mmHg}, AND body_temperature < 38°C, AND heart_rate is within 60–100 bpm, AND blood_glucose is within target limits, AND reported_symptoms_count == 0, THEN trigger Green_Alert (Informational Only).
+IF Alert_Type == Red_Alert OR Alert_Type == Yellow_Alert, THEN transmit the alert data immediately to the physician dashboard AND send a real-time notification text/email to the responsible doctor.
+IF Alert_Type == Red_Alert OR Alert_Type == Yellow_Alert, THEN hide the visual alarm indicator from the patient application screen AND display only localized medical advice/recommendations to minimize client anxiety.
+IF patient_input_value falls outside safe programmatic boundaries (e.g., Temperature < 34°C or > 43°C), THEN reject the form submission AND prompt the user with contextual target-range validation text.
+Maternal Age
+IF age < 18, THEN set age_set = "Lower".
+IF age ≥ 18 AND age ≤ 35, THEN set age_set = "Normal".
+IF age > 35, THEN set age_set = "Higher".
+Body Mass Index (BMI)
+IF bmi < 19, THEN set bmi_set = "Lower".
+IF bmi ≥ 19 AND bmi ≤ 25, THEN set bmi_set = "Normal".
+IF bmi > 25, THEN set bmi_set = "Higher".
+Inter-Pregnancy Interval
+IF pregnancy_interval_years < 2, THEN set interval_set = "Lower".
+IF pregnancy_interval_years ≥ 2 AND pregnancy_interval_years ≤ 10, THEN set interval_set = "Normal".
+IF pregnancy_interval_years > 10, THEN set interval_set = "Higher".
+Blood Pressure (BP) Boundaries
+IF systolic_bp ≥ 70 AND systolic_bp < 90, THEN set systolic_set = "Low".
+IF systolic_bp ≥ 90 AND systolic_bp ≤ 120, THEN set systolic_set = "Normal".
+IF systolic_bp > 120, THEN set systolic_set = "High".
+IF diastolic_bp ≥ 30 AND diastolic_bp < 50, THEN set diastolic_set = "Low".
+IF diastolic_bp ≥ 50 AND diastolic_bp ≤ 90, THEN set diastolic_set = "Normal".
+IF diastolic_bp > 90 AND diastolic_bp ≤ 120, THEN set diastolic_set = "High".
+📊 2. Baseline Demographics Risk Assessment Rules
+The system evaluates basic socio-demographic features to trigger an initial risk level before analyzing lab values:
+High-Risk Matrix
+IF age_set == "Normal" AND bmi_set == "Higher" AND interval_set == "Higher", THEN set demographic_risk = "High".
+IF age_set == "Higher" AND bmi_set == "Higher" AND interval_set == "Higher", THEN set demographic_risk = "High".
+IF age_set == "Lower" AND bmi_set == "Higher" AND interval_set == "Higher", THEN set demographic_risk = "High".
+IF age_set == "Lower" AND bmi_set == "Higher" AND interval_set == "Lower", THEN set demographic_risk = "High".
+IF age_set == "Lower" AND interval_set == "Higher" AND bmi_set == "Normal", THEN set demographic_risk = "High".
+Moderate-Risk Matrix
+IF age_set == "Normal" AND bmi_set == "Higher" AND interval_set == "Normal", THEN set demographic_risk = "Moderate".
+IF age_set == "Normal" AND bmi_set == "Higher" AND interval_set == "Lower", THEN set demographic_risk = "Moderate".
+IF age_set == "Normal" AND bmi_set == "Lower" AND interval_set == "Higher", THEN set demographic_risk = "Moderate".
+IF age_set == "Higher" AND interval_set == "Normal" AND (bmi_set == "Normal" OR bmi_set == "Higher"), THEN set demographic_risk = "Moderate".
+IF age_set == "Higher" AND bmi_set == "Higher" AND interval_set == "Lower", THEN set demographic_risk = "Moderate".
+IF age_set == "Higher" AND interval_set == "High" AND (bmi_set == "Normal" OR bmi_set == "Lower"), THEN set demographic_risk = "Moderate".
+IF age_set == "Higher" AND bmi_set == "Lower" AND interval_set == "Lower", THEN set demographic_risk = "Moderate".
+IF age_set == "Lower" AND bmi_set == "Lower" AND interval_set == "Lower", THEN set demographic_risk = "Moderate".
+IF age_set == "Lower" AND interval_set == "Normal" AND (bmi_set == "Normal" OR bmi_set == "Higher"), THEN set demographic_risk = "Moderate".
+IF age_set == "Lower" AND bmi_set == "Lower" AND interval_set == "Higher", THEN set demographic_risk = "Moderate".
+Low-Risk Matrix
+IF age_set == "Normal" AND bmi_set == "Normal" AND interval_set == "Normal", THEN set demographic_risk = "Low".
+IF age_set == "Normal" AND bmi_set == "Normal" AND interval_set == "Lower", THEN set demographic_risk = "Low".
+IF age_set == "Normal" AND bmi_set == "Normal" AND interval_set == "Higher", THEN set demographic_risk = "Low".
+IF age_set == "Normal" AND bmi_set == "Lower" AND interval_set == "Normal", THEN set demographic_risk = "Low".
+IF age_set == "Normal" AND bmi_set == "Lower" AND interval_set == "Lower", THEN set demographic_risk = "Low".
+IF age_set == "Higher" AND bmi_set == "Lower" AND interval_set == "Normal", THEN set demographic_risk = "Low".
+IF age_set == "Higher" AND bmi_set == "Normal" AND interval_set == "Lower", THEN set demographic_risk = "Low".
+IF age_set == "Lower" AND bmi_set == "Lower" AND interval_set == "Normal", THEN set demographic_risk = "Low".
+https://pmc.ncbi.nlm.nih.gov/articles/PMC10836132/pdf/10.1177_20552076241230073.pdf
+https://www.mdpi.com/2227-9032/10/12/2484
+RISK MONITORING
+Rule ID
+IF condition
+THEN action
+Score
+RH-01
+IF maternal age ≤ 16
+THEN add age risk score
++1
+RH-02
+IF maternal age > 35
+THEN add age risk score
++2
+RH-03
+IF parity = 0
+THEN add parity risk score
++1
+RH-04
+IF parity = 1–4
+THEN no parity risk score
++0
+RH-05
+IF parity > 4
+THEN add parity risk score
++2
+RH-06
+IF abortions ≥ 2 OR infertility history = yes
+THEN add reproductive-history risk
++1
+RH-07
+IF previous postpartum bleeding = yes
+THEN add risk score
++1
+RH-08
+IF manual removal of placenta = yes
+THEN add risk score
++1
+RH-09
+IF previous baby >9 lb
+THEN add risk score
++1
+RH-10
+IF previous baby >5 lb 8 oz
+THEN add risk score
++1
+RH-11
+IF previous toxemia/HPN = yes
+THEN add risk score
++1
+RH-12
+IF previous cesarean = yes
+THEN add risk score
++2
+RH-13
+IF previous abnormal/difficult labor = yes
+THEN add risk score
++2
+MEDICAL CONDITION RULES
+Rule ID
+IF condition
+THEN action
+Score
+MC-01
+IF previous gynecological disease = yes
+THEN add medical risk
++1
+MC-02
+IF chronic renal disease = yes
+THEN add medical risk
++1
+MC-03
+IF gestational diabetes = yes
+THEN add medical risk
++1
+MC-04
+IF Class B diabetes or higher = yes
+THEN add medical risk
++3
+MC-05
+IF cardiac disease = yes
+THEN add medical risk
++3
+MC-06
+IF significant medical disease is present
+THEN add corresponding medical score
++1 to +5
+PRESENT PREGNANCY RULES
+Rule ID
+IF condition
+THEN action
+Score
+PP-01
+IF bleeding <20 weeks
+THEN add pregnancy risk
++3
+PP-02
+IF bleeding >20 weeks
+THEN add pregnancy risk
++1
+PP-03
+IF anemia <10 g%
+THEN add pregnancy risk
++1
+PP-04
+IF postmaturity/prematurity = yes
+THEN add pregnancy risk
++1
+PP-05
+IF hypertension = yes
+THEN add pregnancy risk
++2
+PP-06
+IF premature rupture of membrane = yes
+THEN add pregnancy risk
++1
+PP-07
+IF polyhydramnios/oligohydramnios = yes
+THEN add pregnancy risk
++1
+PP-08
+IF IUGR = yes
+THEN add pregnancy risk
++1
+PP-09
+IF multiple pregnancy = yes
+THEN add pregnancy risk
++1
+PP-10
+IF breech/malpresentation = yes
+THEN add pregnancy risk
++1
+PP-11
+IF RH isoimmunization = yes
+THEN add pregnancy risk
++3

@@ -1,7 +1,7 @@
 // PregnaCare Design Tokens — 1:1 Match with web css/style.css
 // Reference Pastel Palette: #CDB4DB, #FFC8DD, #FFAFCC, #BDE0FE, #A2D2FF
 
-export const Colors = {
+export const LightColors = {
   // Primary Pink Accent (--teal in style.css)
   primary: '#FFAFCC',        // hot pink — primary accent
   primaryDark: '#C2577D',    // deepened pink, for text/hover on white
@@ -50,6 +50,62 @@ export const Colors = {
   borderLight: '#F5EFF9',
   textLight: '#A79AA0',
 };
+
+export const DarkColors = {
+  // Primary Pink Accent (--teal in style.css)
+  primary: '#FFAFCC',        // hot pink remains radiant accent
+  primaryDark: '#FF94B8',    // brighter pink for dark background legibility
+  primaryLight: '#3A2530',   // dark muted pink
+  primaryMuted: '#2D1B25',
+
+  // Secondary Blue Accent (--sky in style.css)
+  secondary: '#A2D2FF',
+  secondaryDark: '#6BA5E7',
+  secondaryLight: '#1D2836',
+  secondarySoft: '#182230',
+
+  // Tertiary Lavender Accent (--green in style.css)
+  lavender: '#CDB4DB',
+  lavenderLight: '#2A2434',
+
+  // Clinical Risk Levels
+  riskLow: '#7BC490',
+  riskLowBg: '#16261C',
+  riskMod: '#F0B254',
+  riskModBg: '#3A2C15',
+  riskHigh: '#F06E84',
+  riskHighBg: '#3A1F26',
+
+  // Backgrounds & Surfaces (matching css/style.css [data-theme="dark"])
+  background: '#0A0A0C',     // --bg
+  backgroundSoft: '#131316', // --bg-soft
+  surface: '#1A1A1E',        // --surface
+  surfaceGlass: 'rgba(20, 20, 23, 0.85)',
+  border: '#2C2C31',         // --border
+  borderSoft: '#232328',
+
+  // Typography Colors
+  text: '#F0EEF0',           // --ink
+  textSoft: '#B8B4BA',       // --ink-soft
+  textMuted: '#85818A',      // --muted
+  white: '#1A1A1E',
+
+  // Backward-compatibility aliases for components
+  accent: '#FF94B8',
+  accentLight: '#3A2530',
+  riskSevere: '#F06E84',
+  riskSevereLight: '#3A1F26',
+  riskLowLight: '#16261C',
+  surfaceSoft: '#131316',
+  borderLight: '#2C2C31',
+  textLight: '#85818A',
+};
+
+export const Colors = { ...LightColors };
+
+export function getThemeColors(isDark?: boolean) {
+  return isDark ? DarkColors : LightColors;
+}
 
 export const Gradients = {
   hero: ['#FFAFCC', '#A2D2FF'] as const,

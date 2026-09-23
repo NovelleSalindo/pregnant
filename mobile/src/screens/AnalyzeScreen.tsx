@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Linking,
+  Modal,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Shadows, Gradients } from '../theme/colors';
@@ -21,13 +23,58 @@ interface AnalyzeScreenProps {
 export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
   const [activeSubTab, setActiveSubTab] = useState<'breakdown' | 'recommendations'>('breakdown');
   const [history, setHistory] = useState<any[]>([]);
+  const [coopland, setCoopland] = useState<any>(null);
+  const [cooplandHistory, setCooplandHistory] = useState<any[]>([]);
+  const [clinicalAlerts, setClinicalAlerts] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [localResolved, setLocalResolved] = useState<any>(null);
+  const [selectedHistory, setSelectedHistory] = useState<any>(null);
+  const [modalVisible, setModalVisible] = useState(false);
 
   useEffect(() => {
     async function loadData() {
       try {
+        const savedVisit = await AsyncStorage.getItem('@pregnacare_resolved_visit');
+        if (savedVisit) {
+          try {
+            setLocalResolved(JSON.parse(savedVisit));
+          } catch {}
+        }
+        
+        // Fetch history, coopland & clinical alerts
         const res = await api.getSymptomCatalog();
         setHistory(res.history || []);
+        if (res.coopland) setCoopland(res.coopland);
+        if (res.coopland_history) setCooplandHistory(res.coopland_history);
+        if (res.clinical_alerts) setClinicalAlerts(res.clinical_alerts);
+
+        // Check for local latest Coopland assessment
+        try {
+          const localCoopStr = await AsyncStorage.getItem('@pregnacare_latest_coopland');
+          if (localCoopStr) {
+            const localCoop = JSON.parse(localCoopStr);
+            if (localCoop && localCoop.score !== undefined) {
+              const localRecord = {
+                id: 'local-latest',
+                score: localCoop.score,
+                risk_level: localCoop.level,
+                date: localCoop.date || new Date().toISOString(),
+                factors_json: JSON.stringify(localCoop.factors || []),
+              };
+              setCoopland({
+                coopland_score: localCoop.score,
+                coopland_risk: localCoop.level,
+                date: localRecord.date,
+                contributing_factors: localCoop.factors || [],
+                factors: localCoop.factors || [],
+              });
+              setCooplandHistory((prev: any[]) => {
+                const filtered = (prev || []).filter(p => p.id !== 'local-latest');
+                return [localRecord, ...filtered];
+              });
+            }
+          }
+        } catch {}
       } catch (e: any) {
         console.warn('Error loading assessment history:', e.message);
       } finally {
@@ -49,6 +96,8 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
   const current = history[0] || null;
   const previous = history[1] || null;
 
+  const isCurrentResolved = (current?.status === 'resolved') || (current?.isResolved === true) || (localResolved !== null);
+
   const urgentRecs = (current?.recommendations || []).filter((r: any) => !!r.urgent);
   const generalRecs = (current?.recommendations || []).filter((r: any) => !r.urgent);
 
@@ -57,28 +106,138 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
   const improved = scoreDiff < 0;
 
   const hotlines = [
-    { name: 'National Emergency Services', number: '911', icon: 'call' },
-    { name: 'OB-GYN On-Call Line', number: '(555) 010-2288', icon: 'medkit' },
-    { name: 'Maternal Nurse Hotline (24/7)', number: '(555) 010-9100', icon: 'heart' },
+    { name: 'OB-GYN On-Call Line', number: '', icon: 'medkit' },
   ];
 
   const callNumber = (num: string) => {
     Linking.openURL(`tel:${num.replace(/[^0-9]/g, '')}`);
   };
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Header */}
-      <View style={styles.headerRow}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => onNavigate('home')}>
-          <Ionicons name="arrow-back" size={20} color={Colors.text} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerEyebrow}>CLINICAL DECISION SUPPORT</Text>
-          <Text style={styles.headerTitle}>Risk Breakdown</Text>
-        </View>
-      </View>
+  const formatSymptomName = (id?: string) => {
+    if (!id) return '';
+    return id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  };
 
+  // Active Coopland Assessment computation (definitive classifier for maternal risk)
+  const activeCoopRecord = cooplandHistory[0] || (coopland ? {
+    score: coopland.coopland_score ?? 0,
+    risk_level: coopland.coopland_risk ?? 'Low',
+    date: coopland.date ?? '',
+    factors_json: JSON.stringify(coopland.contributing_factors || coopland.factors || []),
+  } : null);
+
+  const prevCoopRecord = cooplandHistory[1] || null;
+
+  const rawCoopScore: number = activeCoopRecord ? (activeCoopRecord.score ?? coopland?.coopland_score ?? 0) : (coopland?.coopland_score ?? 0);
+  const rawCoopRiskLvl: string = activeCoopRecord ? (activeCoopRecord.risk_level ?? coopland?.coopland_risk ?? 'Low') : (coopland?.coopland_risk ?? 'Low');
+  const coopLevel: 'Low' | 'High' | 'Severe' = (rawCoopRiskLvl.charAt(0).toUpperCase() + rawCoopRiskLvl.slice(1).toLowerCase()) as any;
+  const isSevereCoop = coopLevel === 'Severe';
+  const isHighCoop = coopLevel === 'High';
+  const isLowCoop = !isSevereCoop && !isHighCoop;
+
+  const coopColor = isSevereCoop ? '#DC2626' : (isHighCoop ? '#D97706' : '#15803D');
+  const coopBgColor = isSevereCoop ? '#FEF2F2' : (isHighCoop ? '#FFFBEB' : '#F0FDF4');
+  const coopBorderColor = isSevereCoop ? '#FCA5A5' : (isHighCoop ? '#FCD34D' : '#BBF7D0');
+  const coopTextColor = isSevereCoop ? '#991B1B' : (isHighCoop ? '#92400E' : '#166534');
+
+  // Contributing factors extraction
+  const rawFactorsList: string[] = (() => {
+    if (activeCoopRecord?.factors_json) {
+      try {
+        const parsed = typeof activeCoopRecord.factors_json === 'string' ? JSON.parse(activeCoopRecord.factors_json) : activeCoopRecord.factors_json;
+        if (Array.isArray(parsed)) return parsed;
+      } catch {}
+    }
+    if (Array.isArray(coopland?.contributing_factors)) return coopland.contributing_factors;
+    if (Array.isArray(coopland?.factors)) return coopland.factors;
+    return [];
+  })();
+
+  const reproductiveFactors: { label: string; points: number }[] = [];
+  const medicalFactors: { label: string; points: number }[] = [];
+  const presentPregnancyFactors: { label: string; points: number }[] = [];
+
+  rawFactorsList.forEach((fStr) => {
+    const pointsMatch = fStr.match(/\(\+(\d+)\)/);
+    const points = pointsMatch ? parseInt(pointsMatch[1], 10) : 1;
+    const cleanLabel = fStr.replace(/\s*\(\+\d+\)/, '').trim();
+    const fl = fStr.toLowerCase();
+
+    if (
+      fl.includes('age') ||
+      fl.includes('parity') ||
+      fl.includes('abortion') ||
+      fl.includes('infertility') ||
+      fl.includes('postpartum') ||
+      fl.includes('placenta') ||
+      fl.includes('baby >') ||
+      fl.includes('toxemia') ||
+      fl.includes('cesarean') ||
+      fl.includes('labor')
+    ) {
+      reproductiveFactors.push({ label: cleanLabel, points });
+    } else if (
+      fl.includes('gynecologic') ||
+      fl.includes('renal') ||
+      fl.includes('diabetes') ||
+      fl.includes('cardiac') ||
+      fl.includes('asthma') ||
+      fl.includes('tuberculosis') ||
+      fl.includes('pulmonary') ||
+      fl.includes('thyroid') ||
+      fl.includes('epilepsy') ||
+      fl.includes('torch') ||
+      fl.includes('uti') ||
+      fl.includes('pyelonephritis')
+    ) {
+      medicalFactors.push({ label: cleanLabel, points });
+    } else {
+      presentPregnancyFactors.push({ label: cleanLabel, points });
+    }
+  });
+
+  const totalFactorsCount = reproductiveFactors.length + medicalFactors.length + presentPregnancyFactors.length;
+
+  const cooplandRecommendations = coopLevel === 'Severe'
+    ? [
+        `Severe High-Risk maternal profile identified (Coopland Score: ${rawCoopScore} ≥ 7).`,
+        'Urgent consultation and physical evaluation by an obstetrician at a tertiary hospital facility is strongly advised.',
+        'Continuous maternal-fetal monitoring and specialized delivery planning are required.',
+      ]
+    : coopLevel === 'High'
+    ? [
+        `High Risk maternal profile identified (Coopland Score: ${rawCoopScore}).`,
+        'Schedule an OB-GYN checkup within 24 to 48 hours for clinical evaluation.',
+        'More frequent prenatal visits, targeted laboratory tests, and ultrasound screenings recommended.',
+        'Closely monitor blood pressure, blood glucose, and daily fetal movements.',
+      ]
+    : [
+        `Low Risk maternal profile identified (Coopland Score: ${rawCoopScore} ≤ 2).`,
+        'Maintain routine prenatal visit schedule (monthly until 28 wks, every 2 wks until 36 wks, weekly after).',
+        'Continue daily prenatal vitamins, iron, and folic acid supplements.',
+        'Drink plenty of water and rest when tired. Continue logging daily vitals and symptoms.',
+      ];
+
+  const handleOpenBreakdown = () => {
+    const breakdownPayload = {
+      date: activeCoopRecord?.date || current?.date || new Date().toISOString().replace('T', ' ').slice(0, 19),
+      score: rawCoopScore,
+      coopland_score: rawCoopScore,
+      level: coopLevel,
+      logged_symptoms: current?.logged_symptoms || [],
+      pregnancy_problems: current?.pregnancy_problems || [],
+      rules: rawFactorsList.length > 0
+        ? rawFactorsList.map((f) => `Detected risk factor: ${f}`)
+        : ['No symptoms, vitals in range → Low Risk supported'],
+      recommendations: cooplandRecommendations.map((text) => ({ text })),
+    };
+    setSelectedHistory(breakdownPayload);
+    setModalVisible(true);
+  };
+
+  return (
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
       {/* Segmented Switch */}
       <View style={styles.tabBar}>
         <TouchableOpacity
@@ -112,18 +271,18 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
         </TouchableOpacity>
       </View>
 
-      {!current ? (
+      {!current && !coopland ? (
         <View style={[styles.card, Shadows.card, styles.emptyCard]}>
           <Ionicons name="analytics-outline" size={40} color={Colors.primaryLight} />
           <Text style={styles.emptyTitle}>No Assessments Yet</Text>
           <Text style={styles.emptyDesc}>
-            Complete your first symptom check-in to see your clinical risk breakdown and recommendations.
+            Complete your first risk assessment to see your clinical Coopland risk breakdown and recommendations.
           </Text>
           <TouchableOpacity
             style={styles.emptyBtn}
             onPress={() => onNavigate('symptoms')}
           >
-            <Text style={styles.emptyBtnText}>Start Symptom Check-in</Text>
+            <Text style={styles.emptyBtnText}>Start Risk Assessment</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -131,105 +290,377 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
           {/* --- SUBTAB 1: FACTOR BREAKDOWN & COMPARISON --- */}
           {activeSubTab === 'breakdown' && (
             <View>
-              {/* Current Assessment Hero */}
-              <LinearGradient
-                colors={Gradients.hero}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[styles.heroCard, Shadows.card]}
-              >
-                <Text style={styles.heroEyebrow}>LATEST RISK ASSESSMENT</Text>
-                <Text style={styles.heroTitle}>{current.level} Risk — {current.score}/100</Text>
-                <Text style={styles.heroDate}>
-                  Assessed on {current.date}
+              {/* Hospital Standard Banner */}
+              <View style={[styles.card, Shadows.card, { padding: 16, borderRadius: 16, borderWidth: 1, borderColor: Colors.primaryLight, marginTop: 12 }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: Colors.textMuted, letterSpacing: 0.8 }}>
+                    REPUBLIC OF THE PHILIPPINES
+                  </Text>
+                  <Text style={{ fontSize: 9.5, fontWeight: '700', color: Colors.primaryDark }}>
+                    MD08-FM-011/Rev.0/5Jul2023
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: Colors.text, textTransform: 'uppercase' }}>
+                  Mayor Hilarion A. Ramiro Sr. Medical Center
                 </Text>
-              </LinearGradient>
+                <Text style={{ fontSize: 11, color: Colors.textSoft, marginBottom: 12 }}>
+                  Ozamiz City • Department of OB-GYN
+                </Text>
 
-              {/* Comparison Gauges (Current vs Previous matching analyze.php) */}
-              {previous && (
-                <View style={styles.compareRow}>
-                  <View style={[styles.compareCard, Shadows.card]}>
-                    <Text style={styles.compareLabel}>CURRENT</Text>
-                    <RiskGauge score={current.score} level={current.level} size={140} />
-                    <Text style={styles.compareDate}>{current.date.split(' ')[0]}</Text>
+                <LinearGradient
+                  colors={[Colors.primaryLight, Colors.surface]}
+                  style={{ marginHorizontal: -16, paddingVertical: 12, paddingHorizontal: 16, borderTopWidth: 1, borderBottomWidth: 1, borderColor: Colors.primaryLight, alignItems: 'center' }}
+                >
+                  <Text style={{ fontWeight: '800', fontSize: 15, letterSpacing: 0.8, color: Colors.primaryDark }}>
+                    HIGH RISK EVALUATION (COOPLAND)
+                  </Text>
+                  <Text style={{ fontSize: 11, color: Colors.textSoft, marginTop: 2 }}>
+                    Standardized Maternal Risk Factor Classification
+                  </Text>
+                </LinearGradient>
+
+                {/* Score & Risk Badge Row */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, marginBottom: 14 }}>
+                  <View style={{ flex: 1, backgroundColor: Colors.backgroundSoft, padding: 14, borderRadius: 14, marginRight: 8 }}>
+                    <Text style={{ fontWeight: '800', fontSize: 11, color: Colors.textSoft, marginBottom: 4, textTransform: 'uppercase' }}>
+                      Coopland Score
+                    </Text>
+                    <Text style={{ fontSize: 28, fontWeight: '900', color: Colors.primaryDark }}>
+                      {rawCoopScore}
+                    </Text>
                   </View>
-
-                  <View style={[styles.compareCard, Shadows.card]}>
-                    <Text style={styles.compareLabel}>PREVIOUS</Text>
-                    <RiskGauge score={previous.score} level={previous.level} size={140} />
-                    <Text style={styles.compareDate}>{previous.date.split(' ')[0]}</Text>
+                  <View style={{ flex: 1.2, backgroundColor: Colors.backgroundSoft, padding: 14, borderRadius: 14, marginLeft: 8 }}>
+                    <Text style={{ fontWeight: '800', fontSize: 11, color: Colors.textSoft, marginBottom: 4, textTransform: 'uppercase' }}>
+                      Risk Level
+                    </Text>
+                    <TouchableOpacity
+                      activeOpacity={0.75}
+                      onPress={handleOpenBreakdown}
+                      style={[
+                        { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, alignSelf: 'flex-start' },
+                        coopLevel === 'Severe' && { backgroundColor: Colors.riskHighBg },
+                        coopLevel === 'High' && { backgroundColor: Colors.riskModBg },
+                        coopLevel === 'Low' && { backgroundColor: Colors.riskLowBg },
+                      ]}
+                    >
+                      <Ionicons
+                        name={coopLevel === 'Severe' ? 'alert-circle' : (coopLevel === 'High' ? 'warning' : 'shield-checkmark')}
+                        size={16}
+                        color={coopLevel === 'Severe' ? Colors.riskHigh : (coopLevel === 'High' ? '#d97706' : '#059669')}
+                      />
+                      <Text
+                        style={[
+                          { fontSize: 13, fontWeight: '800' },
+                          coopLevel === 'Severe' && { color: Colors.riskHigh },
+                          coopLevel === 'High' && { color: '#d97706' },
+                          coopLevel === 'Low' && { color: '#059669' },
+                        ]}
+                      >
+                        {coopLevel.toUpperCase()} RISK
+                      </Text>
+                      <Ionicons name="information-circle-outline" size={14} color={coopLevel === 'Low' ? '#059669' : (coopLevel === 'High' ? '#d97706' : Colors.riskHigh)} />
+                    </TouchableOpacity>
                   </View>
                 </View>
-              )}
 
-              {/* Delta Badge (.delta-badge in analyze.php) */}
-              {previous && (
-                <View style={[styles.card, Shadows.card, { alignItems: 'center', paddingVertical: 14 }]}>
-                  <Text style={styles.deltaEyebrow}>SCORE CHANGE SINCE LAST CHECK-IN</Text>
-                  <View style={styles.deltaRow}>
+                {/* Coopland Criteria Guide */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-around', backgroundColor: Colors.backgroundSoft, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, marginBottom: 14 }}>
+                  <Text style={[{ fontSize: 11.5, fontWeight: '600', color: Colors.textMuted }, coopLevel === 'Low' && { color: '#059669', fontWeight: '800' }]}>
+                    Low: 0–2
+                  </Text>
+                  <Text style={{ fontSize: 11.5, color: Colors.border }}>•</Text>
+                  <Text style={[{ fontSize: 11.5, fontWeight: '600', color: Colors.textMuted }, coopLevel === 'High' && { color: '#d97706', fontWeight: '800' }]}>
+                    High: 3–6
+                  </Text>
+                  <Text style={{ fontSize: 11.5, color: Colors.border }}>•</Text>
+                  <Text style={[{ fontSize: 11.5, fontWeight: '600', color: Colors.textMuted }, coopLevel === 'Severe' && { color: Colors.riskHigh, fontWeight: '800' }]}>
+                    Severe: ≥ 7
+                  </Text>
+                </View>
+
+                {/* ── COOPLAND CONTRIBUTING FACTOR BREAKDOWN ── */}
+                <Text style={{ fontWeight: '800', fontSize: 13, color: Colors.textSoft, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Contributing Risk Factors ({totalFactorsCount})
+                </Text>
+
+                {/* Reproductive History Factors */}
+                {reproductiveFactors.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      <Ionicons name="calendar-outline" size={15} color={Colors.primaryDark} />
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: Colors.primaryDark, textTransform: 'uppercase' }}>
+                        Reproductive History
+                      </Text>
+                    </View>
+                    {reproductiveFactors.map((f, idx) => (
+                      <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: Colors.backgroundSoft, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, marginBottom: 6, borderWidth: 1, borderColor: Colors.borderSoft }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.text, flex: 1, marginRight: 8 }}>
+                          {f.label}
+                        </Text>
+                        <View style={{ backgroundColor: Colors.primaryLight, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: Colors.primaryDark }}>
+                            +{f.points}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Associated Medical & Surgical Conditions */}
+                {medicalFactors.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      <Ionicons name="medkit-outline" size={15} color={Colors.primaryDark} />
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: Colors.primaryDark, textTransform: 'uppercase' }}>
+                        Medical / Surgical Conditions
+                      </Text>
+                    </View>
+                    {medicalFactors.map((f, idx) => (
+                      <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: Colors.backgroundSoft, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, marginBottom: 6, borderWidth: 1, borderColor: Colors.borderSoft }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.text, flex: 1, marginRight: 8 }}>
+                          {f.label}
+                        </Text>
+                        <View style={{ backgroundColor: f.points >= 3 ? '#fee2e2' : Colors.primaryLight, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: f.points >= 3 ? '#dc2626' : Colors.primaryDark }}>
+                            +{f.points}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Present Pregnancy Problems */}
+                {presentPregnancyFactors.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      <Ionicons name="heart-outline" size={15} color={Colors.primaryDark} />
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: Colors.primaryDark, textTransform: 'uppercase' }}>
+                        Present Pregnancy Conditions
+                      </Text>
+                    </View>
+                    {presentPregnancyFactors.map((f, idx) => (
+                      <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: Colors.backgroundSoft, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, marginBottom: 6, borderWidth: 1, borderColor: Colors.borderSoft }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.text, flex: 1, marginRight: 8 }}>
+                          {f.label}
+                        </Text>
+                        <View style={{ backgroundColor: f.points >= 3 ? '#fee2e2' : Colors.primaryLight, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: f.points >= 3 ? '#dc2626' : Colors.primaryDark }}>
+                            +{f.points}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* No Factors Detected */}
+                {totalFactorsCount === 0 && (
+                  <View style={{ backgroundColor: '#F0FDF4', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#BBF7D0', marginBottom: 14 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="shield-checkmark" size={18} color="#15803D" />
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#15803D' }}>
+                        No High-Risk Factors Identified
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 12, color: '#166534', marginTop: 4, lineHeight: 17 }}>
+                      Your reproductive history, medical profile, and present pregnancy meet the criteria for baseline Low Risk routine prenatal care.
+                    </Text>
+                  </View>
+                )}
+
+                {/* ── CLINICAL RATIONALE: WHY THIS RESULTED IN THIS LEVEL ── */}
+                <View
+                  style={[
+                    styles.whyCard,
+                    coopLevel === 'Severe' && { backgroundColor: Colors.riskHighBg, borderColor: Colors.riskHigh },
+                    coopLevel === 'High' && { backgroundColor: Colors.riskModBg, borderColor: Colors.riskMod },
+                    coopLevel === 'Low' && { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' },
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                     <Ionicons
-                      name={scoreDiff === 0 ? 'remove' : (improved ? 'arrow-down' : 'arrow-up')}
-                      size={20}
-                      color={scoreDiff === 0 ? Colors.textMuted : (improved ? Colors.riskLow : Colors.riskHigh)}
+                      name={coopLevel === 'Severe' ? 'alert-circle' : (coopLevel === 'High' ? 'warning' : 'shield-checkmark')}
+                      size={18}
+                      color={coopLevel === 'Severe' ? Colors.riskHigh : (coopLevel === 'High' ? '#b45309' : '#15803D')}
                     />
                     <Text
                       style={[
-                        styles.deltaValue,
-                        { color: scoreDiff === 0 ? Colors.textMuted : (improved ? Colors.riskLow : Colors.riskHigh) },
+                        styles.whyTitle,
+                        coopLevel === 'Severe' && { color: Colors.riskHigh },
+                        coopLevel === 'High' && { color: '#b45309' },
+                        coopLevel === 'Low' && { color: '#15803D' },
                       ]}
                     >
-                      {scoreDiff === 0 ? 'No change' : `${scoreDiff > 0 ? '+' : ''}${scoreDiff} pts`}
+                      Why this resulted in {coopLevel} Risk
                     </Text>
                   </View>
-                  <Text style={styles.deltaDesc}>
-                    {current.level === previous.level
-                      ? `Risk category remained stable at ${current.level}.`
-                      : `Risk category shifted from ${previous.level} to ${current.level}.`}
+                  <Text
+                    style={[
+                      styles.whyText,
+                      coopLevel === 'Severe' && { color: '#991b1b' },
+                      coopLevel === 'High' && { color: '#92400e' },
+                      coopLevel === 'Low' && { color: '#166534' },
+                    ]}
+                  >
+                    {coopLevel === 'Severe'
+                      ? `• Your accumulated Coopland score is ${rawCoopScore} (Score ≥ 7 points).\n• In clinical obstetrics, scores in this tier carry high risk of antepartum complications.\n• Tertiary medical facility evaluation and OB-GYN specialist consultation are required immediately.`
+                      : coopLevel === 'High'
+                      ? `• Your accumulated Coopland score is ${rawCoopScore} (Score 3 to 6 points).\n• High-risk factors were detected that require increased prenatal surveillance.\n• Please schedule an OB-GYN checkup within 24 to 48 hours for clinical evaluation.`
+                      : `• Your accumulated Coopland score is ${rawCoopScore} (Score 0 to 2 points).\n• No critical high-risk indicators were detected in your clinical profile.\n• Standard routine outpatient prenatal care and monthly visits are recommended.`}
                   </Text>
+                </View>
+
+                {/* ── CLINICAL RECOMMENDATIONS ── */}
+                <View
+                  style={{
+                    backgroundColor: coopBgColor,
+                    padding: 14,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: coopBorderColor,
+                    marginBottom: 14,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontWeight: '800',
+                      fontSize: 12,
+                      color: coopColor,
+                      marginBottom: 6,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Obstetric Care Guidance {isSevereCoop ? '— Severe Risk' : (isHighCoop ? '— High Risk' : '')}
+                  </Text>
+                  {cooplandRecommendations.map((rec, rIdx) => (
+                    <Text
+                      key={rIdx}
+                      style={{
+                        fontSize: 13,
+                        fontWeight: '500',
+                        color: coopTextColor,
+                        lineHeight: 19,
+                        marginBottom: 4,
+                      }}
+                    >
+                      • {rec}
+                    </Text>
+                  ))}
+                </View>
+
+                {/* Update Coopland Risk Button */}
+                <TouchableOpacity
+                  style={[
+                    styles.viewSymptomDetailsBtn,
+                    { backgroundColor: isSevereCoop ? '#DC2626' : (isHighCoop ? '#D97706' : Colors.primaryDark), marginTop: 4 },
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => onNavigate('symptoms')}
+                >
+                  <Ionicons name="clipboard-outline" size={17} color="#FFF" />
+                  <Text style={styles.viewSymptomDetailsBtnText}>
+                    Update Assess Risk (Coopland Form)
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Attended & Archived Banner */}
+              {isCurrentResolved && (
+                <View style={[styles.card, Shadows.card, { backgroundColor: '#FFF5F8', borderColor: '#F8B4C8', borderWidth: 1, marginTop: 12, padding: 14 }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Ionicons name="shield-checkmark" size={26} color="#C2577D" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '800', color: '#A83863' }}>
+                        Medical Visit Recorded &amp; Stored in History
+                      </Text>
+                      <Text style={{ fontSize: 12, color: '#6B5C63', marginTop: 2 }}>
+                        {localResolved?.facility ? `Clinic: ${localResolved.facility}` : 'Hospital / Clinic visit logged.'} This severe alert has been safely archived in your records.
+                      </Text>
+                      {localResolved?.notes ? (
+                        <Text style={{ fontSize: 11.5, color: '#9B2C52', fontStyle: 'italic', marginTop: 3 }}>
+                          Doctor Advice: "{localResolved.notes}"
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={{
+                      marginTop: 12,
+                      backgroundColor: '#C2577D',
+                      paddingVertical: 10,
+                      borderRadius: 11,
+                      alignItems: 'center',
+                      flexDirection: 'row',
+                      justifyContent: 'center',
+                      gap: 6,
+                    }}
+                    onPress={() => onNavigate('symptoms')}
+                  >
+                    <Ionicons name="add-circle" size={17} color="#FFF" />
+                    <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>Start New Risk Assessment</Text>
+                  </TouchableOpacity>
                 </View>
               )}
 
-              {/* Contributing Factor Hits (RH / MC / PP rules from base.php) */}
-              <View style={[styles.card, Shadows.card]}>
-                <Text style={styles.cardEyebrow}>RISK FACTOR BREAKDOWN</Text>
-                <Text style={styles.cardSectionTitle}>Triggered Clinical Criteria</Text>
+              {/* Comparison Gauges (Current vs Previous Coopland Assessment) */}
+              <View style={styles.compareRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.compareCard,
+                    Shadows.card,
+                    isSevereCoop && { borderColor: '#FCA5A5', backgroundColor: '#FFF5F5' },
+                    isHighCoop && { borderColor: '#FCD34D', backgroundColor: '#FFFDF5' },
+                  ]}
+                  activeOpacity={0.8}
+                  onPress={handleOpenBreakdown}
+                >
+                  <Text style={[styles.compareLabel, { color: coopColor }]}>CURRENT COOPLAND</Text>
+                  <RiskGauge
+                    score={rawCoopScore}
+                    level={coopLevel}
+                    size={140}
+                    cooplandScore={rawCoopScore}
+                  />
+                  <Text style={styles.compareDate}>
+                    {activeCoopRecord?.date ? activeCoopRecord.date.split(' ')[0] : 'Current'}
+                  </Text>
+                  <Text style={{ fontSize: 11.5, fontWeight: '800', color: coopColor, marginTop: 4 }}>
+                    Score: {rawCoopScore}
+                  </Text>
+                  <View style={[styles.tapToViewBadge, { backgroundColor: isSevereCoop ? '#FEE2E2' : (isHighCoop ? '#FEF3C7' : '#DCFCE7') }]}>
+                    <Text style={[styles.tapToViewText, { color: coopColor }]}>Tap for breakdown</Text>
+                    <Ionicons name="chevron-forward" size={11} color={coopColor} />
+                  </View>
+                </TouchableOpacity>
 
-                {current.structural?.hits && current.structural.hits.length > 0 ? (
-                  current.structural.hits.map((hit: any, idx: number) => (
-                    <View key={idx} style={styles.factorRow}>
-                      <View style={styles.factorBadge}>
-                        <Text style={styles.factorBadgeText}>{hit.cat || 'RULE'}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.factorLabel}>{hit.label || hit.name}</Text>
-                        <Text style={styles.factorSub}>Points: +{hit.points || 1}</Text>
-                      </View>
-                    </View>
-                  ))
+                {prevCoopRecord ? (
+                  <View style={[styles.compareCard, Shadows.card]}>
+                    <Text style={styles.compareLabel}>PREVIOUS COOPLAND</Text>
+                    <RiskGauge
+                      score={prevCoopRecord.score}
+                      level={prevCoopRecord.risk_level}
+                      size={140}
+                      cooplandScore={prevCoopRecord.score}
+                    />
+                    <Text style={styles.compareDate}>
+                      {prevCoopRecord.date ? prevCoopRecord.date.split(' ')[0] : ''}
+                    </Text>
+                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: Colors.primaryDark, marginTop: 4 }}>
+                      Score: {prevCoopRecord.score}
+                    </Text>
+                  </View>
                 ) : (
-                  <View style={styles.emptyFactors}>
-                    <Ionicons name="checkmark-circle-outline" size={28} color={Colors.riskLow} />
-                    <Text style={styles.emptyFactorsText}>
-                      No high-risk reproductive history or chronic condition rules triggered.
+                  <View style={[styles.compareCard, Shadows.card, { justifyContent: 'center', opacity: 0.8 }]}>
+                    <Ionicons name="time-outline" size={32} color={Colors.primaryDark} />
+                    <Text style={[styles.compareLabel, { marginTop: 6 }]}>NO PREVIOUS</Text>
+                    <Text style={{ fontSize: 11, color: Colors.textMuted, textAlign: 'center', marginTop: 4, paddingHorizontal: 6 }}>
+                      Previous Coopland evaluation will appear here after your next check-in.
                     </Text>
                   </View>
                 )}
               </View>
-
-              {/* Acute Safety Trigger Rules */}
-              {current.rules && current.rules.length > 0 && (
-                <View style={[styles.card, Shadows.card, { borderColor: Colors.riskHigh }]}>
-                  <Text style={[styles.cardEyebrow, { color: Colors.riskHigh }]}>
-                    ACUTE CLINICAL SAFETY RULES
-                  </Text>
-                  {current.rules.map((r: any, idx: number) => (
-                    <View key={idx} style={styles.ruleAlertItem}>
-                      <Ionicons name="warning" size={18} color={Colors.riskHigh} />
-                      <Text style={styles.ruleAlertText}>{r.text || r.label}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
             </View>
           )}
 
@@ -237,7 +668,7 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
           {activeSubTab === 'recommendations' && (
             <View>
               {/* Urgent Action Banner */}
-              {urgentRecs.length > 0 && (
+              {!isCurrentResolved && coopLevel !== 'Low' && urgentRecs.length > 0 && (
                 <View style={[styles.card, Shadows.card, { borderColor: Colors.riskHigh }]}>
                   <View style={styles.urgentHeader}>
                     <Ionicons name="warning" size={20} color={Colors.riskHigh} />
@@ -256,7 +687,14 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
               <View style={[styles.card, Shadows.card]}>
                 <Text style={styles.cardEyebrow}>DAILY CLINICAL CARE</Text>
                 <Text style={styles.cardSectionTitle}>Personalized Guidance</Text>
-                {generalRecs.length > 0 ? (
+                {cooplandRecommendations.length > 0 ? (
+                  cooplandRecommendations.map((recText: string, idx: number) => (
+                    <View key={idx} style={styles.recRow}>
+                      <Ionicons name="checkmark-circle" size={18} color={Colors.primaryDark} />
+                      <Text style={styles.recRowText}>{recText}</Text>
+                    </View>
+                  ))
+                ) : generalRecs.length > 0 ? (
                   generalRecs.map((r: any, idx: number) => (
                     <View key={idx} style={styles.recRow}>
                       <Ionicons name="checkmark-circle" size={18} color={Colors.primaryDark} />
@@ -295,10 +733,14 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
               <View style={[styles.card, Shadows.card]}>
                 <Text style={styles.cardEyebrow}>RECOMMENDATION TIMELINE</Text>
                 <Text style={styles.cardSectionTitle}>Past Check-in Assessments</Text>
-                {history.slice(0, 5).map((h, idx) => (
+                {history.slice(0, 5).map((h: any, idx: number) => (
                   <View key={h.id || idx} style={styles.timelineItem}>
-                    <View style={[styles.timelineScoreBadge, { backgroundColor: Colors.primaryLight }]}>
-                      <Text style={styles.timelineScoreText}>{h.score}</Text>
+                    <View style={[styles.timelineScoreBadge, { backgroundColor: h.level === 'Severe' ? Colors.riskHighBg : (h.level === 'High' ? Colors.riskModBg : Colors.riskLowBg) }]}>
+                      <Ionicons
+                        name={h.level === 'Severe' ? 'alert-circle' : (h.level === 'High' ? 'warning' : 'checkmark-circle')}
+                        size={18}
+                        color={h.level === 'Severe' ? Colors.riskHigh : (h.level === 'High' ? Colors.riskMod : Colors.riskLow)}
+                      />
                     </View>
                     <View style={{ flex: 1 }}>
                       <View style={styles.timelineHeader}>
@@ -316,7 +758,226 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
           )}
         </>
       )}
-    </ScrollView>
+      </ScrollView>
+
+      {/* Symptoms Breakdown Modal */}
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Assessment Breakdown</Text>
+                <Text style={styles.modalSubtitle}>
+                  {selectedHistory?.date ? `Check-in: ${selectedHistory.date}` : 'Assessment Details'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeBtn}>
+                <Ionicons name="close" size={22} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              {/* Overall Risk Level Summary Card */}
+              {(() => {
+                const rawLvl = (selectedHistory?.level || 'Low').toLowerCase();
+                const isLow = rawLvl === 'low';
+                const isHigh = rawLvl === 'high';
+                const isSevere = rawLvl === 'severe';
+
+                const bannerBg = isSevere ? Colors.riskHighBg : (isHigh ? Colors.riskModBg : Colors.riskLowBg);
+                const bannerBorder = isSevere ? Colors.riskHigh : (isHigh ? Colors.riskMod : Colors.riskLow);
+                const bannerTextColor = isSevere ? Colors.riskHigh : (isHigh ? '#B45309' : '#15803D');
+
+                return (
+                  <View style={[styles.resultSummaryBanner, { backgroundColor: bannerBg, borderColor: bannerBorder, borderWidth: 1 }]}>
+                    <View>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: bannerTextColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Resulting Clinical Level
+                      </Text>
+                      <Text style={{ fontSize: 20, fontWeight: '800', color: bannerTextColor, marginTop: 2 }}>
+                        {(selectedHistory?.level || 'LOW').toUpperCase()} RISK
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: bannerTextColor }}>Overall Score</Text>
+                      <Text style={{ fontSize: 22, fontWeight: '900', color: bannerTextColor, marginTop: 2 }}>
+                        {selectedHistory?.coopland_score !== undefined
+                          ? selectedHistory.coopland_score
+                          : (typeof selectedHistory?.score === 'number' && selectedHistory.score <= 15
+                              ? selectedHistory.score
+                              : rawCoopScore)}
+                        <Text style={{ fontSize: 13, fontWeight: '600' }}> / 8</Text>
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })()}
+
+              {/* WHY THIS RESULTED IN THIS RISK LEVEL */}
+              {(() => {
+                const rawLvl = (selectedHistory?.level || 'Low').toLowerCase();
+                const isLow = rawLvl === 'low';
+                const isHigh = rawLvl === 'high';
+
+                if (isLow) {
+                  return (
+                    <View style={[styles.whyCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <Ionicons name="shield-checkmark" size={19} color="#15803D" />
+                        <Text style={[styles.whyTitle, { color: '#15803D' }]}>Why this resulted in Low Risk</Text>
+                      </View>
+                      <Text style={[styles.whyText, { color: '#166534' }]}>
+                        • All symptoms you selected are mild or within routine, manageable limits.{'\n'}
+                        • No critical emergency red-flag triggers (such as vaginal bleeding, fluid leakage, severe headache, convulsions, or severe abdominal pain) were detected.{'\n'}
+                        • Coopland high-risk score is in the safe baseline range, meaning you qualify for routine prenatal monitoring.
+                      </Text>
+                    </View>
+                  );
+                } else if (isHigh) {
+                  return (
+                    <View style={[styles.whyCard, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <Ionicons name="warning" size={19} color="#B45309" />
+                        <Text style={[styles.whyTitle, { color: '#B45309' }]}>Why this resulted in High Risk</Text>
+                      </View>
+                      <Text style={[styles.whyText, { color: '#92400E' }]}>
+                        • Moderate or persistent symptoms were reported that require prompt medical review.{'\n'}
+                        • Elevated Coopland risk factors or clinical alerts were detected above normal baseline levels.
+                      </Text>
+                    </View>
+                  );
+                } else {
+                  return (
+                    <View style={[styles.whyCard, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <Ionicons name="alert-circle" size={19} color="#DC2626" />
+                        <Text style={[styles.whyTitle, { color: '#DC2626' }]}>Why this resulted in Severe Risk</Text>
+                      </View>
+                      <Text style={[styles.whyText, { color: '#991B1B' }]}>
+                        • Acute clinical warning flags or critical Coopland risk indicators were detected.{'\n'}
+                        • Immediate OB-GYN or emergency clinical consultation is advised.
+                      </Text>
+                    </View>
+                  );
+                }
+              })()}
+
+              {/* SYMPTOMS YOU CHOSE */}
+              <Text style={styles.sectionHeading}>Symptoms You Chose</Text>
+              {selectedHistory?.logged_symptoms && selectedHistory.logged_symptoms.length > 0 ? (
+                selectedHistory.logged_symptoms.map((item: any, idx: number) => {
+                  const sev = item.severity || 'Mild';
+                  const isSevSevere = sev === 'Severe';
+                  const isSevMod = sev === 'Moderate';
+                  const badgeBg = isSevSevere ? Colors.riskHighBg : (isSevMod ? Colors.riskModBg : '#DCFCE7');
+                  const badgeText = isSevSevere ? Colors.riskHigh : (isSevMod ? '#B45309' : '#15803D');
+
+                  return (
+                    <View key={idx} style={styles.symptomItemCard}>
+                      <View style={styles.symptomItemHeader}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                          <Ionicons name="medical" size={16} color={Colors.primaryDark} />
+                          <Text style={styles.symptomItemName}>
+                            {item.name || formatSymptomName(item.id)}
+                          </Text>
+                        </View>
+                        <View style={[styles.symptomSeverityBadge, { backgroundColor: badgeBg }]}>
+                          <Text style={[styles.symptomSeverityText, { color: badgeText }]}>
+                            {sev}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.symptomItemDetails}>
+                        Duration: {item.duration || 'Recent'} • Frequency: {item.frequency || 'Occasional'}
+                      </Text>
+                      {sev === 'Mild' && (
+                        <Text style={styles.symptomHelpNote}>
+                          ✓ Mild intensity — manageable via routine prenatal hydration & rest.
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })
+              ) : (
+                <View style={[styles.symptomItemCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Ionicons name="checkmark-done-circle" size={22} color="#15803D" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.symptomItemName, { color: '#15803D' }]}>
+                        No Adverse Symptoms Logged
+                      </Text>
+                      <Text style={[styles.symptomItemDetails, { color: '#166534', marginTop: 2 }]}>
+                        You reported feeling well without adverse symptoms for this assessment, keeping your risk score in the Low Risk category.
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {/* PRESENT PREGNANCY FACTORS IF ANY */}
+              {selectedHistory?.pregnancy_problems && selectedHistory.pregnancy_problems.length > 0 && (
+                <View style={{ marginTop: 10 }}>
+                  <Text style={styles.sectionHeading}>Present Pregnancy Factors</Text>
+                  <View style={[styles.symptomItemCard, { borderColor: Colors.riskMod }]}>
+                    {selectedHistory.pregnancy_problems.map((prob: string, pIdx: number) => (
+                      <Text key={pIdx} style={{ fontSize: 13, color: Colors.text, marginBottom: 4, fontWeight: '600' }}>
+                        • {prob}
+                      </Text>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* CONTRIBUTING CLINICAL FACTORS */}
+              {((selectedHistory?.rules && selectedHistory.rules.length > 0) || (selectedHistory?.main_contributors && selectedHistory.main_contributors.length > 0)) && (
+                <View style={{ marginTop: 10 }}>
+                  <Text style={styles.sectionHeading}>Clinical Contributor Notes</Text>
+                  <View style={[styles.symptomItemCard, { backgroundColor: Colors.surface, borderColor: Colors.border }]}>
+                    {(selectedHistory?.rules || selectedHistory?.main_contributors).map((rule: any, rIdx: number) => (
+                      <View key={rIdx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 6 }}>
+                        <Ionicons name="information-circle" size={16} color={Colors.primaryDark} style={{ marginTop: 2 }} />
+                        <Text style={{ fontSize: 12.5, color: Colors.text, flex: 1, lineHeight: 18 }}>
+                          {typeof rule === 'string' ? rule : (rule.text || rule.label || '')}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* PERSONALIZED RECOMMENDATION */}
+              {selectedHistory?.recommendations && selectedHistory.recommendations.length > 0 && (
+                <View style={{ marginTop: 10, marginBottom: 8 }}>
+                  <Text style={styles.sectionHeading}>Personalized Guidance</Text>
+                  <View style={[styles.symptomItemCard, { backgroundColor: Colors.primaryLight + '35', borderColor: Colors.primaryLight }]}>
+                    <Text style={{ fontSize: 13, color: Colors.text, lineHeight: 19 }}>
+                      {typeof selectedHistory.recommendations[0] === 'string'
+                        ? selectedHistory.recommendations[0]
+                        : (selectedHistory.recommendations[0]?.text || '')}
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Close Button */}
+            <TouchableOpacity
+              style={styles.modalCloseActionBtn}
+              onPress={() => setModalVisible(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalCloseActionBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 };
 
@@ -681,5 +1342,164 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: 13,
     fontWeight: '800',
+  },
+  tapToViewBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+    backgroundColor: Colors.primaryLight + '40',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  tapToViewText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primaryDark,
+  },
+  viewSymptomDetailsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: Colors.primaryDark,
+    paddingVertical: 11,
+    borderRadius: 12,
+    marginTop: 14,
+  },
+  viewSymptomDetailsBtnText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 20,
+    maxHeight: '88%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderSoft,
+    paddingBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  closeBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.backgroundSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalScroll: {
+    marginBottom: 10,
+  },
+  resultSummaryBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 14,
+  },
+  whyCard: {
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+  },
+  whyTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+  },
+  whyText: {
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
+  sectionHeading: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.textSoft,
+    marginBottom: 8,
+    marginTop: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  symptomItemCard: {
+    backgroundColor: Colors.backgroundSoft,
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.borderSoft,
+  },
+  symptomItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  symptomItemName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  symptomSeverityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  symptomSeverityText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  symptomItemDetails: {
+    fontSize: 11.5,
+    color: Colors.textMuted,
+    marginTop: 4,
+  },
+  symptomHelpNote: {
+    fontSize: 11,
+    color: Colors.primaryDark,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  modalCloseActionBtn: {
+    backgroundColor: Colors.primaryDark,
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  modalCloseActionBtnText: {
+    color: '#FFF',
+    fontWeight: '800',
+    fontSize: 14,
   },
 });

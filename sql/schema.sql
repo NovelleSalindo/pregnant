@@ -13,6 +13,10 @@ USE pregnacare;
 CREATE TABLE users (
   id            VARCHAR(20)  PRIMARY KEY,
   role          ENUM('patient','admin') NOT NULL,
+  username      VARCHAR(80)  NULL UNIQUE,
+  first_name    VARCHAR(80)  NULL,
+  middle_name   VARCHAR(80)  NULL,
+  last_name     VARCHAR(80)  NULL,
   name          VARCHAR(120) NOT NULL,
   email         VARCHAR(160) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
@@ -106,7 +110,27 @@ CREATE TABLE assessments (
   fuzzy_json        JSON NULL,
   rules_json        JSON NULL,
   recommendations_json JSON NULL,
+  status            ENUM('active','resolved') NOT NULL DEFAULT 'active',
+  visited_facility  VARCHAR(150) NULL,
+  doctor_name       VARCHAR(120) NULL,
+  visit_date        DATETIME NULL,
+  doctor_notes      TEXT NULL,
+  resolved_at       DATETIME NULL,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ---------- clinical visits (hospital / OB-GYN consultation resolution) ----------
+CREATE TABLE clinical_visits (
+  id             VARCHAR(20) PRIMARY KEY,
+  user_id        VARCHAR(20) NOT NULL,
+  assessment_id  VARCHAR(20) NOT NULL,
+  facility       VARCHAR(150) NULL,
+  doctor_name    VARCHAR(120) NULL,
+  visit_date     DATETIME NOT NULL,
+  notes          TEXT NULL,
+  created_at     DATETIME NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (assessment_id) REFERENCES assessments(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ---------- notifications ----------
@@ -225,11 +249,8 @@ INSERT INTO symptom_catalog (id, name, icon, weight) VALUES
 ('back_pain','Back Pain','fa-bone',0.25),
 ('dizziness','Dizziness','fa-rotate',0.50),
 ('difficulty_breathing','Difficulty Breathing','fa-lungs',0.95),
-('reduced_movement','Reduced Baby Movement','fa-baby',1.00),
-('high_bp_feel','High Blood Pressure Symptoms','fa-heart-pulse',0.85),
 ('convulsions','Convulsions','fa-bolt',1.00),
-('fatigue','Fatigue','fa-battery-quarter',0.20),
-('shortness_of_breath','Shortness of Breath','fa-wind',0.70);
+('fatigue','Fatigue','fa-battery-quarter',0.20);
 
 INSERT INTO ahp_weights (criterion, weight) VALUES
 ('maternal_age',0.08),

@@ -258,10 +258,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const isHighLevel = !isSevereLevel && (rawLevel.includes('high') || rawLevel.includes('mod'));
   const isLowLevel = !isSevereLevel && !isHighLevel;
 
+  const localResolvedDate = localResolved?.date ? new Date(localResolved.date).getTime() : 0;
+  const assessmentDate = risk?.assessmentDate ? new Date(risk.assessmentDate).getTime() : 0;
+
+  // Only consider resolved if the doctor visit resolution occurred AFTER the latest assessment
   const isResolved =
-    risk.status === 'resolved' ||
-    risk.isResolved === true ||
-    Boolean(localResolved);
+    Boolean(localResolved) && localResolvedDate >= assessmentDate
+      ? true
+      : (risk.status === 'resolved' || risk.isResolved === true);
 
   const isSevere = !isResolved && isSevereLevel;
   const isHigh = !isResolved && isHighLevel;

@@ -412,6 +412,9 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
   const handleCooplandSubmit = async () => {
     setSubmitting(true);
     try {
+      // Clear any previous doctor visit resolution so the new evaluation displays actively
+      await AsyncStorage.removeItem('@pregnacare_resolved_visit').catch(() => {});
+
       const matchedFactorLabels = liveCoopland.factors.map(f => `${f.label} (+${f.points})`);
       const res = await api.submitCooplandAssessment({
         score: liveCoopland.score,

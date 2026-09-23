@@ -96,7 +96,9 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
   const current = history[0] || null;
   const previous = history[1] || null;
 
-  const isCurrentResolved = (current?.status === 'resolved') || (current?.isResolved === true) || (localResolved !== null);
+  const localResolvedDate = localResolved?.date ? new Date(localResolved.date).getTime() : 0;
+  const currentAsmDate = current?.date ? new Date(current.date).getTime() : 0;
+  const isCurrentResolved = (current?.status === 'resolved') || (current?.isResolved === true) || (Boolean(localResolved) && localResolvedDate >= currentAsmDate);
 
   const urgentRecs = (current?.recommendations || []).filter((r: any) => !!r.urgent);
   const generalRecs = (current?.recommendations || []).filter((r: any) => !r.urgent);

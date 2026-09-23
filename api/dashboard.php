@@ -136,7 +136,14 @@ try {
     // 2.3 Also fetch latest general assessment for clinical visit status
     $stmtAsm = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 1");
     $stmtAsm->execute([$u['id']]);
-    $latestAssessment = $stmtAsm->fetch();
+    $latestAssessment = $stmtAsm->fetch() ?: null;
+
+    $latestVisit = null;
+    try {
+        $stmtVisit = $pdo->prepare("SELECT * FROM clinical_visits WHERE user_id = ? ORDER BY visit_date DESC, created_at DESC LIMIT 1");
+        $stmtVisit->execute([$u['id']]);
+        $latestVisit = $stmtVisit->fetch() ?: null;
+    } catch (Exception $e) {}
 
     $coopScore = $latestCoopland ? (int)$latestCoopland['score'] : 0;
     $coopLevel = $latestCoopland ? ucfirst(strtolower($latestCoopland['risk_level'])) : 'Low';
@@ -303,10 +310,10 @@ json_success([
         'status' => ($latestAssessment && ($latestAssessment['status'] ?? 'active') === 'resolved') ? 'resolved' : 'active',
         'isResolved' => ($latestAssessment && ($latestAssessment['status'] ?? 'active') === 'resolved'),
         'canResolveVisit' => in_array(strtoupper($coopLevel ?? 'Low'), ['SEVERE', 'HIGH']) && !($latestAssessment && ($latestAssessment['status'] ?? 'active') === 'resolved'),
-        'visitedFacility' => $latestAssessment ? $latestAssessment['visited_facility'] : null,
-        'doctorName' => $latestAssessment ? $latestAssessment['doctor_name'] : null,
-        'visitDate' => $latestAssessment ? $latestAssessment['visit_date'] : null,
-        'doctorNotes' => $latestAssessment ? $latestAssessment['doctor_notes'] : null,
+        'visitedFacility' => (is_array($latestAssessment) ? ($latestAssessment['visited_facility'] ?? null) : null) ?: ($latestVisit['facility'] ?? null),
+        'doctorName' => (is_array($latestAssessment) ? ($latestAssessment['doctor_name'] ?? null) : null) ?: ($latestVisit['doctor_name'] ?? null),
+        'visitDate' => (is_array($latestAssessment) ? ($latestAssessment['visit_date'] ?? null) : null) ?: ($latestVisit['visit_date'] ?? null),
+        'doctorNotes' => (is_array($latestAssessment) ? ($latestAssessment['doctor_notes'] ?? null) : null) ?: ($latestVisit['notes'] ?? null),
         'assessmentDate' => $latestCoopland ? $latestCoopland['date'] : ($latestAssessment ? $latestAssessment['date'] : null),
         'previousCoopland' => $prevCoopland ? [
             'id' => $prevCoopland['id'],

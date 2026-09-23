@@ -605,7 +605,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     cooplandScore={coopScore}
                   />
                   <Text style={[styles.compareDate, isDarkMode && { color: '#B8B4BA' }]}>
-                    {latestCoopland?.date ? latestCoopland.date.split('T')[0] : (risk.assessmentDate ? risk.assessmentDate.split(' ')[0] : 'Current')}
+                    {latestCoopland?.date ? latestCoopland.date.split('T')[0] : (risk?.assessmentDate ? risk.assessmentDate.split(' ')[0] : 'Current')}
                   </Text>
                   <Text style={[styles.compareScoreText, { color: riskPrimaryColor, fontWeight: '800' }]}>
                     Score: {coopScore}
@@ -636,7 +636,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     Active Contributing Factors
                   </Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6 }}>
-                    {effectiveFactors.slice(0, 4).map((f: string, i: number) => {
+                    {effectiveFactors.slice(0, 3).map((f: string, i: number) => {
                       const is3pt = f.includes('+3');
                       const is2pt = f.includes('+2');
                       return (
@@ -663,9 +663,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                         </View>
                       );
                     })}
-                    {risk.factors.length > 3 && (
+                    {effectiveFactors && effectiveFactors.length > 3 && (
                       <View style={{ backgroundColor: isDarkMode ? '#2C2C31' : '#F4F0F2', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: riskPrimaryColor }}>+{risk.factors.length - 3} more</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: riskPrimaryColor }}>+{effectiveFactors.length - 3} more</Text>
                       </View>
                     )}
                   </View>

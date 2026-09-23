@@ -4,6 +4,11 @@
    Shared API bootstrap: CORS, JSON response helpers, Bearer Auth.
    ============================================================ */
 
+// Turn off HTML display of errors/warnings to avoid corrupting JSON API payloads
+ini_set('display_errors', '0');
+ini_set('display_startup_errors', '0');
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING & ~E_DEPRECATED);
+
 // 1. CORS Headers for React Native / Web Clients
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
@@ -18,6 +23,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // 2. Load base.php for Database connection ($pdo) and risk engine
 require_once __DIR__ . '/../base.php';
+
+// Ensure assessments table has clinical visit resolution columns
+foreach ([
+    "ALTER TABLE assessments ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'",
+    "ALTER TABLE assessments ADD COLUMN visited_facility VARCHAR(150) NULL",
+    "ALTER TABLE assessments ADD COLUMN doctor_name VARCHAR(120) NULL",
+    "ALTER TABLE assessments ADD COLUMN visit_date DATETIME NULL",
+    "ALTER TABLE assessments ADD COLUMN doctor_notes TEXT NULL",
+] as $alterSql) {
+    try { $pdo->exec($alterSql); } catch (Exception $ex) {}
+}
 
 // 3. Ensure API tokens and mobile tracker tables exist
 $pdo->exec("CREATE TABLE IF NOT EXISTS api_tokens (

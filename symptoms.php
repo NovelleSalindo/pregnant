@@ -172,6 +172,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
         $clinicalAlerts = evaluate_clinical_alerts($u['id'], $pdo, $symptoms, $vitalsData);
         // -----------------------------------------
 
+        // If any critical acute symptoms were reported, record an urgent notification
+        if (!empty($clinicalAlerts['has_critical'])) {
+            $critMsg = implode('; ', array_column($clinicalAlerts['alerts'] ?? [], 'message'));
+            if (!$critMsg && !empty($clinicalAlerts['alerts'][0]['title'])) {
+                $critMsg = $clinicalAlerts['alerts'][0]['title'];
+            }
+            try {
+                $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
+                    ->execute([uid('ntf'), $u['id'], '🚨 Urgent: Critical Symptoms Detected', $critMsg ?: 'Critical maternal symptoms reported. Please seek immediate medical evaluation.', now_iso(), 'severe_risk_alert']);
+            } catch (Exception $e) {}
+        }
+
         log_action('symptom_fuzzy_checkin_and_assess');
         flash("Symptom check-in and risk analysis completed successfully.", "success");
         redirect("analyze.php?a={$asmId}&c=" . ($cooplandResult['id'] ?? ''));

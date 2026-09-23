@@ -429,11 +429,24 @@ render_header('Dashboard', 'dashboard');
 </div>
 
 <div class="card" style="margin-top:16px;">
-  <div class="eyebrow">Recent Notifications</div>
-  <?php if ($notifications): foreach ($notifications as $n): ?>
-    <div class="kv">
-      <span class="k"><i class="fa-solid fa-bell" style="margin-right:6px;color:var(--teal);"></i><?php echo e($n['title']); ?> — <span class="muted"><?php echo e($n['body']); ?></span></span>
-      <span class="v muted" style="font-weight:600;"><?php echo e(fmt_date($n['date'])); ?></span>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <div class="eyebrow"><i class="fa-solid fa-bell" style="margin-right:6px;color:var(--teal);"></i>Recent Notifications</div>
+    <a href="notifications.php" class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:12px;"><i class="fa-solid fa-list"></i> View All</a>
+  </div>
+  <?php if ($notifications): foreach (array_slice($notifications, 0, 4) as $n): 
+    $kind = $n['kind'] ?? '';
+    $title = $n['title'] ?? '';
+    $isSevere = ($kind === 'severe_risk_alert' || $kind === 'emergency' || stripos($title, 'Severe') !== false);
+    $isHigh = !$isSevere && ($kind === 'high_risk_alert' || stripos($title, 'High') !== false);
+    $iconColor = $isSevere ? '#DC2626' : ($isHigh ? '#D97706' : 'var(--teal)');
+    $icon = ($isSevere || $isHigh) ? 'fa-triangle-exclamation' : 'fa-bell';
+  ?>
+    <div class="kv" style="<?php echo ($isSevere ? 'background:#FEE2E2;border-left:3px solid #DC2626;border-radius:6px;padding:6px 10px;margin-bottom:6px;' : ($isHigh ? 'background:#FEF3C7;border-left:3px solid #D97706;border-radius:6px;padding:6px 10px;margin-bottom:6px;' : '')); ?>">
+      <span class="k">
+        <i class="fa-solid <?php echo $icon; ?>" style="margin-right:6px;color:<?php echo $iconColor; ?>;"></i>
+        <strong style="color:<?php echo ($isSevere ? '#DC2626' : ($isHigh ? '#B45309' : 'inherit')); ?>;"><?php echo e($n['title']); ?></strong> — <span class="muted"><?php echo e($n['body']); ?></span>
+      </span>
+      <span class="v muted" style="font-weight:600;font-size:12px;"><?php echo e(fmt_date($n['date'])); ?></span>
     </div>
   <?php endforeach; else: ?>
     <div class="empty"><i class="fa-solid fa-bell-slash"></i>No notifications yet.</div>

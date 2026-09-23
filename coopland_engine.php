@@ -161,6 +161,29 @@ function evaluate_coopland($user_id, $pdo, $symptoms = [], $pregnancy_problems =
             $risk_level,
             json_encode($matched_factors)
         ]);
+
+        try {
+            $stmtChk = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND date >= DATE_SUB(NOW(), INTERVAL 30 SECOND) AND (kind LIKE '%risk%' OR title LIKE '%Risk%')");
+            $stmtChk->execute([$user_id]);
+            if (!$stmtChk->fetch()) {
+                $notifId = uid('ntf');
+                if ($risk_level === 'Severe') {
+                    $notifTitle = '🚨 Urgent: Severe Maternal Risk Detected';
+                    $notifBody = "Your Coopland risk score is {$score} (Severe Risk). Immediate medical evaluation by an obstetrician or at a hospital triage is required.";
+                    $notifKind = 'severe_risk_alert';
+                } elseif ($risk_level === 'High') {
+                    $notifTitle = '⚠️ Maternal Risk Alert: High Risk';
+                    $notifBody = "Your Coopland risk score is {$score} (High Risk). Please schedule an OB-GYN checkup within 24 to 48 hours.";
+                    $notifKind = 'high_risk_alert';
+                } else {
+                    $notifTitle = '✅ Risk Assessment Completed: Low Risk';
+                    $notifBody = "Your Coopland risk score is {$score} (Low Risk). Continue your routine prenatal checkup schedule.";
+                    $notifKind = 'low_risk_assessment';
+                }
+                $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
+                    ->execute([$notifId, $user_id, $notifTitle, $notifBody, now_iso(), $notifKind]);
+            }
+        } catch (Exception $e) {}
     }
     
     return [

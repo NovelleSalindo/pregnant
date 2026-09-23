@@ -37,7 +37,16 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   onItemPress,
   isDarkMode = false,
 }) => {
-  const getIconForKind = (kind?: string) => {
+  const getIconForKind = (kind?: string, title: string = '') => {
+    if (kind === 'severe_risk_alert' || title.includes('Severe') || title.includes('🚨')) {
+      return { name: 'alert-circle' as const, color: '#DC2626' };
+    }
+    if (kind === 'high_risk_alert' || title.includes('High') || title.includes('⚠️')) {
+      return { name: 'warning' as const, color: '#D97706' };
+    }
+    if (kind === 'low_risk_assessment' || title.includes('Low')) {
+      return { name: 'checkmark-circle' as const, color: '#16A34A' };
+    }
     switch (kind) {
       case 'ob_visit':
         return { name: 'calendar' as const, color: Colors.primaryDark };
@@ -108,7 +117,9 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
               </View>
             ) : (
               notifications.map((item) => {
-                const icon = getIconForKind(item.kind);
+                const isSevere = item.kind === 'severe_risk_alert' || item.title?.includes('Severe') || item.title?.includes('🚨');
+                const isHigh = !isSevere && (item.kind === 'high_risk_alert' || item.title?.includes('High') || item.title?.includes('⚠️'));
+                const icon = getIconForKind(item.kind, item.title);
                 const isUnread = !item.is_read;
                 return (
                   <TouchableOpacity
@@ -117,6 +128,18 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                       styles.itemCard,
                       isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31' },
                       isUnread && (isDarkMode ? { backgroundColor: '#2A1F26', borderColor: '#FF94B8' } : styles.itemUnread),
+                      isSevere && {
+                        borderLeftWidth: 4,
+                        borderLeftColor: '#DC2626',
+                        backgroundColor: isDarkMode ? '#281318' : '#FEE2E2',
+                        borderColor: '#FCA5A5',
+                      },
+                      isHigh && {
+                        borderLeftWidth: 4,
+                        borderLeftColor: '#D97706',
+                        backgroundColor: isDarkMode ? '#282010' : '#FEF3C7',
+                        borderColor: '#FCD34D',
+                      },
                     ]}
                     onPress={() => onItemPress?.(item)}
                     activeOpacity={0.7}
@@ -126,10 +149,24 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                     </View>
                     <View style={styles.itemBody}>
                       <View style={styles.itemHeader}>
-                        <Text style={[styles.itemTitle, isDarkMode && { color: '#F0EEF0' }]}>{item.title}</Text>
+                        <Text style={[
+                          styles.itemTitle,
+                          isSevere && { color: '#DC2626', fontWeight: '800' },
+                          isHigh && { color: '#B45309', fontWeight: '800' },
+                          !isSevere && !isHigh && isDarkMode && { color: '#F0EEF0' },
+                        ]}>
+                          {item.title}
+                        </Text>
                         <Text style={[styles.itemDate, isDarkMode && { color: '#85818A' }]}>{item.date?.slice(5, 16) || ''}</Text>
                       </View>
-                      <Text style={[styles.itemText, isDarkMode && { color: '#B8B4BA' }]}>{item.body}</Text>
+                      <Text style={[
+                        styles.itemText,
+                        isSevere && { color: isDarkMode ? '#FCA5A5' : '#991B1B' },
+                        isHigh && { color: isDarkMode ? '#FCD34D' : '#92400E' },
+                        !isSevere && !isHigh && isDarkMode && { color: '#B8B4BA' },
+                      ]}>
+                        {item.body}
+                      </Text>
                     </View>
                   </TouchableOpacity>
                 );

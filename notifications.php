@@ -16,6 +16,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     redirect('notifications.php');
 }
 
+// Auto-sync: If user has an active High or Severe risk assessment without a notification, create one now
+try {
+    $stmtLatestRisk = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
+    $stmtLatestRisk->execute([$u['id']]);
+    $latestRisk = $stmtLatestRisk->fetch();
+
+    if ($latestRisk) {
+        $rl = ucfirst(strtolower($latestRisk['risk_level']));
+        if ($rl === 'Severe' || $rl === 'High') {
+            $kindSearch = ($rl === 'Severe') ? 'severe_risk_alert' : 'high_risk_alert';
+            $stmtChk = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND (kind = ? OR title LIKE ?)");
+            $titleSearch = "%{$rl}%";
+            $stmtChk->execute([$u['id'], $kindSearch, $titleSearch]);
+            if (!$stmtChk->fetch()) {
+                $notifId = uid('ntf');
+                if ($rl === 'Severe') {
+                    $notifTitle = '🚨 Urgent: Severe Maternal Risk Detected';
+                    $notifBody = "Your Coopland risk score is {$latestRisk['score']} (Severe Risk). Immediate medical evaluation by an obstetrician or at hospital triage is required.";
+                    $notifKind = 'severe_risk_alert';
+                } else {
+                    $notifTitle = '⚠️ Maternal Risk Alert: High Risk';
+                    $notifBody = "Your Coopland risk score is {$latestRisk['score']} (High Risk). Please schedule an OB-GYN checkup within 24 to 48 hours.";
+                    $notifKind = 'high_risk_alert';
+                }
+                $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
+                    ->execute([$notifId, $u['id'], $notifTitle, $notifBody, $latestRisk['date'] ?: now_iso(), $notifKind]);
+            }
+        }
+    }
+} catch (Exception $e) {}
+
 $filter = $_GET['filter'] ?? 'all';
 if ($filter === 'unread'){
     $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id=? AND is_read=0 ORDER BY date DESC");
@@ -25,8 +56,29 @@ if ($filter === 'unread'){
 $stmt->execute([$u['id']]);
 $items = $stmt->fetchAll();
 
-$kindIcon = ['error'=>'fa-circle-exclamation','success'=>'fa-circle-check','info'=>'fa-circle-info','ob_visit'=>'fa-calendar-check','emergency'=>'fa-truck-medical','due_date'=>'fa-baby'];
-$kindColor = ['error'=>'var(--risk-high)','success'=>'var(--risk-low)','info'=>'var(--teal)','ob_visit'=>'var(--teal-dark)','emergency'=>'var(--risk-high)','due_date'=>'var(--teal-dark)'];
+$kindIcon = [
+    'severe_risk_alert' => 'fa-triangle-exclamation',
+    'high_risk_alert' => 'fa-triangle-exclamation',
+    'low_risk_assessment' => 'fa-circle-check',
+    'error' => 'fa-circle-exclamation',
+    'success' => 'fa-circle-check',
+    'info' => 'fa-circle-info',
+    'ob_visit' => 'fa-calendar-check',
+    'emergency' => 'fa-truck-medical',
+    'due_date' => 'fa-baby',
+];
+
+$kindColor = [
+    'severe_risk_alert' => '#DC2626',
+    'high_risk_alert' => '#D97706',
+    'low_risk_assessment' => '#16A34A',
+    'error' => '#DC2626',
+    'success' => 'var(--risk-low)',
+    'info' => 'var(--teal)',
+    'ob_visit' => 'var(--teal-dark)',
+    'emergency' => '#DC2626',
+    'due_date' => 'var(--teal-dark)',
+];
 
 render_header('Notifications', 'notifications');
 ?>
@@ -47,29 +99,89 @@ render_header('Notifications', 'notifications');
     <div class="empty"><i class="fa-solid fa-bell-slash"></i>No notifications<?php echo $filter==='unread' ? ' — you\'re all caught up!' : ' yet.'; ?></div>
   <?php endif; ?>
 
-  <?php foreach ($items as $n): ?>
-    <div class="engine-step" style="<?php echo $n['is_read'] ? '' : 'background:var(--sky-light);border-radius:12px;padding-left:10px;padding-right:10px;'; ?>">
-      <div class="num" style="background:transparent;color:<?php echo $kindColor[$n['kind']] ?? 'var(--teal)'; ?>;font-size:18px;">
-        <i class="fa-solid <?php echo $kindIcon[$n['kind']] ?? 'fa-bell'; ?>"></i>
+  <?php foreach ($items as $n): 
+    $kind = $n['kind'] ?? '';
+    $title = $n['title'] ?? '';
+    $isSevere = ($kind === 'severe_risk_alert' || $kind === 'emergency' || stripos($title, 'Severe') !== false);
+    $isHigh = !$isSevere && ($kind === 'high_risk_alert' || stripos($title, 'High') !== false);
+    $isLow = !$isSevere && !$isHigh && ($kind === 'low_risk_assessment' || stripos($title, 'Low') !== false);
+
+    $cardBorder = 'var(--border)';
+    $cardBg = $n['is_read'] ? 'transparent' : 'var(--sky-light)';
+    $iconColor = $kindColor[$kind] ?? 'var(--teal)';
+    $icon = $kindIcon[$kind] ?? 'fa-bell';
+
+    if ($isSevere) {
+        $iconColor = '#DC2626';
+        $icon = 'fa-triangle-exclamation';
+        $cardBorder = '#FCA5A5';
+        $cardBg = $n['is_read'] ? '#FFF8F8' : '#FEE2E2';
+    } elseif ($isHigh) {
+        $iconColor = '#D97706';
+        $icon = 'fa-triangle-exclamation';
+        $cardBorder = '#FCD34D';
+        $cardBg = $n['is_read'] ? '#FFFDF7' : '#FEF3C7';
+    } elseif ($isLow) {
+        $iconColor = '#16A34A';
+        $icon = 'fa-circle-check';
+    }
+  ?>
+    <div class="engine-step" style="border: 1px solid <?php echo $cardBorder; ?>; <?php echo ($isSevere || $isHigh) ? 'border-left: 6px solid ' . $iconColor . ';' : ''; ?> background: <?php echo $cardBg; ?>; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; transition: all 0.2s ease;">
+      <div class="num" style="background:transparent;color:<?php echo $iconColor; ?>;font-size:22px;margin-right:12px;">
+        <i class="fa-solid <?php echo $icon; ?>"></i>
       </div>
       <div style="flex:1;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-          <strong><?php echo e($n['title']); ?></strong>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <strong style="font-size:15px;color:<?php echo ($isSevere ? '#B91C1C' : ($isHigh ? '#B45309' : 'var(--ink)')); ?>;">
+              <?php echo e($title); ?>
+            </strong>
+            <?php if ($isSevere): ?>
+              <span class="badge" style="background:#DC2626;color:#FFF;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;">URGENT SEVERE</span>
+            <?php elseif ($isHigh): ?>
+              <span class="badge" style="background:#D97706;color:#FFF;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;">HIGH RISK</span>
+            <?php elseif ($isLow): ?>
+              <span class="badge" style="background:#16A34A;color:#FFF;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;">LOW RISK</span>
+            <?php endif; ?>
+          </div>
           <span class="muted" style="font-size:12px;"><?php echo e(fmt_datetime($n['date'])); ?></span>
         </div>
-        <p style="margin:4px 0 8px;font-size:13.5px;color:var(--ink-soft);"><?php echo e($n['body']); ?></p>
-        <div style="display:flex;gap:8px;">
+        <p style="margin:6px 0 10px;font-size:13.5px;color:<?php echo ($isSevere ? '#991B1B' : ($isHigh ? '#92400E' : 'var(--ink-soft)')); ?>;line-height:1.45;">
+          <?php echo e($n['body']); ?>
+        </p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <?php if ($isSevere): ?>
+            <a href="analyze.php" class="btn btn-sm" style="background:#DC2626;color:#FFF;font-weight:600;padding:3px 10px;text-decoration:none;border-radius:6px;">
+              <i class="fa-solid fa-file-medical"></i> View Clinical Breakdown
+            </a>
+            <a href="tel:911" class="btn btn-outline btn-sm" style="border-color:#DC2626;color:#DC2626;padding:3px 10px;text-decoration:none;border-radius:6px;">
+              <i class="fa-solid fa-phone"></i> Emergency Hotline
+            </a>
+          <?php elseif ($isHigh): ?>
+            <a href="analyze.php" class="btn btn-sm" style="background:#D97706;color:#FFF;font-weight:600;padding:3px 10px;text-decoration:none;border-radius:6px;">
+              <i class="fa-solid fa-file-medical"></i> View Risk Breakdown
+            </a>
+            <a href="reminders.php" class="btn btn-outline btn-sm" style="border-color:#D97706;color:#B45309;padding:3px 10px;text-decoration:none;border-radius:6px;">
+              <i class="fa-solid fa-calendar-plus"></i> Set OB-GYN Visit
+            </a>
+          <?php elseif ($isLow): ?>
+            <a href="analyze.php" class="btn btn-ghost btn-sm" style="color:#16A34A;padding:3px 8px;text-decoration:none;">
+              <i class="fa-solid fa-chart-line"></i> View Analysis
+            </a>
+          <?php endif; ?>
+
           <?php if (!$n['is_read']): ?>
-          <form method="post" action="notifications.php">
+          <form method="post" action="notifications.php" style="margin:0;">
             <input type="hidden" name="action" value="mark_read">
             <input type="hidden" name="id" value="<?php echo e($n['id']); ?>">
-            <button class="btn btn-ghost btn-sm" type="submit" style="padding:2px 8px;"><i class="fa-solid fa-check"></i> Mark Read</button>
+            <button class="btn btn-ghost btn-sm" type="submit" style="padding:3px 8px;"><i class="fa-solid fa-check"></i> Mark Read</button>
           </form>
           <?php endif; ?>
-          <form method="post" action="notifications.php" onsubmit="return confirm('Delete this notification?');">
+
+          <form method="post" action="notifications.php" onsubmit="return confirm('Delete this notification?');" style="margin:0;">
             <input type="hidden" name="action" value="delete">
             <input type="hidden" name="id" value="<?php echo e($n['id']); ?>">
-            <button class="btn btn-ghost btn-sm" type="submit" style="padding:2px 8px;"><i class="fa-solid fa-trash"></i> Delete</button>
+            <button class="btn btn-ghost btn-sm" type="submit" style="padding:3px 8px;"><i class="fa-solid fa-trash"></i> Delete</button>
           </form>
         </div>
       </div>

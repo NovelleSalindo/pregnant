@@ -384,6 +384,19 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
 
       setAssessmentResult(mergedResult);
       setShowResultModal(true);
+
+      // Trigger notification for severe or high symptoms
+      if (mergedResult.level === 'Severe') {
+        sendPhoneNotification(
+          '🚨 Urgent: Severe Maternal Risk Detected',
+          'Severe maternal symptoms were reported. Immediate medical evaluation by an obstetrician or hospital triage is strongly advised.'
+        ).catch(() => {});
+      } else if (mergedResult.level === 'High') {
+        sendPhoneNotification(
+          '⚠️ Maternal Risk Alert: High Risk',
+          'High-priority maternal symptoms were recorded. Please schedule an OB-GYN checkup within 24 to 48 hours.'
+        ).catch(() => {});
+      }
     } catch (e: any) {
       const activeSymptomsList = catalog
         .filter((c) => (selectedSeverities[c.id] || 'None') !== 'None')
@@ -529,6 +542,19 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
         recommendations: fallbackRecs,
       });
       setShowResultModal(true);
+
+      // Trigger user notification based on evaluated risk level (offline/catch fallback)
+      if (liveCoopland.level === 'Severe') {
+        sendPhoneNotification(
+          '🚨 Urgent: Severe Maternal Risk Detected',
+          `Your Coopland score is ${liveCoopland.score} (Severe Risk). Immediate medical evaluation by an obstetrician or hospital triage is strongly advised.`
+        ).catch(() => {});
+      } else if (liveCoopland.level === 'High') {
+        sendPhoneNotification(
+          '⚠️ Maternal Risk Alert: High Risk',
+          `Your Coopland score is ${liveCoopland.score} (High Risk). Please schedule an OB-GYN checkup within 24 to 48 hours.`
+        ).catch(() => {});
+      }
     } finally {
       setSubmitting(false);
     }

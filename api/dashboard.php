@@ -244,11 +244,40 @@ try {
     $loggedSymptomsToday = (int)$stmt->fetchColumn() > 0;
 } catch (Exception $e) {}
 
-// 5. Notifications
+// 5. Notifications with Severe/High risk auto-sync
 $notifications = [];
 $unreadCount = 0;
 try {
-    $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY date DESC LIMIT 5");
+    // Ensure active High or Severe risks are notified in notifications table
+    $stmtHighRisks = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND (risk_level IN ('Severe', 'High') OR score >= 3) ORDER BY date DESC");
+    $stmtHighRisks->execute([$u['id']]);
+    foreach ($stmtHighRisks->fetchAll() as $rk) {
+        $rl = ucfirst(strtolower($rk['risk_level']));
+        if ($rl === 'Moderate') $rl = 'High';
+        if ($rk['score'] >= 7) $rl = 'Severe';
+        elseif ($rk['score'] >= 3 && $rl !== 'Severe') $rl = 'High';
+
+        $kindSearch = ($rl === 'Severe') ? 'severe_risk_alert' : 'high_risk_alert';
+        $titleSearch = "%{$rl}%";
+        $stmtChk = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND (kind = ? OR title LIKE ?)");
+        $stmtChk->execute([$u['id'], $kindSearch, $titleSearch]);
+        if (!$stmtChk->fetch()) {
+            $notifId = uid('ntf');
+            if ($rl === 'Severe') {
+                $notifTitle = '🚨 Urgent: Severe Maternal Risk Detected';
+                $notifBody = "Your Coopland risk score is {$rk['score']} (Severe Risk). Immediate medical evaluation by an obstetrician or at a hospital triage is required.";
+                $notifKind = 'severe_risk_alert';
+            } else {
+                $notifTitle = '⚠️ Maternal Risk Alert: High Risk';
+                $notifBody = "Your Coopland risk score is {$rk['score']} (High Risk). Please schedule an OB-GYN checkup within 24 to 48 hours.";
+                $notifKind = 'high_risk_alert';
+            }
+            $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
+                ->execute([$notifId, $u['id'], $notifTitle, $notifBody, $rk['date'] ?: now_iso(), $notifKind]);
+        }
+    }
+
+    $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY date DESC LIMIT 20");
     $stmt->execute([$u['id']]);
     $notifications = $stmt->fetchAll();
 

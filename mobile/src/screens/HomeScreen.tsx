@@ -38,6 +38,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   isDarkMode = false,
 }) => {
   const [data, setData] = useState<any>(null);
+  const [latestCoopland, setLatestCoopland] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [localResolved, setLocalResolved] = useState<any>(null);
@@ -76,6 +77,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   };
 
   useEffect(() => {
+    AsyncStorage.getItem('@pregnacare_latest_coopland').then((val) => {
+      if (val) {
+        try {
+          setLatestCoopland(JSON.parse(val));
+        } catch {}
+      }
+    });
     AsyncStorage.getItem('@pregnacare_resolved_visit').then((val) => {
       if (val) {
         try {
@@ -86,56 +94,29 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   }, []);
 
   const fetchDashboard = useCallback(async () => {
+    // 1. Immediately read latest local Coopland assessment so UI updates instantaneously
     try {
-      // 1. Sync pending offline mutations if back online
+      const val = await AsyncStorage.getItem('@pregnacare_latest_coopland');
+      if (val) {
+        setLatestCoopland(JSON.parse(val));
+      }
+      const resVisit = await AsyncStorage.getItem('@pregnacare_resolved_visit');
+      if (resVisit) {
+        setLocalResolved(JSON.parse(resVisit));
+      } else {
+        setLocalResolved(null);
+      }
+    } catch {}
+
+    try {
+      // 2. Sync pending offline mutations if back online
       await api.syncOfflineQueue().catch(() => {});
 
-      // 2. Fetch dashboard records (cached if offline)
+      // 3. Fetch dashboard records
       const res = await api.getDashboard();
-
-      // Merge latest evaluated Coopland assessment from local storage
-      try {
-        const localCoopStr = await AsyncStorage.getItem('@pregnacare_latest_coopland');
-        if (localCoopStr) {
-          const localCoop = JSON.parse(localCoopStr);
-          if (localCoop && localCoop.score !== undefined) {
-            const serverScore = res?.risk?.cooplandScore ?? 0;
-            const serverDate = res?.risk?.assessmentDate ? new Date(res.risk.assessmentDate).getTime() : 0;
-            const localDate = localCoop.date ? new Date(localCoop.date).getTime() : 0;
-
-            if (serverScore === 0 || localDate >= serverDate) {
-              if (!res.risk) res.risk = {};
-              res.risk.cooplandScore = localCoop.score;
-              res.risk.level = localCoop.level;
-              res.risk.factors = localCoop.factors || [];
-              res.risk.assessmentDate = localCoop.date || new Date().toISOString();
-
-              if (localCoop.level === 'Severe') {
-                res.risk.latestScore = 80;
-              } else if (localCoop.level === 'High') {
-                res.risk.latestScore = 55;
-              } else {
-                res.risk.latestScore = 20;
-              }
-
-              if (localCoop.recommendations && localCoop.recommendations.length > 0) {
-                res.risk.topRecommendations = localCoop.recommendations.map((recText: string, idx: number) => ({
-                  text: recText,
-                  category: localCoop.level === 'Severe' ? 'Urgent Action' : (localCoop.level === 'High' ? 'Priority Care' : 'Routine Care'),
-                  urgent: localCoop.level === 'Severe' || (localCoop.level === 'High' && idx === 0),
-                  icon: localCoop.level === 'Severe' ? 'alert-circle' : (localCoop.level === 'High' ? 'warning' : 'checkmark-circle'),
-                }));
-              }
-            }
-          }
-        }
-      } catch (mergeErr) {
-        console.warn('Error merging local coopland into dashboard:', mergeErr);
-      }
-
       setData(res);
 
-      // 3. Check for gestational milestone notification
+      // Check for gestational milestone notification
       const weeks = res?.pregnancy?.weeks !== null && res?.pregnancy?.weeks !== undefined ? res.pregnancy.weeks : 32;
       const lastNotified = await AsyncStorage.getItem('@pregnacare_last_notified_week');
       if (lastNotified !== String(weeks)) {
@@ -241,9 +222,40 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     name: 'Novelle B. Salindo',
     email: 'novelle2023.salindo@gmail.com',
   };
-  let recs = risk?.topRecommendations || [];
+  const coopScore = latestCoopland?.score !== undefined ? latestCoopland.score : (risk?.cooplandScore ?? 0);
+  const coopLevelStr = latestCoopland?.level || risk?.level || 'Low';
+  const rawLevel = coopLevelStr.toString().toLowerCase();
+  const isSevereLevel = rawLevel.includes('severe');
+  const isHighLevel = !isSevereLevel && (rawLevel.includes('high') || rawLevel.includes('mod'));
+  const isLowLevel = !isSevereLevel && !isHighLevel;
+
+  const localResolvedDate = localResolved?.date ? new Date(localResolved.date).getTime() : 0;
+  const assessmentDate = latestCoopland?.date
+    ? new Date(latestCoopland.date).getTime()
+    : (risk?.assessmentDate ? new Date(risk.assessmentDate).getTime() : 0);
+
+  // Only consider resolved if the doctor visit resolution occurred strictly AFTER the current assessment date
+  const isResolved = Boolean(localResolved) && localResolvedDate > assessmentDate;
+
+  const isSevere = !isResolved && isSevereLevel;
+  const isHigh = !isResolved && isHighLevel;
+
+  const activeLevelStr = isSevereLevel ? 'Severe' : (isHighLevel ? 'High' : 'Low');
+  const riskPrimaryColor = isSevereLevel ? '#DC2626' : (isHighLevel ? '#D97706' : '#15803D');
+  const riskBgColor = isSevereLevel ? '#FEE2E2' : (isHighLevel ? '#FEF3C7' : '#DCFCE7');
+  const riskBorderColor = isSevereLevel ? '#FCA5A5' : (isHighLevel ? '#FCD34D' : '#BBF7D0');
+
+  let recs = (latestCoopland?.recommendations && latestCoopland.recommendations.length > 0)
+    ? latestCoopland.recommendations.map((r: string, idx: number) => ({
+        text: r,
+        urgent: isSevereLevel || (isHighLevel && idx === 0),
+        category: isSevereLevel ? 'Urgent Action' : (isHighLevel ? 'Priority Care' : 'Routine Care'),
+        icon: isSevereLevel ? 'alert-circle' : (isHighLevel ? 'warning' : 'checkmark-circle'),
+      }))
+    : (risk?.topRecommendations || []);
+
   if (recs.length === 0) {
-    const defaultLevel = risk.level === 'Severe' || risk.level === 'High' ? risk.level : 'Low';
+    const defaultLevel = isSevereLevel ? 'Severe' : (isHighLevel ? 'High' : 'Low');
     recs = buildRecommendations(defaultLevel as any, {
       age: 28,
       bp_sys: 120,
@@ -253,27 +265,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     });
   }
 
-  const rawLevel = (risk.level || 'Low').toString().toLowerCase();
-  const isSevereLevel = rawLevel.includes('severe');
-  const isHighLevel = !isSevereLevel && (rawLevel.includes('high') || rawLevel.includes('mod'));
-  const isLowLevel = !isSevereLevel && !isHighLevel;
-
-  const localResolvedDate = localResolved?.date ? new Date(localResolved.date).getTime() : 0;
-  const assessmentDate = risk?.assessmentDate ? new Date(risk.assessmentDate).getTime() : 0;
-
-  // Only consider resolved if the doctor visit resolution occurred AFTER the latest assessment
-  const isResolved =
-    Boolean(localResolved) && localResolvedDate >= assessmentDate
-      ? true
-      : (risk.status === 'resolved' || risk.isResolved === true);
-
-  const isSevere = !isResolved && isSevereLevel;
-  const isHigh = !isResolved && isHighLevel;
-
-  const activeLevelStr = isSevereLevel ? 'Severe' : (isHighLevel ? 'High' : 'Low');
-  const riskPrimaryColor = isSevereLevel ? '#DC2626' : (isHighLevel ? '#D97706' : '#15803D');
-  const riskBgColor = isSevereLevel ? '#FEE2E2' : (isHighLevel ? '#FEF3C7' : '#DCFCE7');
-  const riskBorderColor = isSevereLevel ? '#FCA5A5' : (isHighLevel ? '#FCD34D' : '#BBF7D0');
+  const effectiveFactors = latestCoopland?.factors || risk?.factors || [];
 
   const handleSaveVisit = async () => {
     if (!facilityInput.trim()) {
@@ -469,7 +461,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   🚨 URGENT: SEVERE MATERNAL RISK DETECTED
                 </Text>
                 <Text style={[styles.riskBannerDesc, { color: isDarkMode ? '#FCA5A5' : '#991B1B' }]}>
-                  Coopland Score: {risk.cooplandScore ?? 7}. Immediate medical evaluation at the nearest hospital triage or consultation with your OB-GYN is strongly advised.
+                  Coopland Score: {coopScore}. Immediate medical evaluation at the nearest hospital triage or consultation with your OB-GYN is strongly advised.
                 </Text>
               </View>
             </View>
@@ -513,7 +505,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   ⚠️ HIGH MATERNAL RISK DETECTED
                 </Text>
                 <Text style={[styles.riskBannerDesc, { color: isDarkMode ? '#FCD34D' : '#92400E' }]}>
-                  Coopland Score: {risk.cooplandScore ?? 3}. One or more high-risk criteria were identified. Please schedule an OB-GYN checkup within 24 to 48 hours.
+                  Coopland Score: {coopScore}. One or more high-risk criteria were identified. Please schedule an OB-GYN checkup within 24 to 48 hours.
                 </Text>
               </View>
             </View>
@@ -607,16 +599,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     CURRENT COOPLAND
                   </Text>
                   <RiskGauge
-                    score={risk.cooplandScore ?? 0}
+                    score={isSevereLevel ? 80 : (isHighLevel ? 55 : 20)}
                     level={activeLevelStr}
                     size={150}
-                    cooplandScore={risk.cooplandScore ?? 0}
+                    cooplandScore={coopScore}
                   />
                   <Text style={[styles.compareDate, isDarkMode && { color: '#B8B4BA' }]}>
-                    {risk.assessmentDate ? risk.assessmentDate.split(' ')[0] : 'Current'}
+                    {latestCoopland?.date ? latestCoopland.date.split('T')[0] : (risk.assessmentDate ? risk.assessmentDate.split(' ')[0] : 'Current')}
                   </Text>
                   <Text style={[styles.compareScoreText, { color: riskPrimaryColor, fontWeight: '800' }]}>
-                    Score: {risk.cooplandScore !== undefined ? risk.cooplandScore : 0}
+                    Score: {coopScore}
                   </Text>
                   <View
                     style={{
@@ -638,13 +630,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 </TouchableOpacity>
               </View>
 
-              {risk.factors && risk.factors.length > 0 && (
+              {effectiveFactors && effectiveFactors.length > 0 && (
                 <View style={{ marginTop: 6, marginBottom: 8, paddingHorizontal: 4, alignItems: 'center', width: '100%' }}>
                   <Text style={{ fontSize: 10.5, fontWeight: '700', color: isDarkMode ? '#85818A' : Colors.textMuted, textTransform: 'uppercase', marginBottom: 6 }}>
                     Active Contributing Factors
                   </Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6 }}>
-                    {risk.factors.slice(0, 3).map((f: string, i: number) => {
+                    {effectiveFactors.slice(0, 4).map((f: string, i: number) => {
                       const is3pt = f.includes('+3');
                       const is2pt = f.includes('+2');
                       return (

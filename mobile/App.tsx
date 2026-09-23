@@ -65,15 +65,28 @@ function MainApp() {
   const [authInitialTab, setAuthInitialTab] = useState<'login' | 'register'>('login');
 
   const fetchUserData = useCallback(async () => {
+    let localNotifs: any[] = [];
+    try {
+      const localNotifsStr = await AsyncStorage.getItem('@pregnacare_notifications');
+      if (localNotifsStr) {
+        localNotifs = JSON.parse(localNotifsStr);
+      }
+    } catch {}
+
     try {
       const dashboard = await api.getDashboard();
-      if (dashboard?.notifications?.items) {
-        setNotifications(dashboard.notifications.items);
-      }
+      const serverNotifs = dashboard?.notifications?.items || [];
+      const serverIds = new Set(serverNotifs.map((n: any) => n.id));
+      const combined = [...localNotifs.filter(n => !serverIds.has(n.id)), ...serverNotifs];
+      setNotifications(combined);
+
       if (dashboard?.user) {
         setUser(dashboard.user);
       }
     } catch (e: any) {
+      if (localNotifs.length > 0) {
+        setNotifications(localNotifs);
+      }
       console.warn('Dashboard fetch error:', e.message);
       const msg = (e?.message || '').toLowerCase();
       if (msg.includes('401') || msg.includes('unauthorized') || msg.includes('invalid token') || msg.includes('session expired')) {
@@ -442,8 +455,13 @@ function MainApp() {
             <TouchableOpacity
               key={tab.key}
               style={[styles.tabItem, isActive && styles.tabItemActive]}
-              onPress={() => setActiveTab(tab.key)}
               activeOpacity={0.7}
+              onPress={() => {
+                setActiveTab(tab.key);
+                if (tab.key === 'home') {
+                  fetchUserData();
+                }
+              }}
             >
               <View style={[styles.tabIconWrap, isActive && styles.tabIconWrapActive]}>
                 <Ionicons

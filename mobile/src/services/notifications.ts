@@ -1,5 +1,6 @@
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
  * Request permission for phone notifications
@@ -22,13 +23,14 @@ export async function requestPhoneNotificationPermission(): Promise<boolean> {
 }
 
 /**
- * Send a notification to the phone (Web Notifications for browsers/PWA, Haptics for Expo Go)
+ * Send a notification to the phone (Web Notifications for browsers/PWA, Native Alert & Haptics for Mobile)
  */
 export async function sendPhoneNotification(
   title: string,
   body: string,
   data: Record<string, any> = {}
 ): Promise<void> {
+  // 1. Web Notification (if running in browser)
   if (Platform.OS === 'web') {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
       try {
@@ -40,9 +42,33 @@ export async function sendPhoneNotification(
     return;
   }
 
-  // On Android/iOS in Expo Go: trigger haptic feedback on save
+  // 2. Physical Mobile Haptic Feedback
   try {
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (title.includes('Severe') || title.includes('🚨')) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } else if (title.includes('High') || title.includes('⚠️')) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    } else {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  } catch (e) {}
+
+  // 3. Native Phone Pop-up Alert (guarantees the user is visibly alerted on phone screen)
+  Alert.alert(title, body, [{ text: 'View Guidelines' }]);
+
+  // 4. Save to in-app notification center (@pregnacare_notifications) so the bell icon shows unread badge
+  try {
+    const notifsStr = await AsyncStorage.getItem('@pregnacare_notifications');
+    const existing = notifsStr ? JSON.parse(notifsStr) : [];
+    const newNotif = {
+      id: 'notif_' + Date.now(),
+      title,
+      body,
+      date: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      is_read: 0,
+      kind: title.includes('Severe') ? 'severe_risk_alert' : (title.includes('High') ? 'high_risk_alert' : 'risk_alert'),
+    };
+    await AsyncStorage.setItem('@pregnacare_notifications', JSON.stringify([newNotif, ...existing]));
   } catch (e) {}
 }
 

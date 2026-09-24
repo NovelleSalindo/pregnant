@@ -852,7 +852,7 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
               activeTab === 'submit_symptoms' && styles.topTabTextActive,
             ]}
           >
-            Submit Symptoms
+            Symptoms
           </Text>
         </TouchableOpacity>
 

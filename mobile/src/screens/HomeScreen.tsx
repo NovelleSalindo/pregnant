@@ -130,7 +130,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         const milestone = getMilestoneForWeek(weeks);
         sendPhoneNotification(
           `🎉 Week ${weeks} Milestone!`,
-          `Baby is now the size of a ${milestone.sizeName} (${milestone.emoji}). Check your dashboard for baby's new developmental milestones & care tips!`,
+          `Baby is at Week ${weeks} of development (~${milestone.lengthApprox}, ~${milestone.weightApprox}). Check your dashboard for baby's new developmental milestones & care tips!`,
           { type: 'milestone', week: weeks }
         ).catch(() => {});
       }

@@ -430,19 +430,32 @@ export const BabySizeCard: React.FC<BabySizeCardProps> = ({
             <ScrollView showsVerticalScrollIndicator={false}>
               {/* Header */}
               <View style={styles.modalHeader}>
-                <View style={styles.modalEmojiBadge}>
-                  <Text style={styles.modalEmojiText}>{milestone.emoji}</Text>
-                </View>
+                <Image
+                  source={BABY_MONTH_IMAGES[currentMonth] || BABY_MONTH_IMAGES[9]}
+                  style={styles.modalFetusThumb}
+                  resizeMode="cover"
+                />
                 <View style={{ flex: 1 }}>
                   <View style={styles.modalWeekTag}>
                     <Text style={styles.modalWeekTagText}>WEEK {currentWeek} MILESTONE</Text>
                   </View>
                   <Text style={[styles.modalFruitTitle, isDarkMode && { color: '#F0EEF0' }]}>
-                    Size: {milestone.sizeName}
+                    Month {currentMonth} Fetal Growth
                   </Text>
-                  <Text style={[styles.modalMetrics, isDarkMode && { color: '#85818A' }]}>
-                    ~{milestone.lengthApprox}  •  ~{milestone.weightApprox}
-                  </Text>
+                  <View style={styles.monthMetricsRow}>
+                    <View style={[styles.metricPill, isDarkMode && { backgroundColor: '#261922', borderColor: '#4A2534' }]}>
+                      <Ionicons name="resize-outline" size={12} color={Colors.primaryDark} />
+                      <Text style={[styles.metricPillText, isDarkMode && { color: '#F0EEF0' }]}>
+                        ~{milestone.lengthApprox}
+                      </Text>
+                    </View>
+                    <View style={[styles.metricPill, isDarkMode && { backgroundColor: '#261922', borderColor: '#4A2534' }]}>
+                      <Ionicons name="scale-outline" size={12} color={Colors.primaryDark} />
+                      <Text style={[styles.metricPillText, isDarkMode && { color: '#F0EEF0' }]}>
+                        ~{milestone.weightApprox}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
                 <TouchableOpacity
                   onPress={() => setModalVisible(false)}
@@ -849,6 +862,14 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     lineHeight: 18,
     color: Colors.textSoft,
+  },
+  modalFetusThumb: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#FFD6E5',
   },
   modalEmojiBadge: {
     width: 48,

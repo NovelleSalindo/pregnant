@@ -349,6 +349,10 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
           severity: selectedSeverities[c.id],
         }));
 
+      const sympCount = activeSymptomsList.length;
+      // Symptom alert level: 1-2 symptoms = green alert, 3-4 symptoms = yellow alert, 5+ symptoms = red alert
+      const sympAlertLevel: 'green' | 'yellow' | 'red' = sympCount >= 5 ? 'red' : (sympCount >= 3 ? 'yellow' : 'green');
+
       const criticalRecs = buildCriticalRecommendations(selectedSeverities);
 
       const res = await api.submitSymptoms({
@@ -378,6 +382,8 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
       const mergedResult = {
         source: 'symptoms' as const,
         activeSymptoms: activeSymptomsList,
+        symptomCount: sympCount,
+        symptomAlertLevel: sympAlertLevel,
         recommendations: sympRecs,
         clinical_alerts: {
           triggered_symptoms: activeSymptomsList.filter(s => s.severity === 'Severe' || s.severity === 'Moderate').map(s => `${s.name} (${s.severity})`),
@@ -387,18 +393,21 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
       setAssessmentResult(mergedResult);
       setShowResultModal(true);
 
-      // Trigger symptom alert notification if severe or moderate symptoms present
-      const hasSevere = activeSymptomsList.some(s => s.severity === 'Severe');
-      const hasMod = activeSymptomsList.some(s => s.severity === 'Moderate');
-      if (hasSevere) {
+      // Trigger phone notification based on symptom count alert level
+      if (sympAlertLevel === 'red') {
         sendPhoneNotification(
-          '🚨 Urgent Maternal Symptom Alert',
-          'Severe maternal symptoms were reported. Immediate clinical consultation or hospital triage is strongly advised.'
+          '🚨 Urgent Maternal Symptom Alert (Red Alert)',
+          `${sympCount} symptoms reported. Immediate clinical consultation or hospital triage is strongly advised.`
         ).catch(() => {});
-      } else if (hasMod) {
+      } else if (sympAlertLevel === 'yellow') {
         sendPhoneNotification(
-          '⚠️ Maternal Symptom Notice',
-          'Moderate maternal symptoms recorded. Please review your personalized critical guidance.'
+          '⚠️ Maternal Symptom Notice (Yellow Alert)',
+          `${sympCount} symptoms recorded. Please review your personalized cautionary guidance.`
+        ).catch(() => {});
+      } else if (sympCount > 0) {
+        sendPhoneNotification(
+          '✅ Symptom Check-in Logged (Green Alert)',
+          `${sympCount} symptom${sympCount > 1 ? 's' : ''} reported. Please follow your routine care guidance.`
         ).catch(() => {});
       }
     } catch (e: any) {
@@ -408,11 +417,15 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
           name: c.name,
           severity: selectedSeverities[c.id],
         }));
+      const sympCount = activeSymptomsList.length;
+      const sympAlertLevel: 'green' | 'yellow' | 'red' = sympCount >= 5 ? 'red' : (sympCount >= 3 ? 'yellow' : 'green');
       const criticalRecs = buildCriticalRecommendations(selectedSeverities);
 
       setAssessmentResult({
         source: 'symptoms' as const,
         activeSymptoms: activeSymptomsList,
+        symptomCount: sympCount,
+        symptomAlertLevel: sympAlertLevel,
         recommendations: criticalRecs,
         clinical_alerts: {
           triggered_symptoms: activeSymptomsList.filter(s => s.severity === 'Severe' || s.severity === 'Moderate').map(s => `${s.name} (${s.severity})`),
@@ -1859,18 +1872,64 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
           <View style={[styles.modalCard, Shadows.soft]}>
             {(() => {
               const isSymptomsSource = assessmentResult?.source === 'symptoms';
-              const displayLevel = assessmentResult?.level ?? liveRisk?.level ?? 'Low';
+              const sympCount = assessmentResult?.activeSymptoms?.length ?? (assessmentResult?.symptomCount ?? 0);
+              const sympAlertLevel: 'green' | 'yellow' | 'red' = assessmentResult?.symptomAlertLevel ?? (sympCount >= 5 ? 'red' : (sympCount >= 3 ? 'yellow' : 'green'));
+
               const rawRecs = (assessmentResult?.recommendations && assessmentResult.recommendations.length > 0)
                 ? assessmentResult.recommendations
                 : (liveRisk?.recommendations && liveRisk.recommendations.length > 0 ? liveRisk.recommendations : []);
 
-              const normalizedModalLevel = displayLevel.toString().toLowerCase();
-              const isSevereModal = normalizedModalLevel.includes('severe');
-              const isHighModal = !isSevereModal && (normalizedModalLevel.includes('high') || normalizedModalLevel.includes('mod'));
-              const modalThemeColor = isSevereModal ? '#DC2626' : (isHighModal ? '#D97706' : '#15803D');
-              const modalThemeBg = isSevereModal ? '#FEE2E2' : (isHighModal ? '#FEF3C7' : '#DCFCE7');
-              const modalThemeBorder = isSevereModal ? '#FCA5A5' : (isHighModal ? '#FCD34D' : '#BBF7D0');
-              const modalThemeTitle = isSevereModal ? 'SEVERE RISK STATUS' : (isHighModal ? 'HIGH RISK STATUS' : 'LOW RISK STATUS');
+              let modalThemeColor = '#15803D';
+              let modalThemeBg = '#DCFCE7';
+              let modalThemeBorder = '#86EFAC';
+              let modalThemeTitle = 'Routine Clinical Guidance';
+              let modalBadgeText = `ROUTINE GUIDANCE (${sympCount} SYMPTOM${sympCount === 1 ? '' : 'S'} - GREEN ALERT)`;
+              let modalBoxTitle = 'Routine Guidance & Actions';
+              let modalIconName: 'checkmark-circle' | 'warning' | 'alert-circle' = 'checkmark-circle';
+              let alertPillText = '🟢 Green Alert';
+
+              if (isSymptomsSource) {
+                if (sympAlertLevel === 'red') {
+                  modalThemeColor = '#DC2626';
+                  modalThemeBg = '#FEE2E2';
+                  modalThemeBorder = '#FCA5A5';
+                  modalThemeTitle = 'Critical Clinical Guidance';
+                  modalBadgeText = `CRITICAL RECOMMENDATIONS (${sympCount} SYMPTOMS - RED ALERT)`;
+                  modalBoxTitle = 'Critical Guidance & Actions';
+                  modalIconName = 'alert-circle';
+                  alertPillText = '🔴 Red Alert';
+                } else if (sympAlertLevel === 'yellow') {
+                  modalThemeColor = '#D97706';
+                  modalThemeBg = '#FEF3C7';
+                  modalThemeBorder = '#FCD34D';
+                  modalThemeTitle = 'Moderate Clinical Guidance';
+                  modalBadgeText = `MODERATE GUIDANCE (${sympCount} SYMPTOMS - YELLOW ALERT)`;
+                  modalBoxTitle = 'Moderate Guidance & Actions';
+                  modalIconName = 'warning';
+                  alertPillText = '🟡 Yellow Alert';
+                } else {
+                  modalThemeColor = '#15803D';
+                  modalThemeBg = '#DCFCE7';
+                  modalThemeBorder = '#86EFAC';
+                  modalThemeTitle = 'Routine Clinical Guidance';
+                  modalBadgeText = `ROUTINE GUIDANCE (${sympCount} SYMPTOM${sympCount === 1 ? '' : 'S'} - GREEN ALERT)`;
+                  modalBoxTitle = 'Routine Guidance & Actions';
+                  modalIconName = 'checkmark-circle';
+                  alertPillText = '🟢 Green Alert';
+                }
+              } else {
+                const displayLevel = assessmentResult?.level ?? liveRisk?.level ?? 'Low';
+                const normalizedModalLevel = displayLevel.toString().toLowerCase();
+                const isSevereModal = normalizedModalLevel.includes('severe');
+                const isHighModal = !isSevereModal && (normalizedModalLevel.includes('high') || normalizedModalLevel.includes('mod'));
+                modalThemeColor = isSevereModal ? '#DC2626' : (isHighModal ? '#D97706' : '#15803D');
+                modalThemeBg = isSevereModal ? '#FEE2E2' : (isHighModal ? '#FEF3C7' : '#DCFCE7');
+                modalThemeBorder = isSevereModal ? '#FCA5A5' : (isHighModal ? '#FCD34D' : '#BBF7D0');
+                modalThemeTitle = isSevereModal ? 'SEVERE RISK STATUS' : (isHighModal ? 'HIGH RISK STATUS' : 'LOW RISK STATUS');
+                modalBadgeText = `PREGNACARE ${displayLevel.toUpperCase()} RISK EVALUATION`;
+                modalBoxTitle = 'Obstetric Recommendation';
+                modalIconName = isSevereModal ? 'alert-circle' : (isHighModal ? 'warning' : 'checkmark-circle');
+              }
 
               return (
                 <>
@@ -1879,8 +1938,8 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
                       <Text style={styles.modalEyebrow}>
                         {isSymptomsSource ? 'SYMPTOM CHECK-IN COMPLETE' : 'COOPLAND EVALUATION COMPLETE'}
                       </Text>
-                      <Text style={[styles.modalTitle, !isSymptomsSource && { color: modalThemeColor }]}>
-                        {isSymptomsSource ? 'Critical Clinical Guidance' : modalThemeTitle}
+                      <Text style={[styles.modalTitle, { color: modalThemeColor }]}>
+                        {modalThemeTitle}
                       </Text>
                     </View>
                     <TouchableOpacity
@@ -1894,14 +1953,14 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
                   <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
                     
                     {/* Styled Card Layout */}
-                    <View style={{ padding: 16, backgroundColor: Colors.surface, borderRadius: 16, borderWidth: 1.5, borderColor: !isSymptomsSource ? modalThemeBorder : Colors.primaryLight, marginBottom: 20, ...Shadows.soft }}>
+                    <View style={{ padding: 16, backgroundColor: Colors.surface, borderRadius: 16, borderWidth: 1.5, borderColor: modalThemeBorder, marginBottom: 20, ...Shadows.soft }}>
                       
                       <LinearGradient
-                        colors={!isSymptomsSource ? [modalThemeBg, Colors.surface] : [Colors.primaryLight, Colors.surface]}
-                        style={{ margin: -16, marginBottom: 16, padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderBottomWidth: 1, borderColor: !isSymptomsSource ? modalThemeBorder : Colors.primaryLight, alignItems: 'center' }}
+                        colors={[modalThemeBg, Colors.surface]}
+                        style={{ margin: -16, marginBottom: 16, padding: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderBottomWidth: 1, borderColor: modalThemeBorder, alignItems: 'center' }}
                       >
-                        <Text style={{ fontWeight: '800', fontSize: 15, letterSpacing: 1, color: !isSymptomsSource ? modalThemeColor : Colors.primaryDark }}>
-                          {isSymptomsSource ? 'CRITICAL RECOMMENDATIONS' : `PREGNACARE ${displayLevel.toUpperCase()} RISK EVALUATION`}
+                        <Text style={{ fontWeight: '800', fontSize: 13.5, letterSpacing: 0.8, color: modalThemeColor, textTransform: 'uppercase' }}>
+                          {modalBadgeText}
                         </Text>
                       </LinearGradient>
 
@@ -1917,7 +1976,7 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
                           <View style={{ flex: 1, backgroundColor: modalThemeBg, padding: 12, borderRadius: 12, marginLeft: 8, borderWidth: 1, borderColor: modalThemeBorder }}>
                             <Text style={{ fontWeight: '800', fontSize: 12, color: modalThemeColor, marginBottom: 4, textTransform: 'uppercase' }}>Coopland Risk</Text>
                             <Text style={{ fontSize: 18, fontWeight: '800', color: modalThemeColor }}>
-                              {assessmentResult?.coopland ? assessmentResult.coopland.coopland_risk : (isSevereModal ? 'SEVERE' : (isHighModal ? 'HIGH' : 'LOW'))}
+                              {assessmentResult?.coopland ? assessmentResult.coopland.coopland_risk : (modalThemeColor === '#DC2626' ? 'SEVERE' : (modalThemeColor === '#D97706' ? 'HIGH' : 'LOW'))}
                             </Text>
                           </View>
                         </View>
@@ -1926,7 +1985,23 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
                       {/* Symptoms Logged (for Submit Symptoms tab) */}
                       {isSymptomsSource && (
                         <View style={{ marginBottom: 14 }}>
-                          <Text style={{ fontWeight: '800', fontSize: 12.5, color: Colors.textSoft, marginBottom: 6, textTransform: 'uppercase' }}>Reported Symptoms</Text>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <Text style={{ fontWeight: '800', fontSize: 12.5, color: Colors.textSoft, textTransform: 'uppercase' }}>
+                              Reported Symptoms ({sympCount})
+                            </Text>
+                            <View style={{
+                              paddingHorizontal: 8,
+                              paddingVertical: 3,
+                              borderRadius: 8,
+                              backgroundColor: modalThemeBg,
+                              borderWidth: 1,
+                              borderColor: modalThemeBorder,
+                            }}>
+                              <Text style={{ fontSize: 11, fontWeight: '800', color: modalThemeColor, textTransform: 'uppercase' }}>
+                                {alertPillText}
+                              </Text>
+                            </View>
+                          </View>
                           {assessmentResult?.activeSymptoms && assessmentResult.activeSymptoms.length > 0 ? (
                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                               {assessmentResult.activeSymptoms.map((sym: any, idx: number) => {
@@ -1937,18 +2012,20 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
                                     style={{
                                       flexDirection: 'row',
                                       alignItems: 'center',
-                                      backgroundColor: isHighSev ? Colors.riskHighBg : Colors.backgroundSoft,
+                                      backgroundColor: isHighSev
+                                        ? (sympAlertLevel === 'red' ? Colors.riskHighBg : (sympAlertLevel === 'yellow' ? '#FEF3C7' : Colors.backgroundSoft))
+                                        : Colors.backgroundSoft,
                                       paddingHorizontal: 9,
                                       paddingVertical: 5,
                                       borderRadius: 10,
                                       borderWidth: 1,
-                                      borderColor: isHighSev ? Colors.riskHigh : Colors.border,
+                                      borderColor: isHighSev ? modalThemeBorder : Colors.border,
                                     }}
                                   >
-                                    <Text style={{ fontSize: 12, fontWeight: '700', color: isHighSev ? Colors.riskHigh : Colors.text }}>
+                                    <Text style={{ fontSize: 12, fontWeight: '700', color: isHighSev ? modalThemeColor : Colors.text }}>
                                       {sym.name}:{' '}
                                     </Text>
-                                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: isHighSev ? Colors.riskHigh : Colors.primaryDark }}>
+                                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: isHighSev ? modalThemeColor : Colors.primaryDark }}>
                                       {sym.severity}
                                     </Text>
                                   </View>
@@ -1982,20 +2059,27 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
                       {/* Recommendations Block */}
                       <View style={{ backgroundColor: modalThemeBg, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: modalThemeBorder }}>
                         <Text style={{ fontWeight: '800', fontSize: 12.5, color: modalThemeColor, marginBottom: 8, textTransform: 'uppercase' }}>
-                          {isSymptomsSource ? 'Critical Guidance & Actions' : 'Obstetric Recommendation'}
+                          {modalBoxTitle}
                         </Text>
                         {rawRecs.map((r: any, idx: number) => {
-                          const text = typeof r === 'string' ? r : (r.text || '');
+                          const rawText = typeof r === 'string' ? r : (r.text || '');
+                          const cleanText = rawText.replace(/^[⚠️🚨✅ℹ️•\s!]+/, '').trim();
                           return (
                             <View key={idx} style={{ flexDirection: 'row', marginBottom: idx === rawRecs.length - 1 ? 0 : 8, alignItems: 'flex-start' }}>
                               <Ionicons
-                                name={isSevereModal ? 'alert-circle' : (isHighModal ? 'warning' : 'checkmark-circle')}
+                                name={modalIconName}
                                 size={16}
                                 color={modalThemeColor}
                                 style={{ marginRight: 8, marginTop: 2 }}
                               />
-                              <Text style={{ flex: 1, fontSize: 13.5, fontWeight: isSevereModal || isHighModal ? '700' : '500', color: isSevereModal ? '#991B1B' : (isHighModal ? '#92400E' : '#166534'), lineHeight: 20 }}>
-                                {text}
+                              <Text style={{
+                                flex: 1,
+                                fontSize: 13.5,
+                                fontWeight: sympAlertLevel === 'green' && isSymptomsSource ? '500' : '700',
+                                color: modalThemeColor === '#DC2626' ? '#991B1B' : (modalThemeColor === '#D97706' ? '#92400E' : '#166534'),
+                                lineHeight: 20
+                              }}>
+                                {cleanText || rawText}
                               </Text>
                             </View>
                           );

@@ -394,6 +394,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $result['risk_level'] = 'Low';
         $result['score'] = 0;
         
+        $activeSympCount = 0;
+        foreach ($normalizedSymptoms as $ns) {
+            if (($ns['severity'] ?? 'None') !== 'None') {
+                $activeSympCount++;
+            }
+        }
+        // Symptom alert level: 1-2 symptoms = green alert, 3-4 symptoms = yellow alert, 5+ symptoms = red alert
+        $sympAlertLevel = $activeSympCount >= 5 ? 'red' : ($activeSympCount >= 3 ? 'yellow' : 'green');
+        $result['symptom_count'] = $activeSympCount;
+        $result['symptom_alert_level'] = $sympAlertLevel;
+
+        if ($activeSympCount > 0) {
+            $notifId = uid('ntf');
+            if ($sympAlertLevel === 'red') {
+                $notifTitle = '🚨 Urgent Maternal Symptom Alert (Red Alert)';
+                $notifBody = "{$activeSympCount} symptoms reported. Immediate clinical consultation or hospital triage is strongly advised.";
+                $notifKind = 'severe_risk_alert';
+            } elseif ($sympAlertLevel === 'yellow') {
+                $notifTitle = '⚠️ Maternal Symptom Notice (Yellow Alert)';
+                $notifBody = "{$activeSympCount} symptoms recorded. Please review your personalized cautionary guidance.";
+                $notifKind = 'high_risk_alert';
+            } else {
+                $notifTitle = '✅ Symptom Check-in Logged (Green Alert)';
+                $notifBody = "{$activeSympCount} symptom" . ($activeSympCount > 1 ? 's' : '') . " recorded. Please follow your routine care guidance.";
+                $notifKind = 'low_risk_assessment';
+            }
+            try {
+                $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
+                    ->execute([$notifId, $u['id'], $notifTitle, $notifBody, now_iso(), $notifKind]);
+            } catch (Exception $e) {}
+        }
+        
         $stmtActiveCoop = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
         $stmtActiveCoop->execute([$u['id']]);
         $activeCoop = $stmtActiveCoop->fetch();

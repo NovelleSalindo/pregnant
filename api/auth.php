@@ -233,6 +233,39 @@ switch ($action) {
         json_success([], 'Logged out successfully');
         break;
 
+    case 'reset_password':
+        $loginInput = trim($input['email'] ?? $input['username'] ?? '');
+        $newPassword = $input['new_password'] ?? $input['password'] ?? '';
+
+        if (empty($loginInput) || empty($newPassword)) {
+            json_error('Email or username and new password are required.', 422);
+        }
+        if (strlen($newPassword) < 6) {
+            json_error('Password must be at least 6 characters.', 422);
+        }
+
+        try {
+            $stmt = $pdo->prepare("SELECT id, email FROM users WHERE email = ? OR username = ?");
+            $stmt->execute([$loginInput, $loginInput]);
+            $user = $stmt->fetch();
+        } catch (Throwable $e) {
+            $stmt = $pdo->prepare("SELECT id, email FROM users WHERE email = ?");
+            $stmt->execute([$loginInput]);
+            $user = $stmt->fetch();
+        }
+
+        if (!$user) {
+            json_error('Account not found with that email or username.', 404);
+        }
+
+        $hash = password_hash($newPassword, PASSWORD_DEFAULT);
+        $updateStmt = $pdo->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
+        $updateStmt->execute([$hash, $user['id']]);
+
+        log_action("api_reset_password: {$user['email']}");
+        json_success([], 'Password has been successfully updated. You can now log in.');
+        break;
+
     default:
-        json_error("Invalid auth action '{$action}'. Supported: login, register, me, update_profile, logout.", 400);
+        json_error("Invalid auth action '{$action}'. Supported: login, register, reset_password, me, update_profile, logout.", 400);
 }

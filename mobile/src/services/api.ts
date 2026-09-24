@@ -185,7 +185,7 @@ class ApiService {
         }
       }
 
-      console.warn(`[API] Error on ${endpoint}:`, err.message);
+      console.log(`[API] Response notice on ${endpoint}:`, err.message);
       throw err;
     }
   }
@@ -295,6 +295,13 @@ class ApiService {
       await this.setAuth(data.token, data.user);
     }
     return data;
+  }
+
+  async resetPassword(emailOrUsername: string, newPassword: string) {
+    return await this.request('auth.php?action=reset_password', {
+      method: 'POST',
+      body: JSON.stringify({ email: emailOrUsername, username: emailOrUsername, new_password: newPassword }),
+    });
   }
 
   async register(payload: {

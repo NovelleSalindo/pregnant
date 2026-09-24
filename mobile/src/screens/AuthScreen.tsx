@@ -11,6 +11,7 @@ import {
   Platform,
   Image,
   StatusBar,
+  Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,6 +35,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [tab, setTab] = useState<'login' | 'register'>(initialTab);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Forgot password state
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMsg, setForgotMsg] = useState<{ text: string; isError: boolean } | null>(null);
 
   React.useEffect(() => {
     if (initialTab) {
@@ -50,6 +59,32 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [password, setPassword] = useState('');
   const [dob, setDob] = useState('');
   const [lmp, setLmp] = useState('');
+
+  const handleResetPassword = async () => {
+    setForgotMsg(null);
+    if (!forgotEmail.trim() || !forgotNewPassword) {
+      setForgotMsg({ text: 'Please enter your email/username and new password.', isError: true });
+      return;
+    }
+    if (forgotNewPassword.length < 6) {
+      setForgotMsg({ text: 'Password must be at least 6 characters.', isError: true });
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      await api.resetPassword(forgotEmail.trim(), forgotNewPassword);
+      setSuccessMessage('Password updated! You can now log in.');
+      setEmail(forgotEmail.trim());
+      setPassword(forgotNewPassword);
+      setShowForgotModal(false);
+      setForgotEmail('');
+      setForgotNewPassword('');
+    } catch (err: any) {
+      setForgotMsg({ text: err.message || 'Account not found with that email or username.', isError: true });
+    } finally {
+      setForgotLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     setErrorMessage(null);
@@ -197,6 +232,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             </TouchableOpacity>
           </View>
 
+          {/* Success Message */}
+          {successMessage && (
+            <View style={[styles.errorBadge, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
+              <Ionicons name="checkmark-circle" size={16} color="#059669" />
+              <Text style={[styles.errorText, { color: '#065F46' }]}>{successMessage}</Text>
+            </View>
+          )}
+
           {/* Error Message (.badge.badge-high) */}
           {errorMessage && (
             <View style={styles.errorBadge}>
@@ -332,6 +375,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   onChangeText={setPassword}
                 />
               </View>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setForgotEmail(email);
+                  setForgotMsg(null);
+                  setShowForgotModal(true);
+                }}
+                style={{ alignSelf: 'flex-end', marginTop: -4, marginBottom: 12, paddingVertical: 4 }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: '700' }}>
+                  Forgot Password?
+                </Text>
+              </TouchableOpacity>
             </>
           )}
 
@@ -366,6 +423,93 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Reset Password Modal */}
+      <Modal
+        visible={showForgotModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowForgotModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, Shadows.card]}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="key-outline" size={20} color={Colors.primary} />
+                <Text style={styles.modalTitle}>Reset Password</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowForgotModal(false)}
+                style={styles.modalCloseBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={20} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtitle}>
+              Enter your email or username and choose a new password.
+            </Text>
+
+            {forgotMsg && (
+              <View style={[styles.errorBadge, forgotMsg.isError ? {} : { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
+                <Ionicons
+                  name={forgotMsg.isError ? "alert-circle" : "checkmark-circle"}
+                  size={16}
+                  color={forgotMsg.isError ? Colors.riskHigh : "#059669"}
+                />
+                <Text style={[styles.errorText, forgotMsg.isError ? {} : { color: '#065F46' }]}>
+                  {forgotMsg.text}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Email or Username</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="you@example.com or username"
+                placeholderTextColor={Colors.textMuted}
+                autoCapitalize="none"
+                value={forgotEmail}
+                onChangeText={setForgotEmail}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>New Password</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="At least 6 characters"
+                placeholderTextColor={Colors.textMuted}
+                secureTextEntry
+                value={forgotNewPassword}
+                onChangeText={setForgotNewPassword}
+              />
+            </View>
+
+            <TouchableOpacity
+              onPress={handleResetPassword}
+              disabled={forgotLoading}
+              activeOpacity={0.85}
+              style={{ marginTop: 8 }}
+            >
+              <LinearGradient
+                colors={Gradients.primaryBtn}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[styles.actionBtn, forgotLoading && { opacity: 0.7 }]}
+              >
+                {forgotLoading ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={styles.actionBtnText}>Update Password</Text>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -545,5 +689,42 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 3,
     elevation: 1,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(28, 25, 23, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  modalCloseBtn: {
+    padding: 4,
+    borderRadius: 8,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    marginBottom: 14,
+    lineHeight: 18,
   },
 });

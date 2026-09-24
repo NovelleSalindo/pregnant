@@ -118,7 +118,12 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
     visible: boolean;
     title: string;
     message: string;
-    theme?: 'red' | 'yellow' | 'pink' | 'green';
+    theme?: 'red' | 'yellow' | 'pink' | 'softpink' | 'green';
+    icon?: string;
+    buttonText?: string;
+    onPress?: () => void;
+    secondaryButtonText?: string;
+    onSecondaryPress?: () => void;
   } | null>(null);
 
   // ── Engine Sub-detail States ──────────────────────────────────────
@@ -795,26 +800,29 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
         await saveCooplandWithTransition(localAssessmentData);
       }
 
-      Alert.alert(
-        'Saved to Recommendations',
-        isSymptomsSource
-          ? 'Your reported symptoms and personalized critical guidance have been saved to your Recommendations page.'
-          : 'Your Coopland risk evaluation and guidance have been saved.',
-        [
-          {
-            text: 'Go to Recommendations',
-            onPress: () => {
-              setShowResultModal(false);
-              if (onNavigate) onNavigate('advice');
-            },
-          },
-          {
-            text: 'Stay Here',
-            style: 'cancel',
-            onPress: () => setShowResultModal(false),
-          }
-        ]
-      );
+      const adviceSavedTitle = 'Saved to Recommendations';
+      const adviceSavedMsg = isSymptomsSource
+        ? 'Your reported symptoms and personalized critical guidance have been saved to your Recommendations page.'
+        : 'Your Coopland risk evaluation and guidance have been saved.';
+
+      setBubbleFlashAlert({
+        visible: true,
+        title: adviceSavedTitle,
+        message: adviceSavedMsg,
+        theme: 'softpink',
+        icon: 'bookmark',
+        buttonText: 'GO TO RECOMMENDATIONS',
+        onPress: () => {
+          setBubbleFlashAlert(null);
+          setShowResultModal(false);
+          if (onNavigate) onNavigate('advice');
+        },
+        secondaryButtonText: 'STAY HERE',
+        onSecondaryPress: () => {
+          setBubbleFlashAlert(null);
+          setShowResultModal(false);
+        },
+      });
     } catch (err: any) {
       console.warn('Error saving to advice:', err);
       setShowResultModal(false);
@@ -2150,14 +2158,18 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
             })()}
           </View>
 
-          {/* Red Bubbles Flash Alert Overlay inside Modal */}
+          {/* Red / Soft Pink Bubbles Flash Alert Overlay inside Modal */}
           {bubbleFlashAlert?.visible && (
             <RedBubbleFlashModal
               visible={bubbleFlashAlert.visible}
               title={bubbleFlashAlert.title}
               message={bubbleFlashAlert.message}
               theme={bubbleFlashAlert.theme}
-              buttonText="VIEW GUIDELINES"
+              icon={bubbleFlashAlert.icon}
+              buttonText={bubbleFlashAlert.buttonText}
+              onPress={bubbleFlashAlert.onPress}
+              secondaryButtonText={bubbleFlashAlert.secondaryButtonText}
+              onSecondaryPress={bubbleFlashAlert.onSecondaryPress}
               onClose={() => setBubbleFlashAlert(null)}
               inModal={true}
             />

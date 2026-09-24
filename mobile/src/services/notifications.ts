@@ -27,9 +27,12 @@ export interface BubbleFlashEvent {
   visible: boolean;
   title: string;
   message: string;
-  theme?: 'red' | 'yellow' | 'pink' | 'green';
+  theme?: 'red' | 'yellow' | 'pink' | 'softpink' | 'green';
   icon?: string;
   buttonText?: string;
+  onPress?: () => void;
+  secondaryButtonText?: string;
+  onSecondaryPress?: () => void;
 }
 
 type FlashListener = (event: BubbleFlashEvent) => void;

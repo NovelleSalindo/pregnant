@@ -550,6 +550,9 @@ function MainApp() {
         theme={globalBubbleFlash?.theme}
         icon={globalBubbleFlash?.icon}
         buttonText={globalBubbleFlash?.buttonText}
+        onPress={globalBubbleFlash?.onPress}
+        secondaryButtonText={globalBubbleFlash?.secondaryButtonText}
+        onSecondaryPress={globalBubbleFlash?.onSecondaryPress}
         onClose={() => setGlobalBubbleFlash(null)}
         isDarkMode={isDarkMode}
       />

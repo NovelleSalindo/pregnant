@@ -9,15 +9,17 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Shadows } from '../theme/colors';
 
 export interface RedBubbleFlashProps {
   visible: boolean;
   title: string;
   message: string;
-  theme?: 'red' | 'yellow' | 'pink' | 'green';
+  theme?: 'red' | 'yellow' | 'pink' | 'softpink' | 'green';
   icon?: string;
   buttonText?: string;
+  onPress?: () => void;
+  secondaryButtonText?: string;
+  onSecondaryPress?: () => void;
   onClose: () => void;
   isDarkMode?: boolean;
   inModal?: boolean;
@@ -30,6 +32,9 @@ export const RedBubbleFlashModal: React.FC<RedBubbleFlashProps> = ({
   theme = 'red',
   icon,
   buttonText,
+  onPress,
+  secondaryButtonText,
+  onSecondaryPress,
   onClose,
   isDarkMode = false,
   inModal = false,
@@ -37,22 +42,60 @@ export const RedBubbleFlashModal: React.FC<RedBubbleFlashProps> = ({
   if (!visible) return null;
 
   // Determine styling based on theme
-  const isRed = theme === 'red' || title.includes('Severe') || title.includes('🚨') || title.includes('Urgent');
-  const isYellow = !isRed && (theme === 'yellow' || title.includes('High') || title.includes('⚠️'));
+  const isSoftPink = theme === 'softpink' || theme === 'pink' || title.includes('Saved to Recommendations');
+  const isRed = !isSoftPink && (theme === 'red' || title.includes('Severe') || title.includes('🚨') || title.includes('Urgent'));
+  const isYellow = !isSoftPink && !isRed && (theme === 'yellow' || title.includes('High') || title.includes('⚠️'));
 
-  let primaryColor = isRed ? '#DC2626' : (isYellow ? '#D97706' : '#BE185D');
-  let titleColor = isRed ? (isDarkMode ? '#FCA5A5' : '#991B1B') : (isYellow ? (isDarkMode ? '#FDE68A' : '#92400E') : (isDarkMode ? '#F472B6' : '#9D174D'));
-  let msgColor = isRed ? (isDarkMode ? '#FECDD3' : '#7F1D1D') : (isYellow ? (isDarkMode ? '#FEF3C7' : '#78350F') : (isDarkMode ? '#FCE7F3' : '#4A1D32'));
-  let cardBg = isRed ? (isDarkMode ? '#220A0E' : '#FFF1F2') : (isYellow ? (isDarkMode ? '#231B09' : '#FFFBEB') : (isDarkMode ? '#1E141A' : '#FFF5F8'));
-  let cardBorder = isRed ? (isDarkMode ? '#991B1B' : '#FDA4AF') : (isYellow ? (isDarkMode ? '#B45309' : '#FCD34D') : (isDarkMode ? '#831843' : '#FBCFE8'));
-  let bubbleBg = isRed ? (isDarkMode ? '#4C0519' : '#FFE4E6') : (isYellow ? (isDarkMode ? '#451A03' : '#FEF3C7') : (isDarkMode ? '#4A1D32' : '#FCE7F3'));
-  let bubbleBorder = isRed ? '#F43F5E' : (isYellow ? '#F59E0B' : '#F472B6');
-  let shadowClr = isRed ? '#EF4444' : (isYellow ? '#F59E0B' : '#F472B6');
-  let defaultIcon = isRed ? 'alert-circle' : (isYellow ? 'warning' : 'checkmark-circle');
-  let btnGradient: readonly [string, string] = isRed
-    ? ['#EF4444', '#B91C1C']
-    : (isYellow ? ['#F59E0B', '#B45309'] : ['#EC4899', '#BE185D']);
-  let defaultBtnText = isRed ? 'VIEW GUIDELINES' : 'Got it ✨';
+  let primaryColor = isSoftPink ? '#DB2777' : (isRed ? '#DC2626' : (isYellow ? '#D97706' : '#BE185D'));
+  let titleColor = isSoftPink
+    ? (isDarkMode ? '#F472B6' : '#9D174D')
+    : (isRed
+        ? (isDarkMode ? '#FCA5A5' : '#991B1B')
+        : (isYellow ? (isDarkMode ? '#FDE68A' : '#92400E') : (isDarkMode ? '#F472B6' : '#9D174D')));
+  let msgColor = isSoftPink
+    ? (isDarkMode ? '#FCE7F3' : '#4A1D32')
+    : (isRed
+        ? (isDarkMode ? '#FECDD3' : '#7F1D1D')
+        : (isYellow ? (isDarkMode ? '#FEF3C7' : '#78350F') : (isDarkMode ? '#FCE7F3' : '#4A1D32')));
+
+  // Soft pink with crisp clean white background
+  let cardBg = isSoftPink
+    ? (isDarkMode ? '#1E141A' : '#FFFFFF')
+    : (isRed
+        ? (isDarkMode ? '#220A0E' : '#FFF1F2')
+        : (isYellow ? (isDarkMode ? '#231B09' : '#FFFBEB') : (isDarkMode ? '#1E141A' : '#FFF5F8')));
+
+  let cardBorder = isSoftPink
+    ? (isDarkMode ? '#831843' : '#FBCFE8')
+    : (isRed
+        ? (isDarkMode ? '#991B1B' : '#FDA4AF')
+        : (isYellow ? (isDarkMode ? '#B45309' : '#FCD34D') : (isDarkMode ? '#831843' : '#FBCFE8')));
+
+  let bubbleBg = isSoftPink
+    ? (isDarkMode ? '#4A1D32' : '#FDF2F8')
+    : (isRed
+        ? (isDarkMode ? '#4C0519' : '#FFE4E6')
+        : (isYellow ? (isDarkMode ? '#451A03' : '#FEF3C7') : (isDarkMode ? '#4A1D32' : '#FCE7F3')));
+
+  let bubbleBorder = isSoftPink
+    ? '#F472B6'
+    : (isRed ? '#F43F5E' : (isYellow ? '#F59E0B' : '#F472B6'));
+
+  let shadowClr = isSoftPink
+    ? '#F472B6'
+    : (isRed ? '#EF4444' : (isYellow ? '#F59E0B' : '#F472B6'));
+
+  let defaultIcon = isSoftPink
+    ? 'bookmark'
+    : (isRed ? 'alert-circle' : (isYellow ? 'warning' : 'checkmark-circle'));
+
+  let btnGradient: readonly [string, string] = isSoftPink
+    ? ['#F472B6', '#DB2777']
+    : (isRed
+        ? ['#EF4444', '#B91C1C']
+        : (isYellow ? ['#F59E0B', '#B45309'] : ['#EC4899', '#BE185D']));
+
+  let defaultBtnText = isSoftPink ? 'GO TO RECOMMENDATIONS' : (isRed ? 'VIEW GUIDELINES' : 'Got it ✨');
 
   const modalContent = (
     <View style={styles.bubbleModalOverlay}>
@@ -66,7 +109,7 @@ export const RedBubbleFlashModal: React.FC<RedBubbleFlashProps> = ({
           },
         ]}
       >
-        {/* Floating Decorative Red/Themed Bubbles */}
+        {/* Floating Decorative Soft Pink/Themed Bubbles */}
         <View
           style={[
             styles.floatingBubble1,
@@ -126,23 +169,48 @@ export const RedBubbleFlashModal: React.FC<RedBubbleFlashProps> = ({
           {message}
         </Text>
 
-        {/* Action Button */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          style={styles.bubbleActionBtnWrapper}
-          onPress={onClose}
-        >
-          <LinearGradient
-            colors={btnGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.bubbleActionBtn}
+        {/* Actions Container */}
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={styles.bubbleActionBtnWrapper}
+            onPress={onPress || onClose}
           >
-            <Text style={styles.bubbleActionBtnText}>
-              {buttonText || defaultBtnText}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient
+              colors={btnGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.bubbleActionBtn}
+            >
+              <Text style={styles.bubbleActionBtnText}>
+                {buttonText || defaultBtnText}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          {secondaryButtonText && (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={[
+                styles.secondaryBtn,
+                {
+                  backgroundColor: isDarkMode ? '#2D1B24' : '#FFFFFF',
+                  borderColor: isDarkMode ? '#831843' : '#FBCFE8',
+                },
+              ]}
+              onPress={onSecondaryPress || onClose}
+            >
+              <Text
+                style={[
+                  styles.secondaryBtnText,
+                  { color: isDarkMode ? '#F472B6' : '#BE185D' },
+                ]}
+              >
+                {secondaryButtonText}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -186,7 +254,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     position: 'relative',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.25,
     shadowRadius: 18,
     elevation: 10,
   },
@@ -249,7 +317,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 16,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 6,
   },
@@ -264,9 +332,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     textAlign: 'center',
-    marginBottom: 22,
+    marginBottom: 20,
     fontWeight: '600',
     paddingHorizontal: 4,
+  },
+  buttonContainer: {
+    width: '100%',
+    gap: 10,
   },
   bubbleActionBtnWrapper: {
     width: '100%',
@@ -278,7 +350,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
+    shadowColor: '#C2577D',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
@@ -286,7 +358,20 @@ const styles = StyleSheet.create({
   },
   bubbleActionBtnText: {
     color: '#FFFFFF',
-    fontSize: 14.5,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  secondaryBtn: {
+    width: '100%',
+    paddingVertical: 12,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+  secondaryBtnText: {
+    fontSize: 13.5,
     fontWeight: '800',
     letterSpacing: 0.5,
   },

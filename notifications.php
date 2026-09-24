@@ -9,6 +9,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     } elseif ($action === 'mark_all_read'){
         $pdo->prepare("UPDATE notifications SET is_read=1 WHERE user_id=?")->execute([$u['id']]);
         flash('All notifications marked as read.', 'success');
+    } elseif ($action === 'clear_all'){
+        $pdo->prepare("DELETE FROM notifications WHERE user_id=?")->execute([$u['id']]);
+        flash('All notifications cleared.', 'info');
     } elseif ($action === 'delete'){
         $pdo->prepare("DELETE FROM notifications WHERE id=? AND user_id=?")->execute([$_POST['id'], $u['id']]);
         flash('Notification deleted.', 'info');
@@ -118,10 +121,16 @@ render_header('Notifications', 'notifications');
       <button type="button" class="<?php echo $filter==='all'?'active':''; ?>" onclick="location.href='notifications.php?filter=all'">All</button>
       <button type="button" class="<?php echo $filter==='unread'?'active':''; ?>" onclick="location.href='notifications.php?filter=unread'">Unread</button>
     </div>
-    <form method="post" action="notifications.php">
-      <input type="hidden" name="action" value="mark_all_read">
-      <button class="btn btn-outline btn-sm" type="submit"><i class="fa-solid fa-check-double"></i> Mark All Read</button>
-    </form>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <form method="post" action="notifications.php" style="margin:0;">
+        <input type="hidden" name="action" value="mark_all_read">
+        <button class="btn btn-outline btn-sm" type="submit"><i class="fa-solid fa-check-double"></i> Mark All Read</button>
+      </form>
+      <form method="post" action="notifications.php" onsubmit="return confirm('Are you sure you want to clear all notifications?');" style="margin:0;">
+        <input type="hidden" name="action" value="clear_all">
+        <button class="btn btn-outline btn-sm" type="submit" style="color:#DC2626;border-color:#FCA5A5;"><i class="fa-solid fa-trash"></i> Clear All</button>
+      </form>
+    </div>
   </div>
 
   <?php if (!$items): ?>

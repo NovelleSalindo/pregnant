@@ -25,6 +25,8 @@ interface NotificationModalProps {
   notifications: NotificationItem[];
   onClose: () => void;
   onMarkAllRead: () => void;
+  onClearAll?: () => void;
+  onDeleteNotification?: (id: string) => void;
   onItemPress?: (item: NotificationItem) => void;
   isDarkMode?: boolean;
 }
@@ -34,6 +36,8 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   notifications,
   onClose,
   onMarkAllRead,
+  onClearAll,
+  onDeleteNotification,
   onItemPress,
   isDarkMode = false,
 }) => {
@@ -94,6 +98,19 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                   <Text style={styles.markReadText}>Mark All Read</Text>
                 </TouchableOpacity>
               )}
+              {notifications.length > 0 && onClearAll && (
+                <TouchableOpacity
+                  style={[
+                    styles.clearAllBtn,
+                    isDarkMode && { backgroundColor: '#38161D', borderColor: '#7F1D1D' },
+                  ]}
+                  onPress={onClearAll}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="trash-outline" size={13} color={Colors.riskHigh} />
+                  <Text style={styles.clearAllText}>Clear All</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={[styles.closeBtn, isDarkMode && { backgroundColor: '#2C2C31' }]}
                 onPress={onClose}
@@ -149,15 +166,39 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                     </View>
                     <View style={styles.itemBody}>
                       <View style={styles.itemHeader}>
-                        <Text style={[
-                          styles.itemTitle,
-                          isSevere && { color: '#DC2626', fontWeight: '800' },
-                          isHigh && { color: '#B45309', fontWeight: '800' },
-                          !isSevere && !isHigh && isDarkMode && { color: '#F0EEF0' },
-                        ]}>
+                        <Text
+                          style={[
+                            styles.itemTitle,
+                            isSevere && { color: '#DC2626', fontWeight: '800' },
+                            isHigh && { color: '#B45309', fontWeight: '800' },
+                            !isSevere && !isHigh && isDarkMode && { color: '#F0EEF0' },
+                          ]}
+                          numberOfLines={1}
+                        >
                           {item.title}
                         </Text>
-                        <Text style={[styles.itemDate, isDarkMode && { color: '#85818A' }]}>{item.date?.slice(5, 16) || ''}</Text>
+                        <View style={styles.metaRight}>
+                          <Text style={[styles.itemDate, isDarkMode && { color: '#85818A' }]}>
+                            {item.date?.slice(5, 16) || ''}
+                          </Text>
+                          {onDeleteNotification && (
+                            <TouchableOpacity
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                onDeleteNotification(item.id);
+                              }}
+                              style={styles.deleteItemBtn}
+                              activeOpacity={0.6}
+                            >
+                              <Ionicons
+                                name="trash-outline"
+                                size={14}
+                                color={isDarkMode ? '#F87171' : Colors.riskHigh}
+                              />
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </View>
                       <Text style={[
                         styles.itemText,
@@ -230,7 +271,7 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   markReadBtn: {
     paddingVertical: 4,
@@ -242,6 +283,22 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '700',
     color: Colors.secondaryDark,
+  },
+  clearAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  clearAllText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: Colors.riskHigh,
   },
   closeBtn: {
     width: 28,
@@ -288,6 +345,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: Colors.text,
+    flex: 1,
+    marginRight: 6,
+  },
+  metaRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  deleteItemBtn: {
+    padding: 2,
   },
   itemDate: {
     fontSize: 11,

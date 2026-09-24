@@ -361,6 +361,20 @@ class ApiService {
     });
   }
 
+  async clearAllNotifications() {
+    return this.request('dashboard.php?action=clear_all', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'clear_all' }),
+    });
+  }
+
+  async deleteNotification(id: string) {
+    return this.request('dashboard.php?action=delete', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'delete', id }),
+    });
+  }
+
   async markNotificationRead(id: string) {
     return this.request('dashboard.php?action=mark_read', {
       method: 'POST',

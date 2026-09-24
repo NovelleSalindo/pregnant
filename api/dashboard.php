@@ -27,6 +27,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?");
         $stmt->execute([$u['id']]);
         json_success(['message' => 'All notifications marked as read']);
+    } elseif ($action === 'clear_all') {
+        $stmt = $pdo->prepare("DELETE FROM notifications WHERE user_id = ?");
+        $stmt->execute([$u['id']]);
+        json_success(['message' => 'All notifications cleared']);
+    } elseif ($action === 'delete') {
+        $id = $body['id'] ?? ($_GET['id'] ?? '');
+        if ($id) {
+            $stmt = $pdo->prepare("DELETE FROM notifications WHERE id = ? AND user_id = ?");
+            $stmt->execute([$id, $u['id']]);
+        }
+        json_success(['message' => 'Notification deleted']);
     } elseif ($action === 'mark_read') {
         $id = $body['id'] ?? ($_GET['id'] ?? '');
         if ($id) {

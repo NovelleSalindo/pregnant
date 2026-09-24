@@ -151,10 +151,33 @@ function MainApp() {
 
   const handleMarkAllNotificationsRead = async () => {
     try {
+      const updated = notifications.map((n) => ({ ...n, is_read: 1 }));
+      setNotifications(updated);
+      await AsyncStorage.setItem('@pregnacare_notifications', JSON.stringify(updated));
       await api.markAllNotificationsRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: 1 })));
     } catch (e) {
       console.warn('Mark read error:', e);
+    }
+  };
+
+  const handleClearAllNotifications = async () => {
+    try {
+      setNotifications([]);
+      await AsyncStorage.setItem('@pregnacare_notifications', JSON.stringify([]));
+      await api.clearAllNotifications();
+    } catch (e) {
+      console.warn('Clear all notifications error:', e);
+    }
+  };
+
+  const handleDeleteNotification = async (id: string) => {
+    try {
+      const updated = notifications.filter((n) => n.id !== id);
+      setNotifications(updated);
+      await AsyncStorage.setItem('@pregnacare_notifications', JSON.stringify(updated));
+      await api.deleteNotification(id);
+    } catch (e) {
+      console.warn('Delete notification error:', e);
     }
   };
 
@@ -501,6 +524,8 @@ function MainApp() {
         notifications={notifications}
         onClose={() => setNotificationsVisible(false)}
         onMarkAllRead={handleMarkAllNotificationsRead}
+        onClearAll={handleClearAllNotifications}
+        onDeleteNotification={handleDeleteNotification}
         isDarkMode={isDarkMode}
       />
     </View>

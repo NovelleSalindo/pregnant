@@ -187,12 +187,12 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
         const fetchedLogs = vitalsRes.value.logs || [];
         setLogs(fetchedLogs);
         setStats(vitalsRes.value.stats || {});
-        AsyncStorage.setItem('@pregnacare_cached_vitals', JSON.stringify(fetchedLogs)).catch(() => {});
+        AsyncStorage.setItem(api.getUserStorageKey('cached_vitals'), JSON.stringify(fetchedLogs)).catch(() => {});
       }
       if (labRes.status === 'fulfilled') {
         const fetchedLabs = labRes.value.labs || [];
         setLabLogs(fetchedLabs);
-        AsyncStorage.setItem('@pregnacare_cached_labs', JSON.stringify(fetchedLabs)).catch(() => {});
+        AsyncStorage.setItem(api.getUserStorageKey('cached_labs'), JSON.stringify(fetchedLabs)).catch(() => {});
       }
     } catch (e: any) {
       console.warn('Vitals fetch error:', e.message);
@@ -204,13 +204,13 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
 
   useEffect(() => {
     // Instantly hydrate from local cache so Daily Vitals and Initial Lab folders never start blank
-    AsyncStorage.getItem('@pregnacare_cached_vitals').then((val) => {
+    AsyncStorage.getItem(api.getUserStorageKey('cached_vitals')).then((val) => {
       if (val) {
         try { setLogs(JSON.parse(val)); } catch {}
       }
     }).catch(() => {});
 
-    AsyncStorage.getItem('@pregnacare_cached_labs').then((val) => {
+    AsyncStorage.getItem(api.getUserStorageKey('cached_labs')).then((val) => {
       if (val) {
         try { setLabLogs(JSON.parse(val)); } catch {}
       }
@@ -317,7 +317,7 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
 
       setLogs((prev) => {
         const updated = [newVitalsRecord, ...prev];
-        AsyncStorage.setItem('@pregnacare_cached_vitals', JSON.stringify(updated)).catch(() => {});
+        AsyncStorage.setItem(api.getUserStorageKey('cached_vitals'), JSON.stringify(updated)).catch(() => {});
         return updated;
       });
 
@@ -433,7 +433,7 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
 
       setLabLogs((prev) => {
         const updated = [newLab, ...prev];
-        AsyncStorage.setItem('@pregnacare_cached_labs', JSON.stringify(updated)).catch(() => {});
+        AsyncStorage.setItem(api.getUserStorageKey('cached_labs'), JSON.stringify(updated)).catch(() => {});
         return updated;
       });
 

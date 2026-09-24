@@ -69,7 +69,7 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate, isDarkMo
   const loadAdviceData = async () => {
     try {
       // 1. Load latest saved advice from AsyncStorage
-      const latestSavedStr = await AsyncStorage.getItem('@pregnacare_latest_saved_advice');
+      const latestSavedStr = await AsyncStorage.getItem(api.getUserStorageKey('latest_saved_advice'));
       let currentActive: SavedAdviceEntry | null = null;
       if (latestSavedStr) {
         try {
@@ -79,7 +79,7 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate, isDarkMo
       }
 
       // 2. Load saved advice history
-      const historyStr = await AsyncStorage.getItem('@pregnacare_saved_advice_history');
+      const historyStr = await AsyncStorage.getItem(api.getUserStorageKey('saved_advice_history'));
       if (historyStr) {
         try {
           const parsedHistory = JSON.parse(historyStr);
@@ -97,7 +97,7 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate, isDarkMo
 
       // 4. Fallback if no explicitly saved advice yet
       if (!currentActive) {
-        const cachedCoopStr = await AsyncStorage.getItem('@pregnacare_latest_coopland');
+        const cachedCoopStr = await AsyncStorage.getItem(api.getUserStorageKey('latest_coopland'));
         const localCoop = cachedCoopStr ? JSON.parse(cachedCoopStr) : null;
         const risk = res?.risk || {};
 
@@ -198,7 +198,7 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate, isDarkMo
     };
 
     setSavedAdvice(updatedAdvice);
-    await AsyncStorage.setItem('@pregnacare_latest_saved_advice', JSON.stringify(updatedAdvice)).catch(() => {});
+    await AsyncStorage.setItem(api.getUserStorageKey('latest_saved_advice'), JSON.stringify(updatedAdvice)).catch(() => {});
 
     // Update in history list as well
     const updatedHistory = savedHistory.map((item) => {
@@ -208,7 +208,7 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate, isDarkMo
       return item;
     });
     setSavedHistory(updatedHistory);
-    await AsyncStorage.setItem('@pregnacare_saved_advice_history', JSON.stringify(updatedHistory)).catch(() => {});
+    await AsyncStorage.setItem(api.getUserStorageKey('saved_advice_history'), JSON.stringify(updatedHistory)).catch(() => {});
   };
 
   // Mark all recommendations complete or reset
@@ -225,11 +225,11 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate, isDarkMo
     };
 
     setSavedAdvice(updatedAdvice);
-    await AsyncStorage.setItem('@pregnacare_latest_saved_advice', JSON.stringify(updatedAdvice)).catch(() => {});
+    await AsyncStorage.setItem(api.getUserStorageKey('latest_saved_advice'), JSON.stringify(updatedAdvice)).catch(() => {});
 
     const updatedHistory = savedHistory.map((item) => (item.id === updatedAdvice.id ? updatedAdvice : item));
     setSavedHistory(updatedHistory);
-    await AsyncStorage.setItem('@pregnacare_saved_advice_history', JSON.stringify(updatedHistory)).catch(() => {});
+    await AsyncStorage.setItem(api.getUserStorageKey('saved_advice_history'), JSON.stringify(updatedHistory)).catch(() => {});
   };
 
   // Save personal notes for this advice
@@ -241,11 +241,11 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate, isDarkMo
     };
 
     setSavedAdvice(updatedAdvice);
-    await AsyncStorage.setItem('@pregnacare_latest_saved_advice', JSON.stringify(updatedAdvice)).catch(() => {});
+    await AsyncStorage.setItem(api.getUserStorageKey('latest_saved_advice'), JSON.stringify(updatedAdvice)).catch(() => {});
 
     const updatedHistory = savedHistory.map((item) => (item.id === updatedAdvice.id ? updatedAdvice : item));
     setSavedHistory(updatedHistory);
-    await AsyncStorage.setItem('@pregnacare_saved_advice_history', JSON.stringify(updatedHistory)).catch(() => {});
+    await AsyncStorage.setItem(api.getUserStorageKey('saved_advice_history'), JSON.stringify(updatedHistory)).catch(() => {});
 
     setShowNoteModal(false);
   };
@@ -253,7 +253,7 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate, isDarkMo
   // Set past history record as active advice
   const handleRestoreFromHistory = async (entry: SavedAdviceEntry) => {
     setSavedAdvice(entry);
-    await AsyncStorage.setItem('@pregnacare_latest_saved_advice', JSON.stringify(entry)).catch(() => {});
+    await AsyncStorage.setItem(api.getUserStorageKey('latest_saved_advice'), JSON.stringify(entry)).catch(() => {});
     setActiveSegment('current');
     Alert.alert('Guidance Activated', 'This assessment has been restored as your current active advice.');
   };
@@ -271,7 +271,7 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate, isDarkMo
           onPress: async () => {
             const filtered = savedHistory.filter((item) => item.id !== entryId);
             setSavedHistory(filtered);
-            await AsyncStorage.setItem('@pregnacare_saved_advice_history', JSON.stringify(filtered)).catch(() => {});
+            await AsyncStorage.setItem(api.getUserStorageKey('saved_advice_history'), JSON.stringify(filtered)).catch(() => {});
           },
         },
       ]
@@ -290,7 +290,7 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate, isDarkMo
           style: 'destructive',
           onPress: async () => {
             setSavedHistory([]);
-            await AsyncStorage.removeItem('@pregnacare_saved_advice_history').catch(() => {});
+            await AsyncStorage.removeItem(api.getUserStorageKey('saved_advice_history')).catch(() => {});
           },
         },
       ]

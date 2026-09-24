@@ -1,6 +1,7 @@
 import { Platform, Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { api } from './api';
 
 /**
  * Request permission for phone notifications
@@ -56,9 +57,10 @@ export async function sendPhoneNotification(
   // 3. Native Phone Pop-up Alert (guarantees the user is visibly alerted on phone screen)
   Alert.alert(title, body, [{ text: 'View Guidelines' }]);
 
-  // 4. Save to in-app notification center (@pregnacare_notifications) so the bell icon shows unread badge
+  // 4. Save to in-app notification center so the bell icon shows unread badge
   try {
-    const notifsStr = await AsyncStorage.getItem('@pregnacare_notifications');
+    const key = api.getUserStorageKey('notifications');
+    const notifsStr = await AsyncStorage.getItem(key);
     const existing = notifsStr ? JSON.parse(notifsStr) : [];
     const newNotif = {
       id: 'notif_' + Date.now(),
@@ -68,7 +70,7 @@ export async function sendPhoneNotification(
       is_read: 0,
       kind: title.includes('Severe') ? 'severe_risk_alert' : (title.includes('High') ? 'high_risk_alert' : 'risk_alert'),
     };
-    await AsyncStorage.setItem('@pregnacare_notifications', JSON.stringify([newNotif, ...existing]));
+    await AsyncStorage.setItem(key, JSON.stringify([newNotif, ...existing]));
   } catch (e) {}
 }
 

@@ -19,12 +19,19 @@ interface QueuedMutation {
 class ApiService {
   private baseUrl: string = DEFAULT_API_URL;
   private token: string | null = null;
+  private currentUser: any = null;
   private isOffline: boolean = false;
 
   async init() {
     try {
       const savedToken = await AsyncStorage.getItem(STORAGE_KEY_TOKEN);
       if (savedToken) this.token = savedToken;
+      const savedUser = await AsyncStorage.getItem(STORAGE_KEY_USER);
+      if (savedUser) {
+        try {
+          this.currentUser = JSON.parse(savedUser);
+        } catch {}
+      }
       const savedUrl = await AsyncStorage.getItem(STORAGE_KEY_BASE_URL);
       if (savedUrl) this.baseUrl = savedUrl;
     } catch (e) {
@@ -47,18 +54,57 @@ class ApiService {
     return this.token;
   }
 
+  getCurrentUser(): any | null {
+    return this.currentUser;
+  }
+
+  getUserId(): string {
+    return this.currentUser?.id || 'guest';
+  }
+
+  /**
+   * Generates a storage key strictly namespaced to the authenticated user ID.
+   * Example: @pregnacare_user_usr_12345_latest_coopland
+   */
+  getUserStorageKey(subKey: string): string {
+    const uid = this.currentUser?.id || 'guest';
+    return `@pregnacare_user_${uid}_${subKey}`;
+  }
+
   getIsOffline(): boolean {
     return this.isOffline;
   }
 
+  /**
+   * Purges all user-specific data and caches from AsyncStorage.
+   * Preserves only global device preferences (such as dark mode and API base URL).
+   */
+  async clearAllUserStorage() {
+    try {
+      const allKeys = await AsyncStorage.getAllKeys();
+      const keysToRemove = allKeys.filter(k => 
+        k.startsWith('@pregnacare_') && 
+        k !== '@pregnacare_api_url' && 
+        k !== '@pregnacare_dark_mode'
+      );
+      if (keysToRemove.length > 0) {
+        await AsyncStorage.multiRemove(keysToRemove);
+      }
+    } catch (e) {
+      console.warn('[Storage Clear Error]', e);
+    }
+  }
+
   async setAuth(token: string | null, user: any = null) {
     this.token = token;
+    this.currentUser = user;
     if (token) {
       await AsyncStorage.setItem(STORAGE_KEY_TOKEN, token);
       if (user) await AsyncStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
     } else {
-      await AsyncStorage.removeItem(STORAGE_KEY_TOKEN);
-      await AsyncStorage.removeItem(STORAGE_KEY_USER);
+      await this.clearAllUserStorage();
+      this.token = null;
+      this.currentUser = null;
     }
   }
 
@@ -97,7 +143,8 @@ class ApiService {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const cacheKey = `${STORAGE_KEY_CACHE_PREFIX}${endpoint.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+    const uid = this.currentUser?.id || 'guest';
+    const cacheKey = `${STORAGE_KEY_CACHE_PREFIX}${uid}_${endpoint.replace(/[^a-zA-Z0-9_]/g, '_')}`;
 
     // AbortController with 7-second timeout (extended to 45s for large payloads like images)
     const isLargePayload = options.body && typeof options.body === 'string' && options.body.length > 50000;
@@ -711,3 +758,7 @@ class ApiService {
 }
 
 export const api = new ApiService();
+
+export function getUserStorageKey(subKey: string): string {
+  return api.getUserStorageKey(subKey);
+}

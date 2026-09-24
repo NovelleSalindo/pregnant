@@ -66,8 +66,9 @@ function MainApp() {
 
   const fetchUserData = useCallback(async () => {
     let localNotifs: any[] = [];
+    const notifsKey = api.getUserStorageKey('notifications');
     try {
-      const localNotifsStr = await AsyncStorage.getItem('@pregnacare_notifications');
+      const localNotifsStr = await AsyncStorage.getItem(notifsKey);
       if (localNotifsStr) {
         localNotifs = JSON.parse(localNotifsStr);
       }
@@ -146,6 +147,8 @@ function MainApp() {
   const handleLogout = async () => {
     await api.logout();
     setUser(null);
+    setNotifications([]);
+    setActiveTab('home');
     setAuthView('front');
   };
 
@@ -153,7 +156,7 @@ function MainApp() {
     try {
       const updated = notifications.map((n) => ({ ...n, is_read: 1 }));
       setNotifications(updated);
-      await AsyncStorage.setItem('@pregnacare_notifications', JSON.stringify(updated));
+      await AsyncStorage.setItem(api.getUserStorageKey('notifications'), JSON.stringify(updated));
       await api.markAllNotificationsRead();
     } catch (e) {
       console.warn('Mark read error:', e);
@@ -163,7 +166,7 @@ function MainApp() {
   const handleClearAllNotifications = async () => {
     try {
       setNotifications([]);
-      await AsyncStorage.setItem('@pregnacare_notifications', JSON.stringify([]));
+      await AsyncStorage.setItem(api.getUserStorageKey('notifications'), JSON.stringify([]));
       await api.clearAllNotifications();
     } catch (e) {
       console.warn('Clear all notifications error:', e);
@@ -174,7 +177,7 @@ function MainApp() {
     try {
       const updated = notifications.filter((n) => n.id !== id);
       setNotifications(updated);
-      await AsyncStorage.setItem('@pregnacare_notifications', JSON.stringify(updated));
+      await AsyncStorage.setItem(api.getUserStorageKey('notifications'), JSON.stringify(updated));
       await api.deleteNotification(id);
     } catch (e) {
       console.warn('Delete notification error:', e);
@@ -425,7 +428,7 @@ function MainApp() {
       />
 
       {/* Screen Body */}
-      <View style={[styles.screenContainer, isDarkMode && { backgroundColor: '#0A0A0C' }]}>
+      <View key={user?.id || 'guest'} style={[styles.screenContainer, isDarkMode && { backgroundColor: '#0A0A0C' }]}>
         {activeTab === 'home' && (
           <HomeScreen
             onNavigate={handleNavigate}

@@ -390,7 +390,7 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
         diabetes_symptoms_count: diabetesCount,
       });
 
-      await AsyncStorage.removeItem('@pregnacare_resolved_visit').catch(() => {});
+      await AsyncStorage.removeItem(api.getUserStorageKey('resolved_visit')).catch(() => {});
 
       const sympRecs = (res?.recommendations && res.recommendations.length > 0)
         ? res.recommendations
@@ -488,7 +488,7 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
       };
 
       // 1. Fetch current latest Coopland
-      const existingLatestStr = await AsyncStorage.getItem('@pregnacare_latest_coopland');
+      const existingLatestStr = await AsyncStorage.getItem(api.getUserStorageKey('latest_coopland'));
       if (existingLatestStr) {
         try {
           const existingLatest = JSON.parse(existingLatestStr);
@@ -500,20 +500,20 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
             Math.abs(new Date(existingLatest.date).getTime() - new Date(assessmentDate).getTime()) < 60000;
 
           if (existingLatest && existingLatest.score !== undefined && !isSameSession) {
-            await AsyncStorage.setItem('@pregnacare_previous_coopland', existingLatestStr);
+            await AsyncStorage.setItem(api.getUserStorageKey('previous_coopland'), existingLatestStr);
           }
         } catch {}
       }
 
       // 2. Set new record as current latest
-      await AsyncStorage.setItem('@pregnacare_latest_coopland', JSON.stringify(newRecord));
+      await AsyncStorage.setItem(api.getUserStorageKey('latest_coopland'), JSON.stringify(newRecord));
 
       // 3. Keep local coopland history array
-      const histStr = await AsyncStorage.getItem('@pregnacare_coopland_history');
+      const histStr = await AsyncStorage.getItem(api.getUserStorageKey('coopland_history'));
       let historyArr = histStr ? JSON.parse(histStr) : [];
       if (!Array.isArray(historyArr)) historyArr = [];
       historyArr = [newRecord, ...historyArr.filter((h: any) => h.date !== assessmentDate)].slice(0, 20);
-      await AsyncStorage.setItem('@pregnacare_coopland_history', JSON.stringify(historyArr));
+      await AsyncStorage.setItem(api.getUserStorageKey('coopland_history'), JSON.stringify(historyArr));
     } catch (err) {
       console.warn('Error in saveCooplandWithTransition:', err);
     }
@@ -523,7 +523,7 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
     setSubmitting(true);
     try {
       // Clear any previous doctor visit resolution so the new evaluation displays actively
-      await AsyncStorage.removeItem('@pregnacare_resolved_visit').catch(() => {});
+      await AsyncStorage.removeItem(api.getUserStorageKey('resolved_visit')).catch(() => {});
 
       const matchedFactorLabels = liveCoopland.factors.map(f => `${f.label} (+${f.points})`);
       const res = await api.submitCooplandAssessment({
@@ -710,15 +710,15 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
       };
 
       // 1. Store as the latest active saved advice
-      await AsyncStorage.setItem('@pregnacare_latest_saved_advice', JSON.stringify(adviceEntry));
+      await AsyncStorage.setItem(api.getUserStorageKey('latest_saved_advice'), JSON.stringify(adviceEntry));
 
       // 2. Prepend to saved advice history
       try {
-        const existingHistoryStr = await AsyncStorage.getItem('@pregnacare_saved_advice_history');
+        const existingHistoryStr = await AsyncStorage.getItem(api.getUserStorageKey('saved_advice_history'));
         let historyList = existingHistoryStr ? JSON.parse(existingHistoryStr) : [];
         if (!Array.isArray(historyList)) historyList = [];
         historyList = [adviceEntry, ...historyList.filter((h: any) => h.id !== adviceEntry.id)].slice(0, 30);
-        await AsyncStorage.setItem('@pregnacare_saved_advice_history', JSON.stringify(historyList));
+        await AsyncStorage.setItem(api.getUserStorageKey('saved_advice_history'), JSON.stringify(historyList));
       } catch (e) {}
 
       // 3. ONLY Coopland assessments update @pregnacare_latest_coopland for Dashboard

@@ -88,20 +88,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'factors' => $factorsDecoded,
         ];
     } else {
-        $cooplandLatest = evaluate_coopland($u['id'], $pdo, [], []);
+        $cooplandLatest = null;
         $coopHistory = [];
-        if ($cooplandLatest) {
-            $coopHistory = [
-                [
-                    'id' => $cooplandLatest['id'] ?? 'ca-init',
-                    'user_id' => $u['id'],
-                    'date' => now_iso(),
-                    'score' => $cooplandLatest['coopland_score'],
-                    'risk_level' => $cooplandLatest['coopland_risk'],
-                    'factors_json' => json_encode($cooplandLatest['contributing_factors'] ?? []),
-                ]
-            ];
-        }
     }
 
     $clinicalAlertsLatest = evaluate_clinical_alerts($u['id'], $pdo, [], $latestVitals);

@@ -45,7 +45,7 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
 
   const loadData = async () => {
     try {
-      const savedVisit = await AsyncStorage.getItem('@pregnacare_resolved_visit');
+      const savedVisit = await AsyncStorage.getItem(api.getUserStorageKey('resolved_visit'));
       if (savedVisit) {
         try {
           setLocalResolved(JSON.parse(savedVisit));
@@ -61,9 +61,9 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
 
       // Check for local Coopland assessments with proper Current -> Previous transition
       try {
-        const localCoopStr = await AsyncStorage.getItem('@pregnacare_latest_coopland');
-        const localPrevCoopStr = await AsyncStorage.getItem('@pregnacare_previous_coopland');
-        const localHistStr = await AsyncStorage.getItem('@pregnacare_coopland_history');
+        const localCoopStr = await AsyncStorage.getItem(api.getUserStorageKey('latest_coopland'));
+        const localPrevCoopStr = await AsyncStorage.getItem(api.getUserStorageKey('previous_coopland'));
+        const localHistStr = await AsyncStorage.getItem(api.getUserStorageKey('coopland_history'));
 
         const localRecords: any[] = [];
         if (localCoopStr) {

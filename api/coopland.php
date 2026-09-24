@@ -88,7 +88,23 @@ $stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? ORDER BY date 
 $stmt->execute([$u['id']]);
 $vitals = $stmt->fetch() ?: [];
 
-$cooplandResult = evaluate_coopland($u['id'], $pdo, [], []);
+$cStmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
+$cStmt->execute([$u['id']]);
+$savedCoop = $cStmt->fetch();
+
+if ($savedCoop) {
+    $factors = json_decode($savedCoop['factors_json'] ?? '[]', true);
+    $cooplandResult = [
+        'id' => $savedCoop['id'],
+        'coopland_score' => (int)$savedCoop['score'],
+        'coopland_risk' => ucfirst(strtolower($savedCoop['risk_level'])),
+        'date' => $savedCoop['date'],
+        'contributing_factors' => $factors,
+        'factors' => $factors,
+    ];
+} else {
+    $cooplandResult = null;
+}
 $clinicalAlerts = evaluate_clinical_alerts($u['id'], $pdo, [], $vitals);
 
 json_success([

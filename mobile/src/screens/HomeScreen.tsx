@@ -77,7 +77,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   };
 
   useEffect(() => {
-    AsyncStorage.getItem('@pregnacare_latest_coopland').then((val) => {
+    AsyncStorage.getItem(api.getUserStorageKey('latest_coopland')).then((val) => {
       if (val) {
         try {
           const parsed = JSON.parse(val);
@@ -87,7 +87,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         } catch {}
       }
     });
-    AsyncStorage.getItem('@pregnacare_resolved_visit').then((val) => {
+    AsyncStorage.getItem(api.getUserStorageKey('resolved_visit')).then((val) => {
       if (val) {
         try {
           setLocalResolved(JSON.parse(val));
@@ -99,14 +99,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const fetchDashboard = useCallback(async () => {
     // 1. Immediately read latest local Coopland assessment so UI updates instantaneously (Coopland is sole risk identifier)
     try {
-      const val = await AsyncStorage.getItem('@pregnacare_latest_coopland');
+      const val = await AsyncStorage.getItem(api.getUserStorageKey('latest_coopland'));
       if (val) {
         const parsed = JSON.parse(val);
         if (parsed && parsed.source !== 'symptoms') {
           setLatestCoopland(parsed);
         }
       }
-      const resVisit = await AsyncStorage.getItem('@pregnacare_resolved_visit');
+      const resVisit = await AsyncStorage.getItem(api.getUserStorageKey('resolved_visit'));
       if (resVisit) {
         setLocalResolved(JSON.parse(resVisit));
       } else {
@@ -124,9 +124,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
       // Check for gestational milestone notification
       const weeks = res?.pregnancy?.weeks !== null && res?.pregnancy?.weeks !== undefined ? res.pregnancy.weeks : 32;
-      const lastNotified = await AsyncStorage.getItem('@pregnacare_last_notified_week');
+      const lastNotified = await AsyncStorage.getItem(api.getUserStorageKey('last_notified_week'));
       if (lastNotified !== String(weeks)) {
-        await AsyncStorage.setItem('@pregnacare_last_notified_week', String(weeks));
+        await AsyncStorage.setItem(api.getUserStorageKey('last_notified_week'), String(weeks));
         const milestone = getMilestoneForWeek(weeks);
         sendPhoneNotification(
           `🎉 Week ${weeks} Milestone!`,
@@ -300,7 +300,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     };
     try {
       // 1. Immediately store to local storage so UI transitions instantly
-      await AsyncStorage.setItem('@pregnacare_resolved_visit', JSON.stringify(resolvedRecord));
+      await AsyncStorage.setItem(api.getUserStorageKey('resolved_visit'), JSON.stringify(resolvedRecord));
       setLocalResolved(resolvedRecord);
 
       // 2. Sync with backend API

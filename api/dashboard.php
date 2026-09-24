@@ -80,69 +80,47 @@ $stmt = $pdo->prepare("SELECT * FROM patient_profiles WHERE user_id = ?");
 $stmt->execute([$u['id']]);
 $profile = $stmt->fetch() ?: [];
 
-if (empty($profile['lmp']) && empty($profile['edd'])) {
-    if (stripos($u['name'] ?? '', 'Novelle') !== false || ($u['email'] ?? '') === 'novelle2023.salindo@gmail.com') {
-        $profile['lmp'] = '2026-02-01';
-        $profile['edd'] = '2026-11-08';
-    }
-}
-
 $weeksPregnant = null;
 $daysPregnant = null;
+$trimester = null;
+$babySize = null;
+$daysToEdd = null;
+
 if (!empty($profile['lmp'])) {
     $diffSecs = time() - strtotime($profile['lmp']);
     if ($diffSecs >= 0) {
         $daysPregnant = (int)floor($diffSecs / 86400);
         $weeksPregnant = (int)floor($daysPregnant / 7);
+        $trimester = $weeksPregnant < 14 ? 1 : ($weeksPregnant < 28 ? 2 : 3);
+        $babySize = baby_size_for_week($weeksPregnant);
     }
 } elseif (!empty($profile['edd'])) {
     $daysToEdd = (int)ceil((strtotime($profile['edd']) - time()) / 86400);
     $daysPregnant = max(0, 280 - $daysToEdd);
     $weeksPregnant = (int)floor($daysPregnant / 7);
+    $trimester = $weeksPregnant < 14 ? 1 : ($weeksPregnant < 28 ? 2 : 3);
+    $babySize = baby_size_for_week($weeksPregnant);
 }
 
-if ($weeksPregnant === null) {
-    $weeksPregnant = 32;
-    $daysPregnant = 227;
+if (!empty($profile['edd'])) {
+    $daysToEdd = (int)ceil((strtotime($profile['edd']) - time()) / 86400);
 }
-
-$trimester = $weeksPregnant < 14 ? 1 : ($weeksPregnant < 28 ? 2 : 3);
-$babySize = baby_size_for_week($weeksPregnant);
-$daysToEdd = !empty($profile['edd']) ? (int)ceil((strtotime($profile['edd']) - time()) / 86400) : 53;
 
 // 2. Latest Risk Assessment (Based on Assess Risk / Coopland Evaluation)
 $latestAssessment = null;
 $latestCoopland = null;
+$prevCoopland = null;
 $topRecs = [];
 try {
-    // 2.1 Fetch latest Coopland assessment (definitive maternal risk classifier)
+    // 2.1 Fetch latest Coopland assessment strictly for this authenticated user
     $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
     $stmt->execute([$u['id']]);
-    $latestCoopland = $stmt->fetch();
-
-    if (!$latestCoopland) {
-        require_once __DIR__ . '/../coopland_engine.php';
-        $eval = evaluate_coopland($u['id'], $pdo, [], []);
-        if ($eval) {
-            $initId = 'ca-' . uniqid();
-            $pdo->prepare("INSERT INTO coopland_assessments (id, user_id, date, score, risk_level, factors_json) VALUES (?, ?, NOW(), ?, ?, ?)")
-                ->execute([
-                    $initId,
-                    $u['id'],
-                    $eval['coopland_score'],
-                    $eval['coopland_risk'],
-                    json_encode($eval['contributing_factors'] ?? [])
-                ]);
-            $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
-            $stmt->execute([$u['id']]);
-            $latestCoopland = $stmt->fetch();
-        }
-    }
+    $latestCoopland = $stmt->fetch() ?: null;
 
     // 2.2 Also fetch previous Coopland assessment if available
     $stmtPrev = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1 OFFSET 1");
     $stmtPrev->execute([$u['id']]);
-    $prevCoopland = $stmtPrev->fetch();
+    $prevCoopland = $stmtPrev->fetch() ?: null;
 
     // 2.3 Also fetch latest general assessment for clinical visit status
     $stmtAsm = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 1");
@@ -365,20 +343,21 @@ json_success([
         'weeks' => $weeksPregnant,
         'days' => $daysPregnant,
         'trimester' => $trimester,
-        'lmp' => $profile['lmp'] ?? '2026-02-01',
-        'edd' => $profile['edd'] ?? '2026-11-08',
-        'formattedEdd' => !empty($profile['edd']) ? fmt_date($profile['edd']) : 'Nov 8, 2026',
+        'lmp' => $profile['lmp'] ?? null,
+        'edd' => $profile['edd'] ?? null,
+        'formattedEdd' => !empty($profile['edd']) ? fmt_date($profile['edd']) : null,
         'daysToEdd' => $daysToEdd,
         'nextObVisit' => $profile['next_ob_visit'] ?? null,
         'daysToVisit' => !empty($profile['next_ob_visit']) ? (int)ceil((strtotime($profile['next_ob_visit']) - time()) / 86400) : null,
-        'babyFruit' => $babySize ? $babySize[0] : 'Rutabaga',
-        'babyEmoji' => $babySize ? $babySize[1] : '🥬',
+        'babyFruit' => $babySize ? $babySize[0] : null,
+        'babyEmoji' => $babySize ? $babySize[1] : null,
     ],
     'risk' => [
+        'hasAssessment' => (bool)$latestCoopland || (bool)$latestAssessment,
         'assessmentId' => $latestCoopland ? $latestCoopland['id'] : ($latestAssessment ? $latestAssessment['id'] : null),
-        'latestScore' => $gaugeScore ?? 20,
-        'cooplandScore' => $coopScore ?? 0,
-        'level' => $coopLevel ?? 'Low',
+        'latestScore' => $latestCoopland ? ($gaugeScore ?? 20) : null,
+        'cooplandScore' => $coopScore,
+        'level' => $coopLevel,
         'factors' => $coopFactors ?? [],
         'reportedSymptoms' => $latestSymptoms ?? [],
         'status' => ($latestAssessment && ($latestAssessment['status'] ?? 'active') === 'resolved') ? 'resolved' : 'active',

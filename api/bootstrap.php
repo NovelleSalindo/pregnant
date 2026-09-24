@@ -171,7 +171,9 @@ $pdo->exec("INSERT IGNORE INTO symptom_catalog (id, name, icon, weight) VALUES
     ('fainting', 'Fainting', 'fa-circle-exclamation', 0.9),
     ('leg_swelling_pain', 'One-sided Leg Swelling', 'fa-shoe-prints', 0.85),
     ('urinary_discomfort', 'Painful Urination', 'fa-notes-medical', 0.6),
-    ('reduced_movement', 'Decreased Fetal Movement', 'fa-baby', 0.9)
+    ('reduced_movement', 'Decreased Fetal Movement', 'fa-baby', 0.9),
+    ('nausea', 'Nausea', 'fa-face-frown', 0.4),
+    ('severe_weakness', 'Severe Weakness', 'fa-bed', 0.7)
 ");
 
 // 4. JSON Helper Functions

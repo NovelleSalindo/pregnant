@@ -288,60 +288,144 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
     const activeEntries = Object.entries(selected).filter(([_, sev]) => sev !== 'None');
 
     for (const [id, sev] of activeEntries) {
-      if (id === 'bleeding') {
-        recs.push(sev === 'Severe'
-          ? '⚠️ Active Vaginal Bleeding: Any heavy bleeding requires immediate emergency medical evaluation. Avoid tampons or intercourse and proceed to your nearest maternity triage immediately.'
-          : '⚠️ Vaginal Spotting: Rest with feet elevated, avoid strenuous activity, track pad count, and contact your doctor or midwife for prompt clinical assessment.');
-      } else if (id === 'headache') {
-        recs.push(sev === 'Severe' || sev === 'Moderate'
-          ? '⚠️ Persistent / Severe Headache: Rest in a dark, quiet room. If accompanied by blurred vision, spots, or swelling, seek immediate clinical assessment to rule out pre-eclampsia.'
-          : 'Headache Care: Rest in a calm environment, stay well-hydrated, and apply a cool cloth to your forehead.');
-      } else if (id === 'blurred_vision') {
-        recs.push('⚠️ Visual Changes: Blurred vision, floaters, or flashes of light can be critical signs of elevated blood pressure. Have your blood pressure checked promptly.');
-      } else if (id === 'convulsions') {
-        recs.push('🚨 Emergency Neurological: Call emergency medical services immediately. Ensure the mother is safely resting on her left side away from hard objects to protect airway.');
-      } else if (id === 'difficulty_breathing') {
-        recs.push('⚠️ Respiratory Strain: Sit upright in a comfortable position, rest, and seek urgent clinical evaluation to assess oxygenation and maternal heart/lung function.');
-      } else if (id === 'chest_pain') {
-        recs.push('⚠️ Chest Discomfort: Sit quietly and seek urgent medical evaluation to rule out cardiac strain or pulmonary complications.');
-      } else if (id === 'abdominal_pain') {
-        recs.push(bellyPainHardAbdomen || bellyPainBleeding || sev === 'Severe'
-          ? '🚨 Critical Abdominal Pain: A rigid, board-like abdomen or severe cramping with bleeding requires immediate emergency hospital evaluation.'
-          : 'Abdominal Discomfort: Rest on your left side and drink warm water. If cramps become rhythmic or increase in pain, contact your maternity unit.');
-      } else if (id === 'fluid_loss') {
-        recs.push('🚨 Amniotic Fluid Leakage: Leaking clear fluid may indicate premature rupture of membranes (water breaking). Contact your maternity unit or healthcare provider immediately.');
-      } else if (id === 'reduced_movement') {
-        recs.push('⚠️ Reduced Fetal Activity: Lie on your left side, drink a cold glass of water or juice, and count kicks for 1 hour. If fewer than 10 movements occur, go to maternity triage immediately.');
-      } else if (id === 'fever') {
-        recs.push(feverWithChills || feverWithSweating || sev === 'Severe'
-          ? '⚠️ High Fever / Chills: Elevated maternal temperature can affect baby and may indicate infection. Drink plenty of fluids, rest, and consult your doctor for safe antipyretic care and infection screening.'
-          : 'Fever Management: Keep hydrated with cool water, rest, and notify your healthcare provider if fever reaches 38°C (100.4°F).');
-      } else if (id === 'dizziness' || id === 'fainting') {
-        recs.push('Dizziness / Fainting: Lie down on your left side immediately to restore blood circulation. Drink electrolyte fluids and avoid getting up quickly.');
-      } else if (id === 'swelling') {
-        recs.push(swellingLocations.includes('Face') || swellingLocations.includes('Hands') || swellingLocations.length >= 3
-          ? '⚠️ Sudden Swelling (Preeclampsia Warning): Rapid swelling across face, hands, or eyes requires prompt clinical blood pressure and urine protein evaluation.'
-          : 'Maternal Swelling: Elevate your feet above heart level for 20–30 minutes, wear comfortable footwear, and stay hydrated.');
-      } else if (id === 'leg_swelling_pain') {
-        recs.push('⚠️ Unilateral Leg Swelling/Pain: One-sided swelling, warmth, or tenderness in calf may indicate a deep vein blood clot (DVT). Avoid massaging the leg and seek clinical evaluation immediately.');
-      } else if (id === 'urinary_discomfort') {
-        recs.push('Urinary Discomfort: Burning or pain during urination may signal a urinary tract infection (UTI). Drink plenty of water and seek a urine culture test from your clinic.');
-      } else if (id === 'vomiting') {
-        recs.push(sev === 'Severe'
-          ? '⚠️ Hyperemesis Warning: Severe vomiting and inability to keep fluids down requires clinical assessment for IV hydration.'
-          : 'Nausea & Vomiting: Sip cold water, electrolyte drinks, or ginger tea in small, frequent amounts. Eat dry crackers and avoid an empty stomach.');
-      } else if (id === 'fatigue') {
-        recs.push('Severe Fatigue: Aim for 8+ hours of sleep, rest between daily tasks, and consult your provider to check hemoglobin levels for anemia.');
-      } else if (id === 'back_pain') {
-        recs.push('Back Care: Practice gentle pelvic tilts, apply a warm compress, wear supportive flat shoes, and avoid heavy lifting. If pain is rhythmic, contact your provider.');
+      const isSevere = sev === 'Severe';
+
+      switch (id) {
+        // 1 & 2. Headache / Severe headache
+        case 'headache':
+        case 'severe_headache':
+          recs.push(
+            isSevere || id === 'severe_headache'
+              ? 'Seek prompt medical evaluation, especially if the headache is persistent or worsening.'
+              : 'Rest, maintain adequate hydration, and monitor the headache. If it persists, becomes severe, or is accompanied by vision changes, contact your healthcare provider.'
+          );
+          break;
+
+        // 3. Dizziness
+        case 'dizziness':
+          recs.push('Sit or lie down safely, maintain hydration, and monitor the symptom. Report persistent or worsening dizziness to your healthcare provider.');
+          break;
+
+        // 4. Fainting
+        case 'fainting':
+          recs.push('Seek medical evaluation after fainting, particularly if it recurs or is associated with injury, chest pain, or difficulty breathing.');
+          break;
+
+        // 5. Nausea
+        case 'nausea':
+          recs.push('Eat small, frequent meals, maintain hydration, and avoid foods or smells that trigger nausea.');
+          break;
+
+        // 6 & 7. Vomiting / Severe/persistent vomiting
+        case 'vomiting':
+        case 'severe_vomiting':
+          recs.push(
+            isSevere || id === 'severe_vomiting'
+              ? 'Contact your healthcare provider promptly, particularly if you cannot keep fluids down or have signs of dehydration.'
+              : 'Take small frequent sips of fluids and eat small meals as tolerated. Contact your healthcare provider if vomiting persists or worsens.'
+          );
+          break;
+
+        // 8 & 9. Abdominal pain / Severe abdominal pain
+        case 'abdominal_pain':
+        case 'severe_abdominal_pain':
+          recs.push(
+            isSevere || id === 'severe_abdominal_pain' || bellyPainHardAbdomen || bellyPainBleeding
+              ? 'Seek prompt medical evaluation for severe or persistent abdominal pain.'
+              : 'Rest and monitor the pain. Contact your healthcare provider if the pain persists, worsens, or is associated with bleeding or other concerning symptoms.'
+          );
+          break;
+
+        // 10. Vaginal bleeding
+        case 'bleeding':
+        case 'vaginal_bleeding':
+          recs.push('Contact your healthcare provider promptly for assessment of vaginal bleeding.');
+          break;
+
+        // 11. Fluid leakage
+        case 'fluid_loss':
+        case 'fluid_leakage':
+          recs.push('Contact your healthcare provider promptly for assessment of possible fluid leakage.');
+          break;
+
+        // 12. Blurred vision
+        case 'blurred_vision':
+        case 'vision_changes':
+          recs.push('Seek prompt medical evaluation, particularly when accompanied by headache or elevated blood pressure.');
+          break;
+
+        // 13. Difficulty breathing
+        case 'difficulty_breathing':
+          recs.push('Seek immediate medical assessment for significant or worsening difficulty breathing.');
+          break;
+
+        // 14. Chest pain
+        case 'chest_pain':
+          recs.push('Seek immediate medical assessment for chest pain, especially if severe or accompanied by difficulty breathing, dizziness, or fainting.');
+          break;
+
+        // 15. Fever ≥38°C
+        case 'fever':
+          recs.push('Contact your healthcare provider for assessment of fever and possible infection.');
+          break;
+
+        // 16. Decreased fetal movement
+        case 'reduced_movement':
+        case 'decreased_fetal_movement':
+          recs.push('Contact your maternity/obstetric provider promptly for assessment of decreased fetal movement.');
+          break;
+
+        // 17. Seizure
+        case 'convulsions':
+        case 'seizure':
+          recs.push('Seek emergency medical care immediately after a seizure during pregnancy.');
+          break;
+
+        // 18. One-sided leg swelling/pain
+        case 'leg_swelling_pain':
+        case 'one_sided_leg_swelling':
+          recs.push('Seek prompt medical assessment for new one-sided leg swelling or pain, particularly if accompanied by chest pain or difficulty breathing.');
+          break;
+
+        // 19. Severe weakness
+        case 'fatigue':
+        case 'severe_weakness':
+        case 'weakness':
+          recs.push('Rest and maintain hydration. If weakness is severe, persistent, sudden, or associated with fainting, difficulty breathing, bleeding, or other concerning symptoms, seek medical evaluation.');
+          break;
+
+        // 20. Painful urination
+        case 'urinary_discomfort':
+        case 'painful_urination':
+          recs.push('Contact your healthcare provider for assessment, especially if accompanied by fever, back/flank pain, or worsening symptoms.');
+          break;
+
+        // Swelling
+        case 'swelling':
+          if (swellingLocations.includes('Face') || swellingLocations.includes('Hands') || swellingLocations.length >= 3 || isSevere) {
+            recs.push('Sudden swelling combined with elevated blood pressure requires prompt clinical evaluation.');
+          } else {
+            recs.push('Elevate your feet above heart level for 20–30 minutes, wear comfortable footwear, and stay hydrated.');
+          }
+          break;
+
+        // Back pain
+        case 'back_pain':
+          if (isSevere) {
+            recs.push('Severe or rhythmic back pain might indicate preterm labor. Contact your provider.');
+          } else {
+            recs.push('For mild back discomfort, use a warm compress, practice good posture, and rest.');
+          }
+          break;
       }
     }
 
+    // Default if no specific symptoms triggered
     if (recs.length === 0) {
-      recs.push('No active critical symptoms reported. Continue monitoring daily and report any sudden headache, bleeding, vision changes, or fluid leakage immediately.');
+      recs.push('Continue routine monitoring. Report any new or worsening symptoms to your healthcare provider.');
     }
 
-    return recs;
+    return Array.from(new Set(recs));
   };
 
   const handleSubmit = async () => {

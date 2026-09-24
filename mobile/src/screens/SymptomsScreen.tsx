@@ -858,8 +858,6 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
           {catalog.map((item) => {
             const currentSev = selectedSeverities[item.id] || 'None';
             const isSelected = currentSev !== 'None';
-            const currentDur = selectedDurations[item.id] || 'Today';
-            const currentFreq = selectedFrequencies[item.id] || 'Rare';
 
             return (
               <View
@@ -916,65 +914,9 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
                   })}
                 </View>
 
-                {/* Duration & Frequency Select Pills (.select-pill in style.css) */}
-                {isSelected && (
+                {/* ── Engine Sub-detail Sections (if applicable when selected) ── */}
+                {isSelected && (item.id === 'fever' || item.id === 'abdominal_pain' || item.id === 'swelling') && (
                   <View style={styles.extraPillSection}>
-                    {/* Duration */}
-                    <View style={styles.pillGroup}>
-                      <Text style={styles.subPillLabel}>Duration:</Text>
-                      <View style={styles.pillRow}>
-                        {(['Today', '1–3 Days', 'More than 3 Days'] as const).map((dur) => (
-                          <TouchableOpacity
-                            key={dur}
-                            style={[
-                              styles.selectPillBtn,
-                              currentDur === dur && styles.selectPillBtnActive,
-                            ]}
-                            onPress={() => setDuration(item.id, dur)}
-                            activeOpacity={0.7}
-                          >
-                            <Text
-                              style={[
-                                styles.selectPillText,
-                                currentDur === dur && styles.selectPillTextActive,
-                              ]}
-                            >
-                              {dur}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-
-                    {/* Frequency */}
-                    <View style={styles.pillGroup}>
-                      <Text style={styles.subPillLabel}>Frequency:</Text>
-                      <View style={styles.pillRow}>
-                        {(['Rare', 'Sometimes', 'Often', 'Always'] as const).map((freq) => (
-                          <TouchableOpacity
-                            key={freq}
-                            style={[
-                              styles.selectPillBtn,
-                              currentFreq === freq && styles.selectPillBtnActive,
-                            ]}
-                            onPress={() => setFrequency(item.id, freq)}
-                            activeOpacity={0.7}
-                          >
-                            <Text
-                              style={[
-                                styles.selectPillText,
-                                currentFreq === freq && styles.selectPillTextActive,
-                              ]}
-                            >
-                              {freq}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-
-                    {/* ── Engine Sub-detail Sections ── */}
-
                     {/* Fever: chills / sweating qualifier */}
                     {item.id === 'fever' && (
                       <View style={styles.subDetailBox}>

@@ -916,9 +916,6 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
                           </Text>
                         </View>
                       </View>
-                      <Text style={styles.symptomItemDetails}>
-                        Duration: {item.duration || 'Recent'} • Frequency: {item.frequency || 'Occasional'}
-                      </Text>
                       {sev === 'Mild' && (
                         <Text style={styles.symptomHelpNote}>
                           ✓ Mild intensity — manageable via routine prenatal hydration & rest.

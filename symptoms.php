@@ -333,18 +333,6 @@ render_header('Symptom Check-in', 'symptoms');
                 <?php endforeach; ?>
               </select>
             </div>
-            <div class="grid grid-2" style="gap:6px;">
-              <select class="select-pill" name="dur[<?php echo e($sid); ?>]">
-                <?php foreach (DURATION_LEVELS as $d): ?>
-                  <option value="<?php echo e($d); ?>"><?php echo e($d); ?></option>
-                <?php endforeach; ?>
-              </select>
-              <select class="select-pill" name="freq[<?php echo e($sid); ?>]">
-                <?php foreach (FREQUENCY_LEVELS as $f): ?>
-                  <option value="<?php echo e($f); ?>"><?php echo e($f); ?></option>
-                <?php endforeach; ?>
-              </select>
-            </div>
           </div>
         <?php endforeach; ?>
       </div>

@@ -395,24 +395,9 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
         <View>
           {/* Hospital Standard Banner */}
               <View style={[styles.card, Shadows.card, { padding: 16, borderRadius: 16, borderWidth: 1, borderColor: Colors.primaryLight, marginTop: 12 }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: Colors.textMuted, letterSpacing: 0.8 }}>
-                    REPUBLIC OF THE PHILIPPINES
-                  </Text>
-                  <Text style={{ fontSize: 9.5, fontWeight: '700', color: Colors.primaryDark }}>
-                    MD08-FM-011/Rev.0/5Jul2023
-                  </Text>
-                </View>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: Colors.text, textTransform: 'uppercase' }}>
-                  Mayor Hilarion A. Ramiro Sr. Medical Center
-                </Text>
-                <Text style={{ fontSize: 11, color: Colors.textSoft, marginBottom: 12 }}>
-                  Ozamiz City • Department of OB-GYN
-                </Text>
-
                 <LinearGradient
                   colors={[Colors.primaryLight, Colors.surface]}
-                  style={{ marginHorizontal: -16, paddingVertical: 12, paddingHorizontal: 16, borderTopWidth: 1, borderBottomWidth: 1, borderColor: Colors.primaryLight, alignItems: 'center' }}
+                  style={{ marginHorizontal: -16, marginTop: -16, paddingVertical: 12, paddingHorizontal: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderBottomWidth: 1, borderColor: Colors.primaryLight, alignItems: 'center' }}
                 >
                   <Text style={{ fontWeight: '800', fontSize: 15, letterSpacing: 0.8, color: Colors.primaryDark }}>
                     HIGH RISK EVALUATION (COOPLAND)

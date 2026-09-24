@@ -1033,16 +1033,12 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
       {/* ───────────────────────────────────────────────────────────── */}
       {activeTab === 'assess_risk' && (
         <>
-          {/* Hospital Header Banner */}
-          <View style={[styles.hospitalHeaderCard, Shadows.card]}>
-            <View style={styles.hospitalTopBadge}>
-              <Text style={styles.hospitalRepublicText}>Republic of the Philippines</Text>
-              <Text style={styles.hospitalDocCode}>MD08-FM-011/Rev.0/5Jul2023</Text>
-            </View>
-            <Text style={styles.hospitalName}>MAYOR HILARION A. RAMIRO SR. MEDICAL CENTER</Text>
-            <Text style={styles.hospitalCity}>Ozamiz City • Department of OB-GYN</Text>
-            <View style={styles.hospitalDivider} />
+          {/* Coopland Header Banner */}
+          <View style={[styles.hospitalHeaderCard, Shadows.card, { paddingVertical: 14 }]}>
             <Text style={styles.hospitalFormTitle}>HIGH RISK EVALUATION FORMS (COOPLAND)</Text>
+            <Text style={{ fontSize: 11, color: Colors.textSoft, marginTop: 3 }}>
+              Standardized Maternal Risk Factor Classification
+            </Text>
           </View>
 
           {/* Live Coopland Risk Score Card */}

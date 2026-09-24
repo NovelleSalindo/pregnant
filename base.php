@@ -2127,7 +2127,7 @@ function assess_risk($input, $ruleBase = [], $catalog = [], $pdo = null){
 
     // General reassurance and disclaimer
     $formattedRecs[] = ['text' => 'Stay well hydrated with clean water and rest whenever you feel fatigued.', 'icon' => 'fa-glass-water', 'urgent' => false];
-    $formattedRecs[] = ['text' => 'Decision support only. Evaluated using Mayor Hilarion A. Ramiro Sr. Medical Center Coopland High-Risk Form.', 'icon' => 'fa-user-doctor', 'urgent' => false];
+    $formattedRecs[] = ['text' => 'Decision support only. Evaluated using Coopland High-Risk Pregnancy Scoring System.', 'icon' => 'fa-user-doctor', 'urgent' => false];
 
     // Deduplicate
     $seenTexts = [];

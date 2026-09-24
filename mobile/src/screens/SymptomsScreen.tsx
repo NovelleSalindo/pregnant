@@ -350,8 +350,26 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
         }));
 
       const sympCount = activeSymptomsList.length;
-      // Symptom alert level: 1-2 symptoms = green alert, 3-4 symptoms = yellow alert, 5+ symptoms = red alert
-      const sympAlertLevel: 'green' | 'yellow' | 'red' = sympCount >= 5 ? 'red' : (sympCount >= 3 ? 'yellow' : 'green');
+      const hasSevere = activeSymptomsList.some((s) => s.severity === 'Severe');
+      const hasModerate = activeSymptomsList.some((s) => s.severity === 'Moderate');
+      const isCriticalAcute = (selectedSeverities['convulsions'] && selectedSeverities['convulsions'] !== 'None')
+        || (selectedSeverities['fluid_loss'] && selectedSeverities['fluid_loss'] !== 'None')
+        || lossVaginalFluid
+        || bellyPainHardAbdomen
+        || bellyPainBleeding;
+
+      // Symptom alert rules:
+      // RED: Any symptom with 'Severe' severity, OR acute critical symptoms, OR 5+ symptoms reported
+      // YELLOW: At least one symptom with 'Moderate' severity, OR 3 to 4 symptoms reported
+      // GREEN: 1 to 2 symptoms (all Mild), or 0 symptoms
+      let sympAlertLevel: 'green' | 'yellow' | 'red' = 'green';
+      if (hasSevere || isCriticalAcute || sympCount >= 5) {
+        sympAlertLevel = 'red';
+      } else if (hasModerate || sympCount >= 3) {
+        sympAlertLevel = 'yellow';
+      } else {
+        sympAlertLevel = 'green';
+      }
 
       const criticalRecs = buildCriticalRecommendations(selectedSeverities);
 
@@ -393,16 +411,18 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
       setAssessmentResult(mergedResult);
       setShowResultModal(true);
 
-      // Trigger phone notification based on symptom count alert level
+      // Trigger phone notification based on symptom alert level
       if (sympAlertLevel === 'red') {
         sendPhoneNotification(
-          '🚨 Urgent Maternal Symptom Alert (Red Alert)',
-          `${sympCount} symptoms reported. Immediate clinical consultation or hospital triage is strongly advised.`
+          hasSevere ? '🚨 Urgent Maternal Symptom Alert (Severe Symptom)' : '🚨 Urgent Maternal Symptom Alert (Red Alert)',
+          hasSevere
+            ? 'A severe maternal symptom was reported. Immediate clinical consultation or hospital triage is strongly advised.'
+            : `${sympCount} symptoms reported. Immediate clinical consultation or hospital triage is strongly advised.`
         ).catch(() => {});
       } else if (sympAlertLevel === 'yellow') {
         sendPhoneNotification(
           '⚠️ Maternal Symptom Notice (Yellow Alert)',
-          `${sympCount} symptoms recorded. Please review your personalized cautionary guidance.`
+          `${sympCount} symptom${sympCount > 1 ? 's' : ''} recorded. Please review your personalized cautionary guidance.`
         ).catch(() => {});
       } else if (sympCount > 0) {
         sendPhoneNotification(
@@ -418,7 +438,23 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
           severity: selectedSeverities[c.id],
         }));
       const sympCount = activeSymptomsList.length;
-      const sympAlertLevel: 'green' | 'yellow' | 'red' = sympCount >= 5 ? 'red' : (sympCount >= 3 ? 'yellow' : 'green');
+      const hasSevere = activeSymptomsList.some((s) => s.severity === 'Severe');
+      const hasModerate = activeSymptomsList.some((s) => s.severity === 'Moderate');
+      const isCriticalAcute = (selectedSeverities['convulsions'] && selectedSeverities['convulsions'] !== 'None')
+        || (selectedSeverities['fluid_loss'] && selectedSeverities['fluid_loss'] !== 'None')
+        || lossVaginalFluid
+        || bellyPainHardAbdomen
+        || bellyPainBleeding;
+
+      let sympAlertLevel: 'green' | 'yellow' | 'red' = 'green';
+      if (hasSevere || isCriticalAcute || sympCount >= 5) {
+        sympAlertLevel = 'red';
+      } else if (hasModerate || sympCount >= 3) {
+        sympAlertLevel = 'yellow';
+      } else {
+        sympAlertLevel = 'green';
+      }
+
       const criticalRecs = buildCriticalRecommendations(selectedSeverities);
 
       setAssessmentResult({
@@ -1811,7 +1847,11 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
             {(() => {
               const isSymptomsSource = assessmentResult?.source === 'symptoms';
               const sympCount = assessmentResult?.activeSymptoms?.length ?? (assessmentResult?.symptomCount ?? 0);
-              const sympAlertLevel: 'green' | 'yellow' | 'red' = assessmentResult?.symptomAlertLevel ?? (sympCount >= 5 ? 'red' : (sympCount >= 3 ? 'yellow' : 'green'));
+              const hasSevere = assessmentResult?.activeSymptoms?.some((s: any) => s.severity === 'Severe');
+              const hasModerate = assessmentResult?.activeSymptoms?.some((s: any) => s.severity === 'Moderate');
+              const sympAlertLevel: 'green' | 'yellow' | 'red' = assessmentResult?.symptomAlertLevel ?? (
+                (hasSevere || sympCount >= 5) ? 'red' : ((hasModerate || sympCount >= 3) ? 'yellow' : 'green')
+              );
 
               const rawRecs = (assessmentResult?.recommendations && assessmentResult.recommendations.length > 0)
                 ? assessmentResult.recommendations
@@ -1832,7 +1872,9 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
                   modalThemeBg = '#FEE2E2';
                   modalThemeBorder = '#FCA5A5';
                   modalThemeTitle = 'Critical Clinical Guidance';
-                  modalBadgeText = `CRITICAL RECOMMENDATIONS (${sympCount} SYMPTOMS - RED ALERT)`;
+                  modalBadgeText = hasSevere
+                    ? `CRITICAL RECOMMENDATIONS (SEVERE SYMPTOM - RED ALERT)`
+                    : `CRITICAL RECOMMENDATIONS (${sympCount} SYMPTOMS - RED ALERT)`;
                   modalBoxTitle = 'Critical Guidance & Actions';
                   modalIconName = 'alert-circle';
                   alertPillText = '🔴 Red Alert';

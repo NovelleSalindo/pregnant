@@ -395,25 +395,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $result['score'] = 0;
         
         $activeSympCount = 0;
+        $hasSevereSymptom = false;
+        $hasModerateSymptom = false;
         foreach ($normalizedSymptoms as $ns) {
-            if (($ns['severity'] ?? 'None') !== 'None') {
+            $sev = $ns['severity'] ?? 'None';
+            if ($sev !== 'None') {
                 $activeSympCount++;
+                if (strtolower($sev) === 'severe') {
+                    $hasSevereSymptom = true;
+                } elseif (strtolower($sev) === 'moderate') {
+                    $hasModerateSymptom = true;
+                }
             }
         }
-        // Symptom alert level: 1-2 symptoms = green alert, 3-4 symptoms = yellow alert, 5+ symptoms = red alert
-        $sympAlertLevel = $activeSympCount >= 5 ? 'red' : ($activeSympCount >= 3 ? 'yellow' : 'green');
+        
+        $hasAcuteCritical = !empty($input['loss_of_vaginal_fluid']) 
+            || !empty($input['belly_pain_with_hard_abdomen']) 
+            || !empty($input['belly_pain_with_bleeding'])
+            || (($symptomIntensities['convulsions'] ?? 0) > 0);
+
+        // Symptom alert rules:
+        // RED: Any symptom with 'Severe' severity, OR acute critical signs, OR 5+ symptoms reported
+        // YELLOW: At least one symptom with 'Moderate' severity, OR 3 to 4 symptoms reported
+        // GREEN: 1 to 2 symptoms (all Mild), or 0 symptoms
+        if ($hasSevereSymptom || $hasAcuteCritical || $activeSympCount >= 5) {
+            $sympAlertLevel = 'red';
+        } elseif ($hasModerateSymptom || $activeSympCount >= 3) {
+            $sympAlertLevel = 'yellow';
+        } else {
+            $sympAlertLevel = 'green';
+        }
+        
         $result['symptom_count'] = $activeSympCount;
         $result['symptom_alert_level'] = $sympAlertLevel;
 
         if ($activeSympCount > 0) {
             $notifId = uid('ntf');
             if ($sympAlertLevel === 'red') {
-                $notifTitle = '🚨 Urgent Maternal Symptom Alert (Red Alert)';
-                $notifBody = "{$activeSympCount} symptoms reported. Immediate clinical consultation or hospital triage is strongly advised.";
+                $notifTitle = $hasSevereSymptom 
+                    ? '🚨 Urgent Maternal Symptom Alert (Severe Symptom)' 
+                    : '🚨 Urgent Maternal Symptom Alert (Red Alert)';
+                $notifBody = $hasSevereSymptom
+                    ? "A severe maternal symptom was reported. Immediate clinical consultation or hospital triage is strongly advised."
+                    : "{$activeSympCount} symptoms reported. Immediate clinical consultation or hospital triage is strongly advised.";
                 $notifKind = 'severe_risk_alert';
             } elseif ($sympAlertLevel === 'yellow') {
                 $notifTitle = '⚠️ Maternal Symptom Notice (Yellow Alert)';
-                $notifBody = "{$activeSympCount} symptoms recorded. Please review your personalized cautionary guidance.";
+                $notifBody = "{$activeSympCount} symptom" . ($activeSympCount > 1 ? 's' : '') . " recorded. Please review your personalized cautionary guidance.";
                 $notifKind = 'high_risk_alert';
             } else {
                 $notifTitle = '✅ Symptom Check-in Logged (Green Alert)';

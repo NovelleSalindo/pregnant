@@ -778,7 +778,6 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
                 )}
               </View>
             </View>
-          </View>
       )}
       </ScrollView>
 

@@ -31,6 +31,8 @@ import { NotificationModal } from './src/components/NotificationModal';
 import { EmergencyFab } from './src/components/EmergencyFab';
 import { HeaderBar } from './src/components/HeaderBar';
 import { HeartSplash } from './src/components/HeartSplash';
+import { RedBubbleFlashModal } from './src/components/RedBubbleFlashModal';
+import { subscribeBubbleFlash, BubbleFlashEvent } from './src/services/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 LogBox.ignoreLogs([
@@ -63,6 +65,14 @@ function MainApp() {
   const [trackerSubTab, setTrackerSubTab] = useState<'kick' | 'contraction' | 'journal' | 'bump'>('kick');
   const [authView, setAuthView] = useState<'front' | 'auth'>('front');
   const [authInitialTab, setAuthInitialTab] = useState<'login' | 'register'>('login');
+  const [globalBubbleFlash, setGlobalBubbleFlash] = useState<BubbleFlashEvent | null>(null);
+
+  useEffect(() => {
+    const unsub = subscribeBubbleFlash((ev) => {
+      setGlobalBubbleFlash(ev);
+    });
+    return unsub;
+  }, []);
 
   const fetchUserData = useCallback(async () => {
     let localNotifs: any[] = [];
@@ -529,6 +539,18 @@ function MainApp() {
         onMarkAllRead={handleMarkAllNotificationsRead}
         onClearAll={handleClearAllNotifications}
         onDeleteNotification={handleDeleteNotification}
+        isDarkMode={isDarkMode}
+      />
+
+      {/* Global Red/Themed Bubble Flash Dialog */}
+      <RedBubbleFlashModal
+        visible={!!globalBubbleFlash?.visible}
+        title={globalBubbleFlash?.title || ''}
+        message={globalBubbleFlash?.message || ''}
+        theme={globalBubbleFlash?.theme}
+        icon={globalBubbleFlash?.icon}
+        buttonText={globalBubbleFlash?.buttonText}
+        onClose={() => setGlobalBubbleFlash(null)}
         isDarkMode={isDarkMode}
       />
     </View>

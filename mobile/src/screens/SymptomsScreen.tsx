@@ -18,6 +18,7 @@ import { api } from '../services/api';
 import { evaluateMaternalRisk, SymptomEntry } from '../services/riskEngine';
 import { RiskGauge } from '../components/RiskGauge';
 import { sendPhoneNotification } from '../services/notifications';
+import { RedBubbleFlashModal } from '../components/RedBubbleFlashModal';
 
 const ALL_APP_SYMPTOMS = [
   { id: 'headache', name: 'Headache (Severe / Persistent)', icon: 'head-outline', weight: 0.75 },
@@ -113,6 +114,12 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
 
   const [assessmentResult, setAssessmentResult] = useState<any>(null);
   const [showResultModal, setShowResultModal] = useState(false);
+  const [bubbleFlashAlert, setBubbleFlashAlert] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    theme?: 'red' | 'yellow' | 'pink' | 'green';
+  } | null>(null);
 
   // ── Engine Sub-detail States ──────────────────────────────────────
   const [feverWithChills, setFeverWithChills]     = useState(false);
@@ -411,19 +418,29 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
       setAssessmentResult(mergedResult);
       setShowResultModal(true);
 
-      // Trigger phone notification based on symptom alert level
+      // Trigger phone notification and bubble alert based on symptom alert level
       if (sympAlertLevel === 'red') {
-        sendPhoneNotification(
-          hasSevere ? '🚨 Urgent Maternal Symptom Alert (Severe Symptom)' : '🚨 Urgent Maternal Symptom Alert (Red Alert)',
-          hasSevere
-            ? 'A severe maternal symptom was reported. Immediate clinical consultation or hospital triage is strongly advised.'
-            : `${sympCount} symptoms reported. Immediate clinical consultation or hospital triage is strongly advised.`
-        ).catch(() => {});
+        const title = hasSevere ? '🚨 Urgent Maternal Symptom Alert (Severe Symptom)' : '🚨 Urgent Maternal Symptom Alert (Red Alert)';
+        const msg = hasSevere
+          ? 'A severe maternal symptom was reported. Immediate clinical consultation or hospital triage is strongly advised.'
+          : `${sympCount} symptoms reported. Immediate clinical consultation or hospital triage is strongly advised.`;
+        setBubbleFlashAlert({
+          visible: true,
+          title,
+          message: msg,
+          theme: 'red',
+        });
+        sendPhoneNotification(title, msg, { alertLevel: 'red' }).catch(() => {});
       } else if (sympAlertLevel === 'yellow') {
-        sendPhoneNotification(
-          '⚠️ Maternal Symptom Notice (Yellow Alert)',
-          `${sympCount} symptom${sympCount > 1 ? 's' : ''} recorded. Please review your personalized cautionary guidance.`
-        ).catch(() => {});
+        const title = '⚠️ Maternal Symptom Notice (Yellow Alert)';
+        const msg = `${sympCount} symptom${sympCount > 1 ? 's' : ''} recorded. Please review your personalized cautionary guidance.`;
+        setBubbleFlashAlert({
+          visible: true,
+          title,
+          message: msg,
+          theme: 'yellow',
+        });
+        sendPhoneNotification(title, msg, { alertLevel: 'yellow' }).catch(() => {});
       } else if (sympCount > 0) {
         sendPhoneNotification(
           '✅ Symptom Check-in Logged (Green Alert)',
@@ -468,6 +485,30 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
         },
       });
       setShowResultModal(true);
+
+      if (sympAlertLevel === 'red') {
+        const title = hasSevere ? '🚨 Urgent Maternal Symptom Alert (Severe Symptom)' : '🚨 Urgent Maternal Symptom Alert (Red Alert)';
+        const msg = hasSevere
+          ? 'A severe maternal symptom was reported. Immediate clinical consultation or hospital triage is strongly advised.'
+          : `${sympCount} symptoms reported. Immediate clinical consultation or hospital triage is strongly advised.`;
+        setBubbleFlashAlert({
+          visible: true,
+          title,
+          message: msg,
+          theme: 'red',
+        });
+        sendPhoneNotification(title, msg, { alertLevel: 'red' }).catch(() => {});
+      } else if (sympAlertLevel === 'yellow') {
+        const title = '⚠️ Maternal Symptom Notice (Yellow Alert)';
+        const msg = `${sympCount} symptom${sympCount > 1 ? 's' : ''} recorded. Please review your personalized cautionary guidance.`;
+        setBubbleFlashAlert({
+          visible: true,
+          title,
+          message: msg,
+          theme: 'yellow',
+        });
+        sendPhoneNotification(title, msg, { alertLevel: 'yellow' }).catch(() => {});
+      }
     } finally {
       setSubmitting(false);
     }
@@ -591,21 +632,32 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
       setAssessmentResult(assessmentPayload);
       setShowResultModal(true);
 
-      // Trigger user notification based on evaluated risk level
+      // Trigger user notification and Red Bubble Flash based on evaluated risk level
       if (liveCoopland.level === 'Severe') {
-        sendPhoneNotification(
-          '🚨 Urgent: Severe Maternal Risk Detected',
-          `Your Coopland score is ${liveCoopland.score} (Severe Risk). Immediate medical evaluation by an obstetrician or hospital triage is strongly advised.`
-        ).catch(() => {});
+        const title = '🚨 Urgent: Severe Maternal Risk Detected';
+        const msg = `Your Coopland score is ${liveCoopland.score} (Severe Risk). Immediate medical evaluation by an obstetrician or hospital triage is strongly advised.`;
+        setBubbleFlashAlert({
+          visible: true,
+          title,
+          message: msg,
+          theme: 'red',
+        });
+        sendPhoneNotification(title, msg, { level: 'Severe' }).catch(() => {});
       } else if (liveCoopland.level === 'High') {
-        sendPhoneNotification(
-          '⚠️ Maternal Risk Alert: High Risk',
-          `Your Coopland score is ${liveCoopland.score} (High Risk). Please schedule an OB-GYN checkup within 24 to 48 hours.`
-        ).catch(() => {});
+        const title = '⚠️ Maternal Risk Alert: High Risk';
+        const msg = `Your Coopland score is ${liveCoopland.score} (High Risk). Please schedule an OB-GYN checkup within 24 to 48 hours.`;
+        setBubbleFlashAlert({
+          visible: true,
+          title,
+          message: msg,
+          theme: 'yellow',
+        });
+        sendPhoneNotification(title, msg, { level: 'High' }).catch(() => {});
       } else {
         sendPhoneNotification(
           '✅ Risk Assessment Completed: Low Risk',
-          `Your Coopland score is ${liveCoopland.score} (Low Risk). Routine prenatal care supported.`
+          `Your Coopland score is ${liveCoopland.score} (Low Risk). Routine prenatal care supported.`,
+          { level: 'Low' }
         ).catch(() => {});
       }
     } catch (e: any) {
@@ -641,17 +693,27 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
       });
       setShowResultModal(true);
 
-      // Trigger user notification based on evaluated risk level (offline/catch fallback)
+      // Trigger user notification and Red Bubble Flash based on evaluated risk level (offline/catch fallback)
       if (liveCoopland.level === 'Severe') {
-        sendPhoneNotification(
-          '🚨 Urgent: Severe Maternal Risk Detected',
-          `Your Coopland score is ${liveCoopland.score} (Severe Risk). Immediate medical evaluation by an obstetrician or hospital triage is strongly advised.`
-        ).catch(() => {});
+        const title = '🚨 Urgent: Severe Maternal Risk Detected';
+        const msg = `Your Coopland score is ${liveCoopland.score} (Severe Risk). Immediate medical evaluation by an obstetrician or hospital triage is strongly advised.`;
+        setBubbleFlashAlert({
+          visible: true,
+          title,
+          message: msg,
+          theme: 'red',
+        });
+        sendPhoneNotification(title, msg, { level: 'Severe' }).catch(() => {});
       } else if (liveCoopland.level === 'High') {
-        sendPhoneNotification(
-          '⚠️ Maternal Risk Alert: High Risk',
-          `Your Coopland score is ${liveCoopland.score} (High Risk). Please schedule an OB-GYN checkup within 24 to 48 hours.`
-        ).catch(() => {});
+        const title = '⚠️ Maternal Risk Alert: High Risk';
+        const msg = `Your Coopland score is ${liveCoopland.score} (High Risk). Please schedule an OB-GYN checkup within 24 to 48 hours.`;
+        setBubbleFlashAlert({
+          visible: true,
+          title,
+          message: msg,
+          theme: 'yellow',
+        });
+        sendPhoneNotification(title, msg, { level: 'High' }).catch(() => {});
       }
     } finally {
       setSubmitting(false);
@@ -2087,6 +2149,19 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
               );
             })()}
           </View>
+
+          {/* Red Bubbles Flash Alert Overlay inside Modal */}
+          {bubbleFlashAlert?.visible && (
+            <RedBubbleFlashModal
+              visible={bubbleFlashAlert.visible}
+              title={bubbleFlashAlert.title}
+              message={bubbleFlashAlert.message}
+              theme={bubbleFlashAlert.theme}
+              buttonText="VIEW GUIDELINES"
+              onClose={() => setBubbleFlashAlert(null)}
+              inModal={true}
+            />
+          )}
         </View>
       </Modal>
     </ScrollView>

@@ -21,6 +21,7 @@ import { api } from '../services/api';
 import { sendPhoneNotification, scheduleObVisitNotification } from '../services/notifications';
 import { getMilestoneForWeek } from '../data/pregnancyMilestones';
 import { buildRecommendations } from '../services/riskEngine';
+import { RedBubbleFlashModal } from '../components/RedBubbleFlashModal';
 
 interface HomeScreenProps {
   onNavigate: (tab: string) => void;
@@ -52,11 +53,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [obVisitInput, setObVisitInput] = useState('');
   const [savingObVisit, setSavingObVisit] = useState(false);
 
-  // Pink Bubble Flash State
+  // Red / Themed Bubble Flash State
   const [bubbleFlash, setBubbleFlash] = useState<{
     visible: boolean;
     title: string;
     message: string;
+    theme?: 'red' | 'yellow' | 'pink' | 'green';
     icon?: string;
     buttonText?: string;
   } | null>(null);
@@ -65,12 +67,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     title: string,
     message: string,
     icon: string = 'checkmark-circle',
-    buttonText: string = 'Got it ✨'
+    buttonText: string = 'Got it ✨',
+    theme?: 'red' | 'yellow' | 'pink' | 'green'
   ) => {
+    const isRedTheme = theme === 'red' || title.includes('Severe') || title.includes('🚨') || title.includes('Required') || title.includes('Error');
     setBubbleFlash({
       visible: true,
       title,
       message,
+      theme: theme || (isRedTheme ? 'red' : 'pink'),
       icon,
       buttonText,
     });
@@ -1108,59 +1113,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </View>
       </Modal>
 
-      {/* Pink Bubble Flash Dialog */}
-      <Modal
+      {/* Red / Themed Bubble Flash Dialog */}
+      <RedBubbleFlashModal
         visible={!!bubbleFlash?.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setBubbleFlash(null)}
-      >
-        <View style={styles.bubbleModalOverlay}>
-          <View style={[styles.bubbleCard, isDarkMode && styles.bubbleCardDark]}>
-            {/* Decorative Floating Mini-Bubbles */}
-            <View style={styles.floatingBubble1} />
-            <View style={styles.floatingBubble2} />
-            <View style={styles.floatingBubble3} />
-
-            {/* Main Central Bubble Icon */}
-            <View style={[styles.bubbleIconContainer, isDarkMode && styles.bubbleIconContainerDark]}>
-              <Ionicons
-                name={(bubbleFlash?.icon as any) || 'checkmark-circle'}
-                size={36}
-                color={isDarkMode ? '#F472B6' : '#BE185D'}
-              />
-            </View>
-
-            {/* Bubble Title */}
-            <Text style={[styles.bubbleTitle, isDarkMode && styles.bubbleTitleDark]}>
-              {bubbleFlash?.title || 'Notice'}
-            </Text>
-
-            {/* Bubble Message */}
-            <Text style={[styles.bubbleMessage, isDarkMode && styles.bubbleMessageDark]}>
-              {bubbleFlash?.message || ''}
-            </Text>
-
-            {/* Bubbly Gradient Action Button */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={styles.bubbleActionBtnWrapper}
-              onPress={() => setBubbleFlash(null)}
-            >
-              <LinearGradient
-                colors={Gradients.primaryBtn}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.bubbleActionBtn}
-              >
-                <Text style={styles.bubbleActionBtnText}>
-                  {bubbleFlash?.buttonText || 'Got it ✨'}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+        title={bubbleFlash?.title || 'Notice'}
+        message={bubbleFlash?.message || ''}
+        theme={bubbleFlash?.theme}
+        icon={bubbleFlash?.icon}
+        buttonText={bubbleFlash?.buttonText}
+        onClose={() => setBubbleFlash(null)}
+        isDarkMode={isDarkMode}
+      />
     </ScrollView>
   );
 };

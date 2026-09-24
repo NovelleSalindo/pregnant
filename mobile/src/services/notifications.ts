@@ -23,6 +23,35 @@ export async function requestPhoneNotificationPermission(): Promise<boolean> {
   return true;
 }
 
+export interface BubbleFlashEvent {
+  visible: boolean;
+  title: string;
+  message: string;
+  theme?: 'red' | 'yellow' | 'pink' | 'green';
+  icon?: string;
+  buttonText?: string;
+}
+
+type FlashListener = (event: BubbleFlashEvent) => void;
+const flashListeners: Set<FlashListener> = new Set();
+
+export function subscribeBubbleFlash(listener: FlashListener): () => void {
+  flashListeners.add(listener);
+  return () => {
+    flashListeners.delete(listener);
+  };
+}
+
+export function triggerBubbleFlash(event: BubbleFlashEvent) {
+  flashListeners.forEach((fn) => {
+    try {
+      fn(event);
+    } catch (e) {
+      console.warn('Bubble flash error:', e);
+    }
+  });
+}
+
 /**
  * Send a notification to the phone (Web Notifications for browsers/PWA, Native Alert & Haptics for Mobile)
  */
@@ -54,8 +83,37 @@ export async function sendPhoneNotification(
     }
   } catch (e) {}
 
-  // 3. Native Phone Pop-up Alert (guarantees the user is visibly alerted on phone screen)
-  Alert.alert(title, body, [{ text: 'View Guidelines' }]);
+  // 3. Red/Themed Bubble Flash Alert (replaces plain white native alert dialog)
+  const isRed =
+    title.includes('Severe') ||
+    title.includes('🚨') ||
+    title.includes('Urgent') ||
+    body.includes('Severe') ||
+    data?.level === 'Severe' ||
+    data?.alertLevel === 'red';
+  const isYellow =
+    !isRed &&
+    (title.includes('High') ||
+      title.includes('⚠️') ||
+      data?.level === 'High' ||
+      data?.alertLevel === 'yellow');
+
+  const theme: 'red' | 'yellow' | 'pink' = isRed ? 'red' : (isYellow ? 'yellow' : 'pink');
+  const icon = isRed ? 'alert-circle' : (isYellow ? 'warning' : 'checkmark-circle');
+
+  triggerBubbleFlash({
+    visible: true,
+    title,
+    message: body,
+    theme,
+    icon,
+    buttonText: isRed ? 'VIEW GUIDELINES' : 'Got it ✨',
+  });
+
+  // Fallback to native Alert only if no bubble listener is registered
+  if (flashListeners.size === 0) {
+    Alert.alert(title, body, [{ text: 'View Guidelines' }]);
+  }
 
   // 4. Save to in-app notification center so the bell icon shows unread badge
   try {

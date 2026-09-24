@@ -11,14 +11,19 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Shadows } from '../theme/colors';
 
-interface NotificationItem {
+export interface NotificationItem {
   id: string;
   title: string;
   body: string;
   date: string;
-  is_read: number | boolean;
+  is_read: number | boolean | string;
   kind?: string;
 }
+
+export const isNotificationUnread = (item?: { is_read?: any } | null): boolean => {
+  if (!item) return false;
+  return item.is_read !== 1 && item.is_read !== '1' && item.is_read !== true;
+};
 
 interface NotificationModalProps {
   visible: boolean;
@@ -43,6 +48,8 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   onMarkAsRead,
   isDarkMode = false,
 }) => {
+  const unreadCount = notifications.filter(isNotificationUnread).length;
+
   const getIconForKind = (kind?: string, title: string = '') => {
     if (kind === 'severe_risk_alert' || title.includes('Severe') || title.includes('🚨')) {
       return { name: 'alert-circle' as const, color: '#DC2626' };
@@ -85,18 +92,21 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
           <View style={styles.headerRow}>
             <View style={styles.titleWrap}>
               <Text style={[styles.title, isDarkMode && { color: '#F0EEF0' }]}>Notifications</Text>
-              <View style={styles.countBadge}>
-                <Text style={styles.countText}>{notifications.length}</Text>
+              <View style={[styles.countBadge, unreadCount > 0 && { backgroundColor: '#FCE7F3' }]}>
+                <Text style={[styles.countText, unreadCount > 0 && { color: Colors.primaryDark }]}>
+                  {unreadCount > 0 ? `${unreadCount} unread` : `${notifications.length}`}
+                </Text>
               </View>
             </View>
 
             <View style={styles.actionRow}>
-              {notifications.some((n) => !n.is_read) && (
+              {unreadCount > 0 && (
                 <TouchableOpacity
                   style={styles.markReadBtn}
                   onPress={onMarkAllRead}
                   activeOpacity={0.7}
                 >
+                  <Ionicons name="checkmark-done" size={13} color={Colors.secondaryDark} />
                   <Text style={styles.markReadText}>Mark All Read</Text>
                 </TouchableOpacity>
               )}
@@ -136,29 +146,49 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
               </View>
             ) : (
               notifications.map((item) => {
+                const isUnread = isNotificationUnread(item);
                 const isSevere = item.kind === 'severe_risk_alert' || item.title?.includes('Severe') || item.title?.includes('🚨');
                 const isHigh = !isSevere && (item.kind === 'high_risk_alert' || item.title?.includes('High') || item.title?.includes('⚠️'));
                 const icon = getIconForKind(item.kind, item.title);
-                const isUnread = !item.is_read;
+
                 return (
                   <TouchableOpacity
                     key={item.id}
                     style={[
                       styles.itemCard,
-                      isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31' },
-                      isUnread && (isDarkMode ? { backgroundColor: '#2A1F26', borderColor: '#FF94B8' } : styles.itemUnread),
-                      isSevere && {
-                        borderLeftWidth: 4,
-                        borderLeftColor: '#DC2626',
-                        backgroundColor: isDarkMode ? '#281318' : '#FEE2E2',
-                        borderColor: '#FCA5A5',
-                      },
-                      isHigh && {
+                      isDarkMode && { backgroundColor: '#131316', borderColor: '#26262D' },
+                      // Unread styling:
+                      isUnread && !isSevere && !isHigh && (
+                        isDarkMode
+                          ? { backgroundColor: '#211823', borderColor: '#FF94B8', borderLeftWidth: 4, borderLeftColor: '#FF94B8' }
+                          : styles.itemUnread
+                      ),
+                      isUnread && isHigh && {
                         borderLeftWidth: 4,
                         borderLeftColor: '#D97706',
-                        backgroundColor: isDarkMode ? '#282010' : '#FEF3C7',
+                        backgroundColor: isDarkMode ? '#2D200E' : '#FEF3C7',
                         borderColor: '#FCD34D',
                       },
+                      isUnread && isSevere && {
+                        borderLeftWidth: 4,
+                        borderLeftColor: '#DC2626',
+                        backgroundColor: isDarkMode ? '#331319' : '#FEE2E2',
+                        borderColor: '#FCA5A5',
+                      },
+                      // Read styling:
+                      !isUnread && isHigh && {
+                        borderLeftWidth: 3,
+                        borderLeftColor: '#F59E0B66',
+                      },
+                      !isUnread && isSevere && {
+                        borderLeftWidth: 3,
+                        borderLeftColor: '#EF444466',
+                      },
+                      !isUnread && (
+                        isDarkMode
+                          ? { backgroundColor: '#141418', borderColor: '#222228', opacity: 0.85 }
+                          : { backgroundColor: '#FFFFFF', borderColor: '#ECE9EC', opacity: 0.88 }
+                      ),
                     ]}
                     onPress={() => {
                       if (onItemPress) {
@@ -167,11 +197,12 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                         onMarkAsRead(item.id);
                       }
                     }}
-                    activeOpacity={0.7}
+                    activeOpacity={0.65}
                   >
                     <View style={[styles.iconCircle, { backgroundColor: icon.color + '1A' }]}>
                       <Ionicons name={icon.name} size={18} color={icon.color} />
                     </View>
+
                     <View style={styles.itemBody}>
                       <View style={styles.itemHeader}>
                         <View style={styles.titleRow}>
@@ -179,25 +210,34 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                           <Text
                             style={[
                               styles.itemTitle,
-                              isSevere && { color: '#DC2626', fontWeight: '800' },
-                              isHigh && { color: '#B45309', fontWeight: '800' },
-                              !isSevere && !isHigh && isDarkMode && { color: '#F0EEF0' },
+                              isSevere && isUnread && { color: '#DC2626', fontWeight: '800' },
+                              isHigh && isUnread && { color: '#B45309', fontWeight: '800' },
+                              !isUnread && isDarkMode && { color: '#D4D0D8' },
+                              isUnread && !isSevere && !isHigh && isDarkMode && { color: '#F0EEF0' },
                               isUnread && { fontWeight: '800' },
                             ]}
-                            numberOfLines={1}
+                            numberOfLines={2}
                           >
                             {item.title}
                           </Text>
                         </View>
+
                         <View style={styles.metaRight}>
-                          {isUnread && (
+                          {isUnread ? (
                             <View style={[styles.unreadBadge, isDarkMode && { backgroundColor: '#4A1D32', borderColor: '#831843' }]}>
                               <Text style={styles.unreadBadgeText}>NEW</Text>
                             </View>
+                          ) : (
+                            <View style={styles.readBadge}>
+                              <Ionicons name="checkmark" size={10} color={isDarkMode ? '#9CA3AF' : '#6B7280'} />
+                              <Text style={[styles.readBadgeText, isDarkMode && { color: '#9CA3AF' }]}>Read</Text>
+                            </View>
                           )}
+
                           <Text style={[styles.itemDate, isDarkMode && { color: '#85818A' }]}>
                             {item.date?.slice(5, 16) || ''}
                           </Text>
+
                           {onDeleteNotification && (
                             <TouchableOpacity
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -217,23 +257,59 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                           )}
                         </View>
                       </View>
-                      <Text style={[
-                        styles.itemText,
-                        isSevere && { color: isDarkMode ? '#FCA5A5' : '#991B1B' },
-                        isHigh && { color: isDarkMode ? '#FCD34D' : '#92400E' },
-                        !isSevere && !isHigh && isDarkMode && { color: '#B8B4BA' },
-                      ]}>
+
+                      <Text
+                        style={[
+                          styles.itemText,
+                          isSevere && isUnread && { color: isDarkMode ? '#FCA5A5' : '#991B1B' },
+                          isHigh && isUnread && { color: isDarkMode ? '#FCD34D' : '#92400E' },
+                          !isUnread && { color: isDarkMode ? '#9CA3AF' : '#6B7280' },
+                          isUnread && !isSevere && !isHigh && isDarkMode && { color: '#B8B4BA' },
+                        ]}
+                      >
                         {item.body}
                       </Text>
 
-                      {isUnread && (
-                        <View style={styles.tapToReadHint}>
-                          <Ionicons name="checkmark-done" size={12} color={isDarkMode ? '#FF94B8' : Colors.primaryDark} />
-                          <Text style={[styles.tapToReadText, isDarkMode && { color: '#FF94B8' }]}>
-                            Tap message to mark as read
-                          </Text>
-                        </View>
-                      )}
+                      {/* Card Footer with Quick Actions */}
+                      <View style={styles.cardFooter}>
+                        {isUnread ? (
+                          <View style={styles.footerRow}>
+                            <View style={styles.tapActionWrap}>
+                              <Text style={[styles.tapActionText, isDarkMode && { color: '#FF94B8' }]}>
+                                Tap message to open
+                              </Text>
+                              <Ionicons name="arrow-forward" size={11} color={isDarkMode ? '#FF94B8' : Colors.primaryDark} />
+                            </View>
+
+                            {onMarkAsRead && (
+                              <TouchableOpacity
+                                style={[
+                                  styles.quickMarkReadBtn,
+                                  isDarkMode && { backgroundColor: '#381A28', borderColor: '#831843' },
+                                ]}
+                                onPress={(e) => {
+                                  e.stopPropagation();
+                                  onMarkAsRead(item.id);
+                                }}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                activeOpacity={0.65}
+                              >
+                                <Ionicons name="checkmark-done" size={11} color={Colors.primaryDark} />
+                                <Text style={styles.quickMarkReadText}>Mark read</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        ) : (
+                          <View style={styles.footerRow}>
+                            <View style={styles.tapActionWrap}>
+                              <Text style={[styles.tapActionTextMuted, isDarkMode && { color: '#7E7A85' }]}>
+                                Tap to view details
+                              </Text>
+                              <Ionicons name="chevron-forward" size={12} color={isDarkMode ? '#7E7A85' : '#9CA3AF'} />
+                            </View>
+                          </View>
+                        )}
+                      </View>
                     </View>
                   </TouchableOpacity>
                 );
@@ -256,7 +332,7 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: '100%',
-    maxHeight: '75%',
+    maxHeight: '78%',
     backgroundColor: Colors.surface,
     borderRadius: 22,
     borderWidth: 1,
@@ -290,7 +366,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   countText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '800',
     color: Colors.primaryDark,
   },
@@ -300,6 +376,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   markReadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 8,
@@ -342,14 +421,16 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 14,
     backgroundColor: Colors.surface,
-    marginBottom: 8,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: Colors.border,
     gap: 12,
   },
   itemUnread: {
-    backgroundColor: '#F5FAFF',
-    borderColor: Colors.secondaryLight,
+    backgroundColor: '#F0F9FF',
+    borderColor: '#BAE6FD',
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.primaryDark,
   },
   iconCircle: {
     width: 36,
@@ -364,7 +445,7 @@ const styles = StyleSheet.create({
   itemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 4,
   },
   titleRow: {
@@ -372,6 +453,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     marginRight: 6,
+    flexWrap: 'wrap',
   },
   unreadDot: {
     width: 7,
@@ -395,29 +477,32 @@ const styles = StyleSheet.create({
     color: Colors.primaryDark,
     letterSpacing: 0.3,
   },
-  tapToReadHint: {
+  readBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 6,
-    alignSelf: 'flex-start',
+    gap: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    backgroundColor: '#F3F4F6',
+    marginRight: 4,
   },
-  tapToReadText: {
-    fontSize: 10.5,
+  readBadgeText: {
+    fontSize: 9,
     fontWeight: '600',
-    color: Colors.primaryDark,
+    color: '#6B7280',
   },
   itemTitle: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '700',
     color: Colors.text,
     flex: 1,
-    marginRight: 6,
+    lineHeight: 18,
   },
   metaRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   deleteItemBtn: {
     padding: 2,
@@ -427,9 +512,51 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   itemText: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: Colors.textSoft,
     lineHeight: 18,
+  },
+  cardFooter: {
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  tapActionWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  tapActionText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primaryDark,
+  },
+  tapActionTextMuted: {
+    fontSize: 10.5,
+    fontWeight: '500',
+    color: Colors.textMuted,
+  },
+  quickMarkReadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#FCE7F3',
+    borderWidth: 1,
+    borderColor: '#FBCFE8',
+  },
+  quickMarkReadText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: Colors.primaryDark,
   },
   emptyWrap: {
     alignItems: 'center',

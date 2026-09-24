@@ -27,7 +27,7 @@ import { ProfileScreen } from './src/screens/ProfileScreen';
 import { AnalyzeScreen } from './src/screens/AnalyzeScreen';
 import { AdviceScreen } from './src/screens/AdviceScreen';
 import { WellnessDrawer } from './src/components/WellnessDrawer';
-import { NotificationModal, isNotificationUnread } from './src/components/NotificationModal';
+import { NotificationModal } from './src/components/NotificationModal';
 import { EmergencyFab } from './src/components/EmergencyFab';
 import { HeaderBar } from './src/components/HeaderBar';
 import { HeartSplash } from './src/components/HeartSplash';
@@ -160,99 +160,6 @@ function MainApp() {
     setNotifications([]);
     setActiveTab('home');
     setAuthView('front');
-  };
-
-  const handleMarkNotificationRead = async (id: string) => {
-    try {
-      const updated = notifications.map((n) => (n.id === id ? { ...n, is_read: 1 } : n));
-      setNotifications(updated);
-      await AsyncStorage.setItem(api.getUserStorageKey('notifications'), JSON.stringify(updated));
-      await api.markNotificationRead(id).catch(() => {});
-    } catch (e) {
-      console.warn('Mark single read error:', e);
-    }
-  };
-
-  const handleNotificationPress = async (item: any) => {
-    try {
-      // 1. Immediately mark this notification as read
-      await handleMarkNotificationRead(item.id);
-
-      // 2. Dismiss notifications modal
-      setNotificationsVisible(false);
-
-      // 3. Intelligent routing based on notification content
-      const title = (item.title || '').toLowerCase();
-      const body = (item.body || '').toLowerCase();
-      const kind = (item.kind || '').toLowerCase();
-
-      // Risk / Coopland assessments -> Risk tab ('analyze')
-      if (
-        kind.includes('risk') ||
-        title.includes('risk') ||
-        title.includes('coopland') ||
-        body.includes('coopland') ||
-        title.includes('severe') ||
-        title.includes('high')
-      ) {
-        setActiveTab('analyze');
-        return;
-      }
-
-      // Milestones / Week development -> Home screen
-      if (
-        kind.includes('milestone') ||
-        title.includes('milestone') ||
-        title.includes('week') ||
-        body.includes('week') ||
-        body.includes('development')
-      ) {
-        setActiveTab('home');
-        return;
-      }
-
-      // OB-GYN checkups / Doctor visits / Reminders -> Reminders tab
-      if (
-        kind.includes('ob_visit') ||
-        title.includes('ob-gyn') ||
-        title.includes('checkup') ||
-        title.includes('appointment') ||
-        title.includes('reminder') ||
-        body.includes('ob-gyn')
-      ) {
-        handleNavigate('reminders');
-        return;
-      }
-
-      // Vitals monitoring -> Vitals tab
-      if (
-        kind.includes('vitals') ||
-        title.includes('vitals') ||
-        title.includes('blood pressure') ||
-        title.includes('glucose')
-      ) {
-        setActiveTab('vitals');
-        return;
-      }
-
-      // Symptoms check-in -> Symptoms tab
-      if (title.includes('symptom') || body.includes('symptom')) {
-        setActiveTab('symptoms');
-        return;
-      }
-
-      // Fallback: show the full un-truncated notification in a themed popup modal
-      setGlobalBubbleFlash({
-        visible: true,
-        title: item.title || 'Notification',
-        message: item.body || '',
-        theme: (kind.includes('severe') || title.includes('severe')) ? 'red' : 'pink',
-        icon: (kind.includes('severe') || title.includes('severe')) ? 'alert-circle' : 'notifications',
-        buttonText: 'Got It',
-      });
-    } catch (e) {
-      console.warn('Handle notification press error:', e);
-    }
   };
 
   const handleMarkAllNotificationsRead = async () => {
@@ -457,7 +364,7 @@ function MainApp() {
     { key: 'profile' as const, label: 'Profile', icon: 'person-outline', iconActive: 'person' },
   ];
 
-  const unreadNotificationsCount = notifications.filter(isNotificationUnread).length;
+  const unreadNotificationsCount = notifications.filter((n) => !n.is_read).length;
 
   const getHeaderTitle = () => {
     switch (activeTab) {
@@ -632,8 +539,6 @@ function MainApp() {
         onMarkAllRead={handleMarkAllNotificationsRead}
         onClearAll={handleClearAllNotifications}
         onDeleteNotification={handleDeleteNotification}
-        onItemPress={handleNotificationPress}
-        onMarkAsRead={handleMarkNotificationRead}
         isDarkMode={isDarkMode}
       />
 

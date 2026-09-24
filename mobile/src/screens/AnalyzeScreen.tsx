@@ -22,7 +22,6 @@ interface AnalyzeScreenProps {
 }
 
 export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'breakdown' | 'recommendations'>('breakdown');
   const [history, setHistory] = useState<any[]>([]);
   const [coopland, setCoopland] = useState<any>(null);
   const [cooplandHistory, setCooplandHistory] = useState<any[]>([]);
@@ -179,20 +178,9 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
   const currentAsmDate = current?.date ? new Date(current.date).getTime() : 0;
   const isCurrentResolved = (current?.status === 'resolved') || (current?.isResolved === true) || (Boolean(localResolved) && localResolvedDate >= currentAsmDate);
 
-  const urgentRecs = (current?.recommendations || []).filter((r: any) => !!r.urgent);
-  const generalRecs = (current?.recommendations || []).filter((r: any) => !r.urgent);
-
   // Score delta calculation matching analyze.php delta_badge()
   const scoreDiff = (current && previous) ? (current.score - previous.score) : 0;
   const improved = scoreDiff < 0;
-
-  const hotlines = [
-    { name: 'OB-GYN On-Call Line', number: '', icon: 'medkit' },
-  ];
-
-  const callNumber = (num: string) => {
-    Linking.openURL(`tel:${num.replace(/[^0-9]/g, '')}`);
-  };
 
   const formatSymptomName = (id?: string) => {
     if (!id) return '';
@@ -389,45 +377,12 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
           />
         }
       >
-      {/* Segmented Switch */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tabBtn, activeSubTab === 'breakdown' && styles.tabBtnActive]}
-          onPress={() => setActiveSubTab('breakdown')}
-          activeOpacity={0.8}
-        >
-          <Ionicons
-            name="analytics-outline"
-            size={16}
-            color={activeSubTab === 'breakdown' ? Colors.primaryDark : Colors.textMuted}
-          />
-          <Text style={[styles.tabText, activeSubTab === 'breakdown' && styles.tabTextActive]}>
-            Factor Analysis
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabBtn, activeSubTab === 'recommendations' && styles.tabBtnActive]}
-          onPress={() => setActiveSubTab('recommendations')}
-          activeOpacity={0.8}
-        >
-          <Ionicons
-            name="list-circle-outline"
-            size={16}
-            color={activeSubTab === 'recommendations' ? Colors.primaryDark : Colors.textMuted}
-          />
-          <Text style={[styles.tabText, activeSubTab === 'recommendations' && styles.tabTextActive]}>
-            Recommendations
-          </Text>
-        </TouchableOpacity>
-      </View>
-
       {!current && !coopland ? (
         <View style={[styles.card, Shadows.card, styles.emptyCard]}>
           <Ionicons name="analytics-outline" size={40} color={Colors.primaryLight} />
           <Text style={styles.emptyTitle}>No Assessments Yet</Text>
           <Text style={styles.emptyDesc}>
-            Complete your first risk assessment to see your clinical Coopland risk breakdown and recommendations.
+            Complete your first risk assessment to see your clinical Coopland risk breakdown.
           </Text>
           <TouchableOpacity
             style={styles.emptyBtn}
@@ -437,11 +392,8 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
           </TouchableOpacity>
         </View>
       ) : (
-        <>
-          {/* --- SUBTAB 1: FACTOR BREAKDOWN & COMPARISON --- */}
-          {activeSubTab === 'breakdown' && (
-            <View>
-              {/* Hospital Standard Banner */}
+        <View>
+          {/* Hospital Standard Banner */}
               <View style={[styles.card, Shadows.card, { padding: 16, borderRadius: 16, borderWidth: 1, borderColor: Colors.primaryLight, marginTop: 12 }]}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                   <Text style={{ fontSize: 10, fontWeight: '800', color: Colors.textMuted, letterSpacing: 0.8 }}>
@@ -826,101 +778,7 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
                 )}
               </View>
             </View>
-          )}
-
-          {/* --- SUBTAB 2: FULL RECOMMENDATIONS & EMERGENCY CONTACTS --- */}
-          {activeSubTab === 'recommendations' && (
-            <View>
-              {/* Urgent Action Banner */}
-              {!isCurrentResolved && coopLevel !== 'Low' && urgentRecs.length > 0 && (
-                <View style={[styles.card, Shadows.card, { borderColor: Colors.riskHigh }]}>
-                  <View style={styles.urgentHeader}>
-                    <Ionicons name="warning" size={20} color={Colors.riskHigh} />
-                    <Text style={styles.urgentTitle}>Urgent — Act On These First</Text>
-                  </View>
-                  {urgentRecs.map((r: any, idx: number) => (
-                    <View key={idx} style={styles.urgentItem}>
-                      <Ionicons name="alert-circle" size={18} color={Colors.riskHigh} />
-                      <Text style={styles.urgentItemText}>{r.text}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* General Care Recommendations */}
-              <View style={[styles.card, Shadows.card]}>
-                <Text style={styles.cardEyebrow}>DAILY CLINICAL CARE</Text>
-                <Text style={styles.cardSectionTitle}>Personalized Guidance</Text>
-                {cooplandRecommendations.length > 0 ? (
-                  cooplandRecommendations.map((recText: string, idx: number) => (
-                    <View key={idx} style={styles.recRow}>
-                      <Ionicons name="checkmark-circle" size={18} color={Colors.primaryDark} />
-                      <Text style={styles.recRowText}>{recText}</Text>
-                    </View>
-                  ))
-                ) : generalRecs.length > 0 ? (
-                  generalRecs.map((r: any, idx: number) => (
-                    <View key={idx} style={styles.recRow}>
-                      <Ionicons name="checkmark-circle" size={18} color={Colors.primaryDark} />
-                      <Text style={styles.recRowText}>{r.text}</Text>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={styles.emptyFactorsText}>No general recommendations logged.</Text>
-                )}
-              </View>
-
-              {/* Emergency Contacts Hotlines (EMERGENCY_HOTLINES in base.php) */}
-              <View style={[styles.card, Shadows.card]}>
-                <Text style={styles.cardEyebrow}>EMERGENCY CONTACTS</Text>
-                <Text style={styles.cardSectionTitle}>Quick Dial Hotlines</Text>
-                {hotlines.map((h, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    style={styles.hotlineRow}
-                    onPress={() => callNumber(h.number)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.hotlineIcon}>
-                      <Ionicons name={h.icon as any} size={18} color={Colors.primaryDark} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.hotlineName}>{h.name}</Text>
-                      <Text style={styles.hotlineNumber}>{h.number}</Text>
-                    </View>
-                    <Ionicons name="call" size={18} color={Colors.primaryDark} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Historical Timeline */}
-              <View style={[styles.card, Shadows.card]}>
-                <Text style={styles.cardEyebrow}>RECOMMENDATION TIMELINE</Text>
-                <Text style={styles.cardSectionTitle}>Past Check-in Assessments</Text>
-                {history.slice(0, 5).map((h: any, idx: number) => (
-                  <View key={h.id || idx} style={styles.timelineItem}>
-                    <View style={[styles.timelineScoreBadge, { backgroundColor: h.level === 'Severe' ? Colors.riskHighBg : (h.level === 'High' ? Colors.riskModBg : Colors.riskLowBg) }]}>
-                      <Ionicons
-                        name={h.level === 'Severe' ? 'alert-circle' : (h.level === 'High' ? 'warning' : 'checkmark-circle')}
-                        size={18}
-                        color={h.level === 'Severe' ? Colors.riskHigh : (h.level === 'High' ? Colors.riskMod : Colors.riskLow)}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <View style={styles.timelineHeader}>
-                        <Text style={styles.timelineLevel}>{h.level} Risk</Text>
-                        <Text style={styles.timelineDate}>{h.date}</Text>
-                      </View>
-                      <Text style={styles.timelineExcerpt} numberOfLines={2}>
-                        {h.recommendations?.[0]?.text || 'No recommendation noted'}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-        </>
+          </View>
       )}
       </ScrollView>
 

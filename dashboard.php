@@ -52,8 +52,29 @@ $coopScore = $latestCoopland ? (int)$latestCoopland['score'] : 0;
 $coopLevel = $latestCoopland ? ucfirst(strtolower($latestCoopland['risk_level'])) : 'Low';
 $coopFactors = $latestCoopland ? json_decode($latestCoopland['factors_json'] ?? '[]', true) : [];
 
-// Recommendations based on Coopland risk level
+// Recommendations based on latest assessment or Coopland risk level
 $topRecs = [];
+if ($latest && !empty($latest['recommendations_json']) && $latest['recommendations_json'] !== '[]') {
+    $rawRecs = json_decode($latest['recommendations_json'], true) ?: [];
+    $parsedRecs = [];
+    foreach ($rawRecs as $rec) {
+        if (is_string($rec)) {
+            $parsedRecs[] = ['text' => $rec, 'icon' => 'fa-circle-check', 'urgent' => false, 'category' => 'Daily Care'];
+        } elseif (is_array($rec)) {
+            $icon = $rec['icon'] ?? (!empty($rec['urgent']) ? 'fa-triangle-exclamation' : 'fa-circle-check');
+            if (strpos($icon, 'fa-') !== 0) $icon = 'fa-' . $icon;
+            $parsedRecs[] = [
+                'text' => $rec['text'] ?? '',
+                'icon' => $icon,
+                'urgent' => !empty($rec['urgent']) || (($rec['category'] ?? '') === 'Urgent Action'),
+                'category' => $rec['category'] ?? 'Daily Care'
+            ];
+        }
+    }
+    $topRecs = array_slice($parsedRecs, 0, 3);
+}
+
+if (empty($topRecs)) {
 if ($coopLevel === 'Severe') {
     $topRecs[] = [
         'text' => 'Contact your OB-GYN or go to the nearest hospital now',
@@ -111,6 +132,7 @@ if ($coopLevel === 'Severe') {
         'urgent' => false,
         'category' => 'Wellness'
     ];
+}
 }
 
 $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY date DESC LIMIT 5");
@@ -421,7 +443,7 @@ render_header('Dashboard', 'dashboard');
 <div class="card" style="margin-top:16px;">
   <div class="eyebrow">Top Recommendations</div>
   <?php if ($topRecs): foreach ($topRecs as $r): ?>
-    <div class="kv"><span class="k"><i class="fa-solid <?php echo e($r['icon']); ?>" style="margin-right:8px;color:<?php echo !empty($r['urgent']) ? 'var(--risk-high)' : 'var(--teal)'; ?>;"></i><?php echo e($r['text']); ?></span></div>
+    <div class="kv"><span class="k"><i class="fa-solid <?php echo e(is_array($r) ? ($r['icon'] ?? 'fa-circle-check') : 'fa-circle-check'); ?>" style="margin-right:8px;color:<?php echo (is_array($r) && !empty($r['urgent'])) ? 'var(--risk-high)' : 'var(--teal)'; ?>;"></i><?php echo e(is_array($r) ? ($r['text'] ?? '') : $r); ?></span></div>
   <?php endforeach; else: ?>
     <div class="empty"><i class="fa-solid fa-lightbulb"></i>Complete a symptom check-in to get recommendations.</div>
   <?php endif; ?>

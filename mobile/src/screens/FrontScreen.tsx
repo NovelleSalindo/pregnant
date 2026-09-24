@@ -21,7 +21,7 @@ import { Colors, Shadows } from '../theme/colors';
 
 interface FrontScreenProps {
   onNavigateToAuth: (initialTab: 'login' | 'register') => void;
-  onNavigateToOffline: () => void;
+  onNavigateToOffline?: () => void;
 }
 
 interface FeatureItem {
@@ -122,15 +122,6 @@ export const FrontScreen: React.FC<FrontScreenProps> = ({ onNavigateToAuth, onNa
               <Text style={styles.signUpBtnText}>Sign Up</Text>
             </TouchableOpacity>
           </View>
-          
-          <TouchableOpacity
-            style={styles.offlineBtn}
-            onPress={onNavigateToOffline}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="cloud-offline-outline" size={16} color="rgba(255,255,255,0.9)" />
-            <Text style={styles.offlineBtnText}>Use Offline (No Account)</Text>
-          </TouchableOpacity>
         </LinearGradient>
 
         {/* Feature Cards Section */}

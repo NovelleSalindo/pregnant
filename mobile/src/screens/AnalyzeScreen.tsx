@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Linking,
   Modal,
+  RefreshControl,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,60 +28,138 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
   const [cooplandHistory, setCooplandHistory] = useState<any[]>([]);
   const [clinicalAlerts, setClinicalAlerts] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [localResolved, setLocalResolved] = useState<any>(null);
   const [selectedHistory, setSelectedHistory] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const savedVisit = await AsyncStorage.getItem('@pregnacare_resolved_visit');
-        if (savedVisit) {
-          try {
-            setLocalResolved(JSON.parse(savedVisit));
-          } catch {}
-        }
-        
-        // Fetch history, coopland & clinical alerts
-        const res = await api.getSymptomCatalog();
-        setHistory(res.history || []);
-        if (res.coopland) setCoopland(res.coopland);
-        if (res.coopland_history) setCooplandHistory(res.coopland_history);
-        if (res.clinical_alerts) setClinicalAlerts(res.clinical_alerts);
+  const formatCoopDate = (dStr?: string) => {
+    if (!dStr) return 'Current';
+    try {
+      const d = new Date(dStr);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+    } catch {}
+    return (dStr || '').split('T')[0].split(' ')[0] || 'Current';
+  };
 
-        // Check for local latest Coopland assessment
+  const loadData = async () => {
+    try {
+      const savedVisit = await AsyncStorage.getItem('@pregnacare_resolved_visit');
+      if (savedVisit) {
         try {
-          const localCoopStr = await AsyncStorage.getItem('@pregnacare_latest_coopland');
-          if (localCoopStr) {
-            const localCoop = JSON.parse(localCoopStr);
-            if (localCoop && localCoop.score !== undefined) {
-              const localRecord = {
+          setLocalResolved(JSON.parse(savedVisit));
+        } catch {}
+      }
+      
+      // Fetch history, coopland & clinical alerts from backend
+      const res = await api.getSymptomCatalog();
+      setHistory(res.history || []);
+      if (res.coopland) setCoopland(res.coopland);
+      if (res.coopland_history) setCooplandHistory(res.coopland_history);
+      if (res.clinical_alerts) setClinicalAlerts(res.clinical_alerts);
+
+      // Check for local Coopland assessments with proper Current -> Previous transition
+      try {
+        const localCoopStr = await AsyncStorage.getItem('@pregnacare_latest_coopland');
+        const localPrevCoopStr = await AsyncStorage.getItem('@pregnacare_previous_coopland');
+        const localHistStr = await AsyncStorage.getItem('@pregnacare_coopland_history');
+
+        const localRecords: any[] = [];
+        if (localCoopStr) {
+          try {
+            const lc = JSON.parse(localCoopStr);
+            if (lc && lc.score !== undefined) {
+              localRecords.push({
                 id: 'local-latest',
-                score: localCoop.score,
-                risk_level: localCoop.level,
-                date: localCoop.date || new Date().toISOString(),
-                factors_json: JSON.stringify(localCoop.factors || []),
-              };
-              setCoopland({
-                coopland_score: localCoop.score,
-                coopland_risk: localCoop.level,
-                date: localRecord.date,
-                contributing_factors: localCoop.factors || [],
-                factors: localCoop.factors || [],
-              });
-              setCooplandHistory((prev: any[]) => {
-                const filtered = (prev || []).filter(p => p.id !== 'local-latest');
-                return [localRecord, ...filtered];
+                score: lc.score,
+                risk_level: lc.level,
+                date: lc.date || new Date().toISOString(),
+                factors_json: JSON.stringify(lc.factors || []),
               });
             }
-          }
-        } catch {}
-      } catch (e: any) {
-        console.warn('Error loading assessment history:', e.message);
-      } finally {
-        setLoading(false);
-      }
+          } catch {}
+        }
+
+        if (localPrevCoopStr) {
+          try {
+            const lp = JSON.parse(localPrevCoopStr);
+            if (lp && lp.score !== undefined) {
+              const isDuplicate = localRecords.length > 0 && (
+                localRecords[0].score === lp.score &&
+                (Math.abs(new Date(localRecords[0].date).getTime() - new Date(lp.date).getTime()) < 60000 ||
+                 (localRecords[0].date || '').split('T')[0] === (lp.date || '').split('T')[0])
+              );
+              if (!isDuplicate) {
+                localRecords.push({
+                  id: 'local-prev',
+                  score: lp.score,
+                  risk_level: lp.level,
+                  date: lp.date || new Date().toISOString(),
+                  factors_json: JSON.stringify(lp.factors || []),
+                });
+              }
+            }
+          } catch {}
+        }
+
+        if (localHistStr) {
+          try {
+            const parsedHist = JSON.parse(localHistStr);
+            if (Array.isArray(parsedHist)) {
+              parsedHist.forEach((item: any, idx: number) => {
+                if (item && item.score !== undefined) {
+                  const isDuplicate = localRecords.some((r) => 
+                    r.score === item.score && Math.abs(new Date(r.date).getTime() - new Date(item.date).getTime()) < 60000
+                  );
+                  if (!isDuplicate) {
+                    localRecords.push({
+                      id: `local-hist-${idx}`,
+                      score: item.score,
+                      risk_level: item.level,
+                      date: item.date || new Date().toISOString(),
+                      factors_json: JSON.stringify(item.factors || []),
+                    });
+                  }
+                }
+              });
+            }
+          } catch {}
+        }
+
+        if (localRecords.length > 0) {
+          const activeRecord = localRecords[0];
+          setCoopland({
+            coopland_score: activeRecord.score,
+            coopland_risk: activeRecord.risk_level,
+            date: activeRecord.date,
+            contributing_factors: JSON.parse(activeRecord.factors_json || '[]'),
+            factors: JSON.parse(activeRecord.factors_json || '[]'),
+          });
+
+          setCooplandHistory((prev: any[]) => {
+            const baseHistory = res.coopland_history && res.coopland_history.length > 0
+              ? res.coopland_history
+              : (prev || []);
+            
+            const remoteRemaining = baseHistory.filter((r: any) => 
+              !localRecords.some((l: any) => l.date === r.date || (l.score === r.score && (l.date || '').split('T')[0] === (r.date || '').split(' ')[0]))
+            );
+
+            return [...localRecords, ...remoteRemaining];
+          });
+        }
+      } catch {}
+    } catch (e: any) {
+      console.warn('Error loading assessment history:', e.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  useEffect(() => {
     loadData();
   }, []);
 
@@ -128,7 +207,20 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
     factors_json: JSON.stringify(coopland.contributing_factors || coopland.factors || []),
   } : null);
 
-  const prevCoopRecord = cooplandHistory[1] || null;
+  // Previous Coopland Assessment: Must be a distinct, earlier evaluation (never identical to activeCoopRecord)
+  const prevCoopRecord = cooplandHistory.find((rec, idx) => {
+    if (idx === 0) return false;
+    if (!activeCoopRecord) return true;
+    const isSameDate = rec.date === activeCoopRecord.date || (
+      rec.date && activeCoopRecord.date && 
+      Math.abs(new Date(rec.date).getTime() - new Date(activeCoopRecord.date).getTime()) < 60000
+    );
+    const isSameScore = rec.score === activeCoopRecord.score;
+    // Never show identical score and session date in both gauges
+    if (isSameScore && isSameDate) return false;
+    if (rec.id && activeCoopRecord.id && rec.id === activeCoopRecord.id) return false;
+    return true;
+  }) || null;
 
   const rawCoopScore: number = activeCoopRecord ? (activeCoopRecord.score ?? coopland?.coopland_score ?? 0) : (coopland?.coopland_score ?? 0);
   const rawCoopRiskLvl: string = activeCoopRecord ? (activeCoopRecord.risk_level ?? coopland?.coopland_risk ?? 'Low') : (coopland?.coopland_risk ?? 'Low');
@@ -141,6 +233,13 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
   const coopBgColor = isSevereCoop ? '#FEF2F2' : (isHighCoop ? '#FFFBEB' : '#F0FDF4');
   const coopBorderColor = isSevereCoop ? '#FCA5A5' : (isHighCoop ? '#FCD34D' : '#BBF7D0');
   const coopTextColor = isSevereCoop ? '#991B1B' : (isHighCoop ? '#92400E' : '#166534');
+
+  const prevScoreVal = prevCoopRecord ? prevCoopRecord.score : 0;
+  const rawPrevLvl = prevCoopRecord ? prevCoopRecord.risk_level : 'Low';
+  const prevLevelStr = (rawPrevLvl.charAt(0).toUpperCase() + rawPrevLvl.slice(1).toLowerCase()).replace(' risk', '');
+  const isSeverePrev = prevLevelStr === 'Severe';
+  const isHighPrev = prevLevelStr === 'High';
+  const prevColor = isSeverePrev ? '#DC2626' : (isHighPrev ? '#D97706' : '#15803D');
 
   // Contributing factors extraction
   const rawFactorsList: string[] = (() => {
@@ -220,18 +319,56 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
         'Drink plenty of water and rest when tired. Continue logging daily vitals and symptoms.',
       ];
 
-  const handleOpenBreakdown = () => {
+  const handleOpenBreakdown = (targetRecord?: any, isPrevious: boolean = false) => {
+    const record = targetRecord || activeCoopRecord;
+    const scoreVal = record?.score ?? (isPrevious ? prevScoreVal : rawCoopScore);
+    const rawLvl = record?.risk_level ?? (isPrevious ? rawPrevLvl : rawCoopRiskLvl);
+    const levelVal = (rawLvl.charAt(0).toUpperCase() + rawLvl.slice(1).toLowerCase()).replace(' risk', '') as 'Low' | 'High' | 'Severe';
+
+    let factorsList: string[] = [];
+    if (record?.factors_json) {
+      try {
+        const parsed = typeof record.factors_json === 'string' ? JSON.parse(record.factors_json) : record.factors_json;
+        if (Array.isArray(parsed)) factorsList = parsed;
+      } catch {}
+    } else if (Array.isArray(record?.factors)) {
+      factorsList = record.factors;
+    } else if (!isPrevious) {
+      factorsList = rawFactorsList;
+    }
+
+    const recs = levelVal === 'Severe'
+      ? [
+          `Severe High-Risk maternal profile identified (Coopland Score: ${scoreVal} ≥ 7).`,
+          'Urgent consultation and physical evaluation by an obstetrician at a tertiary hospital facility is strongly advised.',
+          'Continuous maternal-fetal monitoring and specialized delivery planning are required.',
+        ]
+      : levelVal === 'High'
+      ? [
+          `High Risk maternal profile identified (Coopland Score: ${scoreVal}).`,
+          'Schedule an OB-GYN checkup within 24 to 48 hours for clinical evaluation.',
+          'More frequent prenatal visits, targeted laboratory tests, and ultrasound screenings recommended.',
+          'Closely monitor blood pressure, blood glucose, and daily fetal movements.',
+        ]
+      : [
+          `Low Risk maternal profile identified (Coopland Score: ${scoreVal} ≤ 2).`,
+          'Maintain routine prenatal visit schedule (monthly until 28 wks, every 2 wks until 36 wks, weekly after).',
+          'Continue daily prenatal vitamins, iron, and folic acid supplements.',
+          'Drink plenty of water and rest when tired. Continue logging daily vitals and symptoms.',
+        ];
+
     const breakdownPayload = {
-      date: activeCoopRecord?.date || current?.date || new Date().toISOString().replace('T', ' ').slice(0, 19),
-      score: rawCoopScore,
-      coopland_score: rawCoopScore,
-      level: coopLevel,
+      date: record?.date ? formatCoopDate(record.date) : (isPrevious ? 'Previous Evaluation' : 'Current Evaluation'),
+      score: scoreVal,
+      coopland_score: scoreVal,
+      level: levelVal,
+      isPreviousRecord: isPrevious,
       logged_symptoms: current?.logged_symptoms || [],
       pregnancy_problems: current?.pregnancy_problems || [],
-      rules: rawFactorsList.length > 0
-        ? rawFactorsList.map((f) => `Detected risk factor: ${f}`)
-        : ['No symptoms, vitals in range → Low Risk supported'],
-      recommendations: cooplandRecommendations.map((text) => ({ text })),
+      rules: factorsList.length > 0
+        ? factorsList.map((f) => `Detected risk factor: ${f}`)
+        : ['Routine baseline findings → Low Risk supported'],
+      recommendations: recs.map((text) => ({ text })),
     };
     setSelectedHistory(breakdownPayload);
     setModalVisible(true);
@@ -239,7 +376,19 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              loadData();
+            }}
+            tintColor={Colors.primaryDark}
+          />
+        }
+      >
       {/* Segmented Switch */}
       <View style={styles.tabBar}>
         <TouchableOpacity
@@ -626,7 +775,7 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
                     cooplandScore={rawCoopScore}
                   />
                   <Text style={styles.compareDate}>
-                    {activeCoopRecord?.date ? activeCoopRecord.date.split(' ')[0] : 'Current'}
+                    {formatCoopDate(activeCoopRecord?.date)}
                   </Text>
                   <Text style={{ fontSize: 11.5, fontWeight: '800', color: coopColor, marginTop: 4 }}>
                     Score: {rawCoopScore}
@@ -637,23 +786,36 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
                   </View>
                 </TouchableOpacity>
 
-                {prevCoopRecord ? (
-                  <View style={[styles.compareCard, Shadows.card]}>
-                    <Text style={styles.compareLabel}>PREVIOUS COOPLAND</Text>
-                    <RiskGauge
-                      score={prevCoopRecord.score}
-                      level={prevCoopRecord.risk_level}
-                      size={140}
-                      cooplandScore={prevCoopRecord.score}
-                    />
-                    <Text style={styles.compareDate}>
-                      {prevCoopRecord.date ? prevCoopRecord.date.split(' ')[0] : ''}
-                    </Text>
-                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: Colors.primaryDark, marginTop: 4 }}>
-                      Score: {prevCoopRecord.score}
-                    </Text>
-                  </View>
-                ) : (
+                  {prevCoopRecord ? (
+                    <TouchableOpacity
+                      style={[
+                        styles.compareCard,
+                        Shadows.card,
+                        isSeverePrev && { borderColor: '#FCA5A5', backgroundColor: '#FFF5F5' },
+                        isHighPrev && { borderColor: '#FCD34D', backgroundColor: '#FFFDF5' },
+                      ]}
+                      activeOpacity={0.8}
+                      onPress={() => handleOpenBreakdown(prevCoopRecord, true)}
+                    >
+                      <Text style={[styles.compareLabel, { color: prevColor }]}>PREVIOUS COOPLAND</Text>
+                      <RiskGauge
+                        score={prevCoopRecord.score}
+                        level={prevCoopRecord.risk_level}
+                        size={140}
+                        cooplandScore={prevCoopRecord.score}
+                      />
+                      <Text style={styles.compareDate}>
+                        {formatCoopDate(prevCoopRecord.date)}
+                      </Text>
+                      <Text style={{ fontSize: 11.5, fontWeight: '800', color: prevColor, marginTop: 4 }}>
+                        Score: {prevCoopRecord.score}
+                      </Text>
+                      <View style={[styles.tapToViewBadge, { backgroundColor: isSeverePrev ? '#FEE2E2' : (isHighPrev ? '#FEF3C7' : '#DCFCE7') }]}>
+                        <Text style={[styles.tapToViewText, { color: prevColor }]}>Tap for breakdown</Text>
+                        <Ionicons name="chevron-forward" size={11} color={prevColor} />
+                      </View>
+                    </TouchableOpacity>
+                  ) : (
                   <View style={[styles.compareCard, Shadows.card, { justifyContent: 'center', opacity: 0.8 }]}>
                     <Ionicons name="time-outline" size={32} color={Colors.primaryDark} />
                     <Text style={[styles.compareLabel, { marginTop: 6 }]}>NO PREVIOUS</Text>
@@ -774,9 +936,11 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
             {/* Modal Header */}
             <View style={styles.modalHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Assessment Breakdown</Text>
+                <Text style={styles.modalTitle}>
+                  {selectedHistory?.isPreviousRecord ? 'Previous Assessment Breakdown' : 'Assessment Breakdown'}
+                </Text>
                 <Text style={styles.modalSubtitle}>
-                  {selectedHistory?.date ? `Check-in: ${selectedHistory.date}` : 'Assessment Details'}
+                  {selectedHistory?.date ? `Logged: ${selectedHistory.date}` : 'Assessment Details'}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeBtn}>

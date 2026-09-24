@@ -25,6 +25,8 @@ class ApiService {
     try {
       const savedToken = await AsyncStorage.getItem(STORAGE_KEY_TOKEN);
       if (savedToken) this.token = savedToken;
+      const savedUrl = await AsyncStorage.getItem(STORAGE_KEY_BASE_URL);
+      if (savedUrl) this.baseUrl = savedUrl;
     } catch (e) {
       console.error('Failed to load stored API settings:', e);
     }

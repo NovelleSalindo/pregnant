@@ -161,8 +161,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $symptomIntensities[$sid] = $intensity;
 
         if ($severity !== 'None' || $intensity > 0) {
-            $pdo->prepare("INSERT INTO symptom_log_items (id, symptom_log_id, symptom_id, severity, duration, frequency) VALUES (?,?,?,?,?,?)")
-                ->execute([uid('sli'), $logId, $sid, $severity, $duration, $frequency]);
+            try {
+                $pdo->prepare("INSERT INTO symptom_log_items (id, symptom_log_id, symptom_id, severity, duration, frequency) VALUES (?,?,?,?,?,?)")
+                    ->execute([uid('sli'), $logId, $sid, $severity, $duration, $frequency]);
+            } catch (Exception $e) {
+                // Log and ignore to prevent a single missing catalog item from crashing the whole submission
+                error_log("Failed to insert symptom $sid: " . $e->getMessage());
+            }
         }
 
         $normalizedSymptoms[] = [
@@ -359,8 +364,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $result['level'] = $coopRisk;
         $result['risk_level'] = $coopRisk;
     } else {
-        // Submit symptoms uses critical recommendations, NOT risk recommendations
+        // Submit symptoms uses critical alert recommendations and engine personalized recommendations
         $recs = !empty($clinicalAlerts['recommendations']) ? $clinicalAlerts['recommendations'] : [];
+        if (!empty($result['recommendations'])) {
+            foreach ($result['recommendations'] as $engineRec) {
+                $text = is_array($engineRec) ? ($engineRec['text'] ?? '') : $engineRec;
+                if ($text && !in_array($text, array_map(fn($r) => is_array($r) ? ($r['text'] ?? '') : $r, $recs))) {
+                    $recs[] = $engineRec;
+                }
+            }
+        }
         if (empty($recs) || ($recs[0] ?? '') === 'Continue routine monitoring. Report any new or worsening symptoms to your healthcare provider.') {
             $hasAnySymptoms = false;
             foreach ($normalizedSymptoms as $ns) {
@@ -375,6 +388,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // Maintain the active maternal risk classification from Coopland
+        $cooplandResult = null;
+        $cooplandRecs = [];
+        $result['level'] = 'Low';
+        $result['risk_level'] = 'Low';
+        $result['score'] = 0;
+        
         $stmtActiveCoop = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
         $stmtActiveCoop->execute([$u['id']]);
         $activeCoop = $stmtActiveCoop->fetch();
@@ -388,8 +407,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'coopland_risk' => ucfirst(strtolower($activeCoop['risk_level'])),
                 'contributing_factors' => json_decode($activeCoop['factors_json'] ?? '[]', true)
             ];
+            $cooplandRecs = generate_recommendations($cooplandResult, $clinicalAlerts, $trimester);
         }
-        $cooplandRecs = generate_recommendations($cooplandResult, $clinicalAlerts, $trimester);
     }
     
     $result['recommendations'] = $recs;
@@ -399,13 +418,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // 6. Persist Assessment with unified recommendations
     $asmId = uid('asm');
+    
+    $structTotal = isset($result['structural']['total']) ? $result['structural']['total'] : 0;
+    $fuzzyCentroid = isset($result['fuzzy']['centroid']) ? $result['fuzzy']['centroid'] : 0;
+    
     $pdo->prepare("INSERT INTO assessments (id, user_id, date, score, level, weighted_score, centroid, ahp_json, fuzzy_json, rules_json, recommendations_json)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?)")
         ->execute([
             $asmId, $u['id'], now_iso(), $result['score'], $result['level'],
-            $result['structural']['total'] ?? 0, $result['fuzzy']['centroid'] ?? 0,
-            json_encode($result['structural'] ?? []), json_encode($result['fuzzy'] ?? []),
-            json_encode($result['main_contributors'] ?? []), json_encode($result['recommendations']),
+            $structTotal, $fuzzyCentroid,
+            json_encode(isset($result['structural']) ? $result['structural'] : []), 
+            json_encode(isset($result['fuzzy']) ? $result['fuzzy'] : []),
+            json_encode(isset($result['main_contributors']) ? $result['main_contributors'] : []), 
+            json_encode(isset($result['recommendations']) ? $result['recommendations'] : []),
         ]);
 
     // Format logged symptoms with catalog names for immediate response
@@ -428,24 +453,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     json_success([
         'assessmentId' => $asmId,
-        'score' => $result['score'],
-        'level' => $result['level'],
-        'risk_level' => $result['risk_level'],
-        'overall_severity' => $result['overall_severity'],
-        'alert_type' => $result['alert_type'],
-        'override_applied' => $result['override_applied'],
-        'structural' => $result['structural'],
-        'fuzzy' => $result['fuzzy'],
-        'main_contributors' => $result['main_contributors'],
-        'progression' => $result['progression'],
-        'recommendations' => $result['recommendations'],
-        'generatedAt' => $result['generatedAt'],
+        'score' => $result['score'] ?? 0,
+        'level' => $result['level'] ?? 'Low',
+        'risk_level' => $result['risk_level'] ?? 'Low',
+        'overall_severity' => $result['overall_severity'] ?? 'None',
+        'alert_type' => $result['alert_type'] ?? 'None',
+        'override_applied' => $result['override_applied'] ?? false,
+        'structural' => $result['structural'] ?? [],
+        'fuzzy' => $result['fuzzy'] ?? [],
+        'main_contributors' => $result['main_contributors'] ?? [],
+        'progression' => $result['progression'] ?? [],
+        'recommendations' => $result['recommendations'] ?? [],
+        'generatedAt' => $result['generatedAt'] ?? now_iso(),
         
         // Return separated new engine results alongside existing fuzzy logic
-        'coopland' => $cooplandResult,
-        'clinical_alerts' => $clinicalAlerts,
-        'coopland_recommendations' => $cooplandRecs,
-        'logged_symptoms' => $returnedLoggedSymptoms
+        'coopland' => $cooplandResult ?? null,
+        'clinical_alerts' => $clinicalAlerts ?? null,
+        'coopland_recommendations' => $cooplandRecs ?? [],
+        'logged_symptoms' => $returnedLoggedSymptoms ?? []
     ], 'Fuzzy risk assessment completed successfully', 201);
 }
 

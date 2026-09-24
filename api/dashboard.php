@@ -161,65 +161,98 @@ try {
         $gaugeScore = min(30, max(10, 10 + $coopScore * 10));
     }
 
-    // Build obstetric recommendations based on Coopland risk classification
-    if ($coopLevel === 'Severe') {
-        $topRecs[] = [
-            'text' => 'Contact your OB-GYN or go to the nearest hospital now',
-            'category' => 'Urgent Action',
-            'urgent' => true,
-            'icon' => 'alert-circle'
-        ];
-        $topRecs[] = [
-            'text' => 'Do not wait for your next scheduled appointment',
-            'category' => 'Urgent Action',
-            'urgent' => true,
-            'icon' => 'alert-circle'
-        ];
-        $topRecs[] = [
-            'text' => 'High-risk tertiary hospital evaluation and continuous monitoring required',
-            'category' => 'Clinical Guidance',
-            'urgent' => false,
-            'icon' => 'medkit'
-        ];
-    } elseif ($coopLevel === 'High') {
-        $topRecs[] = [
-            'text' => 'Schedule an OB-GYN checkup within 24 to 48 hours',
-            'category' => 'Priority Care',
-            'urgent' => true,
-            'icon' => 'warning'
-        ];
-        $topRecs[] = [
-            'text' => 'More frequent prenatal checkups and specialized maternal-fetal assessments recommended',
-            'category' => 'Clinical Guidance',
-            'urgent' => false,
-            'icon' => 'checkmark-circle'
-        ];
-        $topRecs[] = [
-            'text' => 'Closely monitor blood pressure, blood glucose, and daily fetal kick counts',
-            'category' => 'Daily Monitoring',
-            'urgent' => false,
-            'icon' => 'checkmark-circle'
-        ];
+    // Build obstetric recommendations based on latest symptoms or Coopland risk classification
+    if ($latestAssessment && !empty($latestAssessment['recommendations_json']) && $latestAssessment['recommendations_json'] !== '[]') {
+        $rawRecs = json_decode($latestAssessment['recommendations_json'], true) ?: [];
+        // Map string array to object array if necessary
+        $parsedRecs = [];
+        foreach ($rawRecs as $rec) {
+            if (is_string($rec)) {
+                $parsedRecs[] = ['text' => $rec, 'icon' => 'checkmark-circle', 'urgent' => false, 'category' => 'Daily Care'];
+            } elseif (is_array($rec)) {
+                $parsedRecs[] = $rec;
+            }
+        }
+        $topRecs = $parsedRecs;
     } else {
-        $topRecs[] = [
-            'text' => 'Routine prenatal checkup schedule: monthly until 28 wks, every 2 wks until 36 wks, weekly after',
-            'category' => 'Routine Care',
-            'urgent' => false,
-            'icon' => 'checkmark-circle'
-        ];
-        $topRecs[] = [
-            'text' => 'Continue daily prenatal vitamins, iron, and folic acid supplements',
-            'category' => 'Daily Nutrition',
-            'urgent' => false,
-            'icon' => 'checkmark-circle'
-        ];
-        $topRecs[] = [
-            'text' => 'Drink plenty of water and rest when tired. Log daily vitals and symptoms',
-            'category' => 'Wellness',
-            'urgent' => false,
-            'icon' => 'checkmark-circle'
-        ];
+        if ($coopLevel === 'Severe') {
+            $topRecs[] = [
+                'text' => 'Contact your OB-GYN or go to the nearest hospital now',
+                'category' => 'Urgent Action',
+                'urgent' => true,
+                'icon' => 'alert-circle'
+            ];
+            $topRecs[] = [
+                'text' => 'Do not wait for your next scheduled appointment',
+                'category' => 'Urgent Action',
+                'urgent' => true,
+                'icon' => 'alert-circle'
+            ];
+            $topRecs[] = [
+                'text' => 'High-risk tertiary hospital evaluation and continuous monitoring required',
+                'category' => 'Clinical Guidance',
+                'urgent' => false,
+                'icon' => 'medkit'
+            ];
+        } elseif ($coopLevel === 'High') {
+            $topRecs[] = [
+                'text' => 'Schedule an OB-GYN checkup within 24 to 48 hours',
+                'category' => 'Priority Care',
+                'urgent' => true,
+                'icon' => 'warning'
+            ];
+            $topRecs[] = [
+                'text' => 'More frequent prenatal checkups and specialized maternal-fetal assessments recommended',
+                'category' => 'Clinical Guidance',
+                'urgent' => false,
+                'icon' => 'checkmark-circle'
+            ];
+            $topRecs[] = [
+                'text' => 'Closely monitor blood pressure, blood glucose, and daily fetal kick counts',
+                'category' => 'Daily Monitoring',
+                'urgent' => false,
+                'icon' => 'checkmark-circle'
+            ];
+        } else {
+            $topRecs[] = [
+                'text' => 'Routine prenatal checkup schedule: monthly until 28 wks, every 2 wks until 36 wks, weekly after',
+                'category' => 'Routine Care',
+                'urgent' => false,
+                'icon' => 'checkmark-circle'
+            ];
+            $topRecs[] = [
+                'text' => 'Continue daily prenatal vitamins, iron, and folic acid supplements',
+                'category' => 'Daily Nutrition',
+                'urgent' => false,
+                'icon' => 'checkmark-circle'
+            ];
+            $topRecs[] = [
+                'text' => 'Drink plenty of water and rest when tired. Log daily vitals and symptoms',
+                'category' => 'Wellness',
+                'urgent' => false,
+                'icon' => 'checkmark-circle'
+            ];
+        }
     }
+
+    // Fetch reported symptoms for the latest assessment or latest symptom log
+    $latestSymptoms = [];
+    try {
+        $stmtSymLog = $pdo->prepare("SELECT id, date FROM symptom_logs WHERE user_id = ? ORDER BY date DESC LIMIT 1");
+        $stmtSymLog->execute([$u['id']]);
+        $latestSymLog = $stmtSymLog->fetch();
+        if ($latestSymLog) {
+            $symStmt = $pdo->prepare("
+                SELECT sli.symptom_id AS id, sli.severity, sli.duration, sli.frequency, sc.name 
+                FROM symptom_log_items sli
+                LEFT JOIN symptom_catalog sc ON sc.id = sli.symptom_id
+                WHERE sli.symptom_log_id = ? AND sli.severity != 'None'
+                ORDER BY sli.id ASC
+            ");
+            $symStmt->execute([$latestSymLog['id']]);
+            $latestSymptoms = $symStmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (Exception $e) {}
 } catch (Exception $e) {}
 
 // 3. Latest Vitals
@@ -336,6 +369,7 @@ json_success([
         'cooplandScore' => $coopScore ?? 0,
         'level' => $coopLevel ?? 'Low',
         'factors' => $coopFactors ?? [],
+        'reportedSymptoms' => $latestSymptoms ?? [],
         'status' => ($latestAssessment && ($latestAssessment['status'] ?? 'active') === 'resolved') ? 'resolved' : 'active',
         'isResolved' => ($latestAssessment && ($latestAssessment['status'] ?? 'active') === 'resolved'),
         'canResolveVisit' => in_array(strtoupper($coopLevel ?? 'Low'), ['SEVERE', 'HIGH']) && !($latestAssessment && ($latestAssessment['status'] ?? 'active') === 'resolved'),

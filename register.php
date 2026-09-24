@@ -22,8 +22,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     if ($username === '' || $firstName === '' || $lastName === '' || $email === '' || strlen($password) < 6){
         $error = 'Please fill in username, first name, last name, email, and a password of at least 6 characters.';
     } else {
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? OR username = ?");
-        $stmt->execute([$email, $username]);
+        try {
+            $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? OR username = ?");
+            $stmt->execute([$email, $username]);
+        } catch (Throwable $e) {
+            $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
+            $stmt->execute([$email]);
+        }
         if ($stmt->fetch()){
             $error = 'An account with that email or username already exists.';
         } else {
@@ -32,8 +37,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
             $edd = $lmp ? date('Y-m-d', strtotime($lmp . ' + 280 days')) : null;
 
             $pdo->beginTransaction();
-            $pdo->prepare("INSERT INTO users (id, role, username, first_name, middle_name, last_name, name, email, password_hash) VALUES (?, 'patient', ?, ?, ?, ?, ?, ?, ?)")
-                ->execute([$id, $username, $firstName, $middleName ?: null, $lastName, $name, $email, password_hash($password, PASSWORD_DEFAULT)]);
+            try {
+                $pdo->prepare("INSERT INTO users (id, role, username, first_name, middle_name, last_name, name, email, password_hash) VALUES (?, 'patient', ?, ?, ?, ?, ?, ?, ?)")
+                    ->execute([$id, $username, $firstName, $middleName ?: null, $lastName, $name, $email, password_hash($password, PASSWORD_DEFAULT)]);
+            } catch (Throwable $e) {
+                $pdo->prepare("INSERT INTO users (id, role, name, email, password_hash) VALUES (?, 'patient', ?, ?, ?)")
+                    ->execute([$id, $name, $email, password_hash($password, PASSWORD_DEFAULT)]);
+            }
             $pdo->prepare("INSERT INTO patient_profiles (user_id, dob, age, height_cm, weight_kg, lmp, edd, gravida, conditions)
                            VALUES (?,?,?,NULL,NULL,?,?,1,'None')")
                 ->execute([$id, $dob ?: null, $age, $lmp ?: null, $edd]);

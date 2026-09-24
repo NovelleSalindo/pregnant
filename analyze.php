@@ -470,8 +470,8 @@ render_header('Fuzzy Risk Analysis', 'analyze');
   <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
     <?php foreach ($a['recs'] as $r): ?>
       <div style="background:var(--bg-soft);padding:12px 14px;border-radius:10px;display:flex;align-items:center;border:1px solid var(--border);">
-        <i class="fa-solid <?php echo e($r['icon']); ?>" style="font-size:16px;color:<?php echo !empty($r['urgent']) ? 'var(--risk-high)' : 'var(--teal)'; ?>;margin-right:12px;"></i>
-        <span style="font-size:13px;color:var(--ink);"><?php echo e($r['text']); ?></span>
+        <i class="fa-solid <?php echo e(is_array($r) ? ($r['icon'] ?? 'fa-circle-check') : 'fa-circle-check'); ?>" style="font-size:16px;color:<?php echo (is_array($r) && !empty($r['urgent'])) ? 'var(--risk-high)' : 'var(--teal)'; ?>;margin-right:12px;"></i>
+        <span style="font-size:13px;color:var(--ink);"><?php echo e(is_array($r) ? ($r['text'] ?? '') : $r); ?></span>
       </div>
     <?php endforeach; ?>
     <?php if (!$a['recs']): ?>

@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Shadows, Gradients } from '../theme/colors';
 import { api } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const MOOD_OPTIONS = [
   { value: 'Good', label: 'Good', emoji: '😊' },
@@ -101,7 +102,7 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
   const [stats, setStats] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [historyFilter, setHistoryFilter] = useState<'all' | 'vitals' | 'lab'>('all');
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'vitals' | 'initial_lab'>('all');
 
   // Modal visibilities
   const [showModal, setShowModal] = useState(false); // Daily Vitals modal
@@ -183,11 +184,15 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
       ]);
 
       if (vitalsRes.status === 'fulfilled') {
-        setLogs(vitalsRes.value.logs || []);
+        const fetchedLogs = vitalsRes.value.logs || [];
+        setLogs(fetchedLogs);
         setStats(vitalsRes.value.stats || {});
+        AsyncStorage.setItem('@pregnacare_cached_vitals', JSON.stringify(fetchedLogs)).catch(() => {});
       }
       if (labRes.status === 'fulfilled') {
-        setLabLogs(labRes.value.labs || []);
+        const fetchedLabs = labRes.value.labs || [];
+        setLabLogs(fetchedLabs);
+        AsyncStorage.setItem('@pregnacare_cached_labs', JSON.stringify(fetchedLabs)).catch(() => {});
       }
     } catch (e: any) {
       console.warn('Vitals fetch error:', e.message);
@@ -198,6 +203,19 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
   }, []);
 
   useEffect(() => {
+    // Instantly hydrate from local cache so Daily Vitals and Initial Lab folders never start blank
+    AsyncStorage.getItem('@pregnacare_cached_vitals').then((val) => {
+      if (val) {
+        try { setLogs(JSON.parse(val)); } catch {}
+      }
+    }).catch(() => {});
+
+    AsyncStorage.getItem('@pregnacare_cached_labs').then((val) => {
+      if (val) {
+        try { setLabLogs(JSON.parse(val)); } catch {}
+      }
+    }).catch(() => {});
+
     fetchVitals();
   }, [fetchVitals]);
 
@@ -205,6 +223,11 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
     setRefreshing(true);
     fetchVitals();
   };
+
+  // ── Initial Lab Filtered Sub-list ──
+  const initialLabs = useMemo(() => {
+    return labLogs.filter((l) => (l.lab_type || 'initial') === 'initial');
+  }, [labLogs]);
 
   // ── Combined History Feed ──
   const combinedHistory = useMemo(() => {
@@ -219,7 +242,9 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
 
   const filteredHistory = useMemo(() => {
     if (historyFilter === 'vitals') return combinedHistory.filter((i) => i._kind === 'vital');
-    if (historyFilter === 'lab') return combinedHistory.filter((i) => i._kind === 'lab');
+    if (historyFilter === 'initial_lab') {
+      return combinedHistory.filter((i) => i._kind === 'lab' && (i.lab_type || 'initial') === 'initial');
+    }
     return combinedHistory;
   }, [combinedHistory, historyFilter]);
 
@@ -238,23 +263,66 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
     setSubmitting(true);
     setSaveError('');
     try {
+      const parsedSys = bpSys ? parseInt(bpSys, 10) : undefined;
+      const parsedDia = bpDia ? parseInt(bpDia, 10) : undefined;
+      const parsedHr = heartRate ? parseInt(heartRate, 10) : undefined;
+      const parsedResp = respRate ? parseInt(respRate, 10) : undefined;
+      const parsedTemp = temp ? parseFloat(temp) : undefined;
+      const parsedSpo2 = spo2 ? parseInt(spo2, 10) : undefined;
+      const parsedWeight = weight ? parseFloat(weight) : undefined;
+      const parsedFhr = fetalHeartRate ? parseInt(fetalHeartRate, 10) : undefined;
+      const parsedSugar = sugar ? parseFloat(sugar) : undefined;
+      const parsedMovement = fetalMovement !== '' ? parseInt(fetalMovement, 10) : undefined;
+      const parsedSleep = sleepHours ? parseFloat(sleepHours) : undefined;
+      const parsedWater = waterIntake ? parseFloat(waterIntake) : undefined;
+
       const res = await api.logVitals({
-        bp_sys: bpSys ? parseInt(bpSys, 10) : undefined,
-        bp_dia: bpDia ? parseInt(bpDia, 10) : undefined,
-        heart_rate: heartRate ? parseInt(heartRate, 10) : undefined,
-        respiratory_rate: respRate ? parseInt(respRate, 10) : undefined,
-        temp: temp ? parseFloat(temp) : undefined,
-        spo2: spo2 ? parseInt(spo2, 10) : undefined,
-        weight_kg: weight ? parseFloat(weight) : undefined,
-        fetal_heart_rate: fetalHeartRate ? parseInt(fetalHeartRate, 10) : undefined,
-        blood_sugar: sugar ? parseFloat(sugar) : undefined,
+        bp_sys: parsedSys,
+        bp_dia: parsedDia,
+        heart_rate: parsedHr,
+        respiratory_rate: parsedResp,
+        temp: parsedTemp,
+        spo2: parsedSpo2,
+        weight_kg: parsedWeight,
+        fetal_heart_rate: parsedFhr,
+        blood_sugar: parsedSugar,
         glucose_timing: glucoseTiming,
-        fetal_movement: fetalMovement !== '' ? parseInt(fetalMovement, 10) : undefined,
-        sleep_hours: sleepHours ? parseFloat(sleepHours) : undefined,
-        water_intake: waterIntake ? parseFloat(waterIntake) : undefined,
+        fetal_movement: parsedMovement,
+        sleep_hours: parsedSleep,
+        water_intake: parsedWater,
         mood: mood || undefined,
         activity: activity || undefined,
       });
+
+      // Optimistically record entry so it immediately appears in Daily Vitals Folder
+      const newVitalsRecord = {
+        id: res?.id || 'mon_' + Date.now(),
+        date: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        bp_sys: parsedSys ?? null,
+        bp_dia: parsedDia ?? null,
+        heart_rate: parsedHr ?? null,
+        respiratory_rate: parsedResp ?? null,
+        temp: parsedTemp ?? null,
+        spo2: parsedSpo2 ?? null,
+        weight_kg: parsedWeight ?? null,
+        fetal_heart_rate: parsedFhr ?? null,
+        blood_sugar: parsedSugar ?? null,
+        glucose_timing: glucoseTiming,
+        fetal_movement: parsedMovement ?? null,
+        sleep_hours: parsedSleep ?? null,
+        water_intake: parsedWater ?? null,
+        mood: mood || null,
+        activity: activity || null,
+      };
+
+      setLogs((prev) => {
+        const updated = [newVitalsRecord, ...prev];
+        AsyncStorage.setItem('@pregnacare_cached_vitals', JSON.stringify(updated)).catch(() => {});
+        return updated;
+      });
+
+      // Instantly open the Daily Vitals Folder in History
+      setHistoryFilter('vitals');
 
       setShowModal(false);
       // Reset form
@@ -274,7 +342,7 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
       } else if (res.warnings && res.warnings.length > 0) {
         Alert.alert('Clinical Threshold Warning', res.warnings.join('\n\n'));
       } else {
-        Alert.alert('Success', 'Daily vitals recorded successfully.');
+        Alert.alert('Recorded in History', 'Daily vitals recorded successfully in the Daily Vitals Folder.');
       }
     } catch (e: any) {
       setSaveError(e.message || 'Could not save daily vitals.');
@@ -300,30 +368,77 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
     setSubmittingLab(true);
     setLabSaveError('');
     try {
-      await api.logLaboratoryResult({
+      const parsedHb = cbcHb ? parseFloat(cbcHb) : undefined;
+      const parsedHct = cbcHct ? parseFloat(cbcHct) : undefined;
+      const parsedWbc = cbcWbc ? parseFloat(cbcWbc) : undefined;
+      const parsedPlt = cbcPlt ? parseInt(cbcPlt, 10) : undefined;
+      const parsedGlucose = labBloodGlucose ? parseFloat(labBloodGlucose) : undefined;
+      const parsedFhr = investigationFhr ? parseInt(investigationFhr, 10) : undefined;
+      const parsedFundal = fundalHeight ? parseFloat(fundalHeight) : undefined;
+      const parsedMovement = investigationFetalMovement ? parseInt(investigationFetalMovement, 10) : undefined;
+
+      const payload = {
         date: labDate ? labDate : undefined,
         lab_type: labTypeTab,
-        cbc_hemoglobin: cbcHb ? parseFloat(cbcHb) : undefined,
-        cbc_hematocrit: cbcHct ? parseFloat(cbcHct) : undefined,
-        cbc_wbc: cbcWbc ? parseFloat(cbcWbc) : undefined,
-        cbc_platelets: cbcPlt ? parseInt(cbcPlt, 10) : undefined,
+        cbc_hemoglobin: parsedHb,
+        cbc_hematocrit: parsedHct,
+        cbc_wbc: parsedWbc,
+        cbc_platelets: parsedPlt,
         blood_type: bloodType || undefined,
         rh_factor: rhFactor || undefined,
         urinalysis_protein: urinalysisProtein || undefined,
         urinalysis_glucose: urinalysisGlucose || undefined,
         urinalysis_ketones: urinalysisKetones || undefined,
-        blood_glucose: labBloodGlucose ? parseFloat(labBloodGlucose) : undefined,
+        blood_glucose: parsedGlucose,
         hiv_screening: hivScreening || undefined,
         syphilis_screening: syphilisScreening || undefined,
         hepb_screening: hepbScreening || undefined,
         urine_culture: urineCulture || undefined,
         other_tests: otherTests || undefined,
         ultrasound_notes: ultrasoundNotes || undefined,
-        fetal_heart_rate: investigationFhr ? parseInt(investigationFhr, 10) : undefined,
-        fundal_height_cm: fundalHeight ? parseFloat(fundalHeight) : undefined,
-        fetal_movement: investigationFetalMovement ? parseInt(investigationFetalMovement, 10) : undefined,
+        fetal_heart_rate: parsedFhr,
+        fundal_height_cm: parsedFundal,
+        fetal_movement: parsedMovement,
         notes: labNotes || undefined,
+      };
+
+      const res = await api.logLaboratoryResult(payload);
+
+      // Optimistically record entry so it immediately appears in Initial Lab Folder
+      const newLab = {
+        id: res?.id || 'lab_' + Date.now(),
+        date: labDate || new Date().toISOString().replace('T', ' ').substring(0, 19),
+        lab_type: labTypeTab || 'initial',
+        cbc_hemoglobin: parsedHb ?? null,
+        cbc_hematocrit: parsedHct ?? null,
+        cbc_wbc: parsedWbc ?? null,
+        cbc_platelets: parsedPlt ?? null,
+        blood_type: bloodType || null,
+        rh_factor: rhFactor || null,
+        urinalysis_protein: urinalysisProtein || null,
+        urinalysis_glucose: urinalysisGlucose || null,
+        urinalysis_ketones: urinalysisKetones || null,
+        blood_glucose: parsedGlucose ?? null,
+        hiv_screening: hivScreening || null,
+        syphilis_screening: syphilisScreening || null,
+        hepb_screening: hepbScreening || null,
+        urine_culture: urineCulture || null,
+        other_tests: otherTests || null,
+        ultrasound_notes: ultrasoundNotes || null,
+        fetal_heart_rate: parsedFhr ?? null,
+        fundal_height_cm: parsedFundal ?? null,
+        fetal_movement: parsedMovement ?? null,
+        notes: labNotes || null,
+      };
+
+      setLabLogs((prev) => {
+        const updated = [newLab, ...prev];
+        AsyncStorage.setItem('@pregnacare_cached_labs', JSON.stringify(updated)).catch(() => {});
+        return updated;
       });
+
+      // Instantly open the Initial Lab Folder in History
+      setHistoryFilter('initial_lab');
 
       setShowLabModal(false);
       // Reset form
@@ -336,7 +451,7 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
       setLabNotes(''); setLabDate('');
       fetchVitals();
 
-      Alert.alert('Success', 'Prenatal laboratory record saved successfully.');
+      Alert.alert('Recorded in History', 'Initial laboratory record successfully recorded in the Initial Lab Folder.');
     } catch (e: any) {
       setLabSaveError(e.message || 'Could not save laboratory record.');
     } finally {
@@ -426,73 +541,74 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
           </View>
         </View>
 
-        {/* History Header & Filter Pills */}
+        {/* History Header & Folder Pills */}
         <View style={styles.historyHeaderRow}>
-          <Text style={[styles.sectionTitle, isDarkMode && { color: '#F0EEF0' }]}>History</Text>
-          <View style={styles.filterPillsRow}>
-            <TouchableOpacity
-              style={[
-                styles.filterPill,
-                historyFilter === 'all' && styles.filterPillActive,
-                isDarkMode && styles.filterPillDark,
-                historyFilter === 'all' && isDarkMode && styles.filterPillActiveDark,
-              ]}
-              onPress={() => setHistoryFilter('all')}
-            >
-              <Text
-                style={[
-                  styles.filterPillText,
-                  historyFilter === 'all' && styles.filterPillTextActive,
-                  isDarkMode && { color: '#A09CA8' },
-                  historyFilter === 'all' && isDarkMode && { color: '#FFFFFF' },
-                ]}
-              >
-                All ({combinedHistory.length})
-              </Text>
-            </TouchableOpacity>
+          <Text style={[styles.sectionTitle, isDarkMode && { color: '#F0EEF0' }]}>History Folders</Text>
+        </View>
 
-            <TouchableOpacity
+        <View style={styles.filterPillsRow}>
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              historyFilter === 'all' && styles.filterPillActive,
+              isDarkMode && styles.filterPillDark,
+              historyFilter === 'all' && isDarkMode && styles.filterPillActiveDark,
+            ]}
+            onPress={() => setHistoryFilter('all')}
+          >
+            <Text
               style={[
-                styles.filterPill,
-                historyFilter === 'vitals' && styles.filterPillActive,
-                isDarkMode && styles.filterPillDark,
-                historyFilter === 'vitals' && isDarkMode && styles.filterPillActiveDark,
+                styles.filterPillText,
+                historyFilter === 'all' && styles.filterPillTextActive,
+                isDarkMode && { color: '#A09CA8' },
+                historyFilter === 'all' && isDarkMode && { color: '#FFFFFF' },
               ]}
-              onPress={() => setHistoryFilter('vitals')}
             >
-              <Text
-                style={[
-                  styles.filterPillText,
-                  historyFilter === 'vitals' && styles.filterPillTextActive,
-                  isDarkMode && { color: '#A09CA8' },
-                  historyFilter === 'vitals' && isDarkMode && { color: '#FFFFFF' },
-                ]}
-              >
-                Daily Vitals ({logs.length})
-              </Text>
-            </TouchableOpacity>
+              All Records ({combinedHistory.length})
+            </Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              historyFilter === 'vitals' && styles.filterPillActive,
+              isDarkMode && styles.filterPillDark,
+              historyFilter === 'vitals' && isDarkMode && styles.filterPillActiveDark,
+            ]}
+            onPress={() => setHistoryFilter('vitals')}
+          >
+            <Text
               style={[
-                styles.filterPill,
-                historyFilter === 'lab' && styles.filterPillActive,
-                isDarkMode && styles.filterPillDark,
-                historyFilter === 'lab' && isDarkMode && styles.filterPillActiveDark,
+                styles.filterPillText,
+                historyFilter === 'vitals' && styles.filterPillTextActive,
+                isDarkMode && { color: '#A09CA8' },
+                historyFilter === 'vitals' && isDarkMode && { color: '#FFFFFF' },
               ]}
-              onPress={() => setHistoryFilter('lab')}
             >
-              <Text
-                style={[
-                  styles.filterPillText,
-                  historyFilter === 'lab' && styles.filterPillTextActive,
-                  isDarkMode && { color: '#A09CA8' },
-                  historyFilter === 'lab' && isDarkMode && { color: '#FFFFFF' },
-                ]}
-              >
-                Lab ({labLogs.length})
-              </Text>
-            </TouchableOpacity>
-          </View>
+              📁 Daily Vitals Folder ({logs.length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              historyFilter === 'initial_lab' && styles.filterPillActive,
+              isDarkMode && styles.filterPillDark,
+              historyFilter === 'initial_lab' && isDarkMode && styles.filterPillActiveDark,
+            ]}
+            onPress={() => setHistoryFilter('initial_lab')}
+          >
+            <Text
+              style={[
+                styles.filterPillText,
+                historyFilter === 'initial_lab' && styles.filterPillTextActive,
+                isDarkMode && { color: '#A09CA8' },
+                historyFilter === 'initial_lab' && isDarkMode && { color: '#FFFFFF' },
+              ]}
+            >
+              📁 Initial Lab Folder ({initialLabs.length})
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* History Feed */}
@@ -502,7 +618,11 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
           <View style={[styles.emptyCard, Shadows.card, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
             <Ionicons name="folder-open-outline" size={40} color={isDarkMode ? '#3A2530' : Colors.primaryLight} />
             <Text style={[styles.emptyText, isDarkMode && { color: '#85818A' }]}>
-              {historyFilter === 'lab' ? 'No laboratory tests recorded yet.' : 'No records logged yet.'}
+              {historyFilter === 'initial_lab'
+                ? 'No initial laboratory tests recorded in this folder yet.'
+                : historyFilter === 'vitals'
+                ? 'No daily vitals recorded in this folder yet.'
+                : 'No records logged yet.'}
             </Text>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
               <TouchableOpacity style={styles.emptyAction} onPress={() => setShowModal(true)}>

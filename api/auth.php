@@ -28,9 +28,21 @@ if (empty($action)) {
 
 // Helper to fetch complete user profile
 function fetch_user_payload($pdo, $userId) {
-    $stmt = $pdo->prepare("SELECT id, role, username, first_name, middle_name, last_name, name, email, created_at FROM users WHERE id = ?");
-    $stmt->execute([$userId]);
-    $user = $stmt->fetch();
+    try {
+        $stmt = $pdo->prepare("SELECT id, role, username, first_name, middle_name, last_name, name, email, created_at FROM users WHERE id = ?");
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch();
+    } catch (Throwable $e) {
+        $stmt = $pdo->prepare("SELECT id, role, name, email, created_at FROM users WHERE id = ?");
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch();
+        if ($user) {
+            $user['username'] = $user['username'] ?? explode('@', $user['email'])[0];
+            $user['first_name'] = $user['first_name'] ?? explode(' ', $user['name'])[0];
+            $user['middle_name'] = $user['middle_name'] ?? '';
+            $user['last_name'] = $user['last_name'] ?? '';
+        }
+    }
 
     if (!$user) return null;
 
@@ -53,9 +65,15 @@ switch ($action) {
             json_error('Email or username, and password are required.', 422);
         }
 
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? OR username = ?");
-        $stmt->execute([$loginInput, $loginInput]);
-        $user = $stmt->fetch();
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? OR username = ?");
+            $stmt->execute([$loginInput, $loginInput]);
+            $user = $stmt->fetch();
+        } catch (Throwable $e) {
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
+            $stmt->execute([$loginInput]);
+            $user = $stmt->fetch();
+        }
 
         if (!$user || !password_verify($password, $user['password_hash'])) {
             json_error('Invalid email or password.', 401);
@@ -99,10 +117,18 @@ switch ($action) {
             json_error('Password must be at least 6 characters.', 422);
         }
 
-        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? OR (username IS NOT NULL AND username != '' AND username = ?)");
-        $stmt->execute([$email, $username]);
-        if ($stmt->fetch()) {
-            json_error('An account with this email or username already exists.', 409);
+        try {
+            $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? OR (username IS NOT NULL AND username != '' AND username = ?)");
+            $stmt->execute([$email, $username]);
+            if ($stmt->fetch()) {
+                json_error('An account with this email or username already exists.', 409);
+            }
+        } catch (Throwable $e) {
+            $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
+            $stmt->execute([$email]);
+            if ($stmt->fetch()) {
+                json_error('An account with this email already exists.', 409);
+            }
         }
 
         $userId = uid('usr');
@@ -110,8 +136,13 @@ switch ($action) {
 
         $pdo->beginTransaction();
         try {
-            $stmt = $pdo->prepare("INSERT INTO users (id, role, username, first_name, middle_name, last_name, name, email, password_hash, created_at) VALUES (?, 'patient', ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$userId, $username ?: null, $firstName ?: null, $middleName ?: null, $lastName ?: null, $name, $email, $hash, now_iso()]);
+            try {
+                $stmt = $pdo->prepare("INSERT INTO users (id, role, username, first_name, middle_name, last_name, name, email, password_hash, created_at) VALUES (?, 'patient', ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$userId, $username ?: null, $firstName ?: null, $middleName ?: null, $lastName ?: null, $name, $email, $hash, now_iso()]);
+            } catch (Throwable $insertEx) {
+                $stmt = $pdo->prepare("INSERT INTO users (id, role, name, email, password_hash, created_at) VALUES (?, 'patient', ?, ?, ?, ?)");
+                $stmt->execute([$userId, $name, $email, $hash, now_iso()]);
+            }
 
             // Optional profile fields matching register.php (Weight & Height removed from register)
             $dob = !empty($input['dob']) ? $input['dob'] : null;

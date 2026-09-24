@@ -21,6 +21,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+set_exception_handler(function($e) {
+    http_response_code(500);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'success' => false,
+        'error' => $e->getMessage(),
+        'message' => $e->getMessage()
+    ]);
+    exit;
+});
+
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        if (!headers_sent()) {
+            http_response_code(500);
+            header('Content-Type: application/json; charset=utf-8');
+        }
+        echo json_encode([
+            'success' => false,
+            'error' => $error['message'],
+            'message' => $error['message']
+        ]);
+    }
+});
+
+set_error_handler(function($severity, $message, $file, $line) {
+    if (!(error_reporting() & $severity)) return;
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
 // 2. Load base.php for Database connection ($pdo) and risk engine
 require_once __DIR__ . '/../base.php';
 
@@ -114,6 +145,34 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS clinical_visits (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB");
+
+$pdo->exec("CREATE TABLE IF NOT EXISTS pregnancy_problems (
+    id VARCHAR(20) PRIMARY KEY,
+    user_id VARCHAR(20) NOT NULL,
+    symptom_log_id VARCHAR(20) NULL,
+    date DATETIME NOT NULL,
+    bleeding_lt_20wks TINYINT(1) NOT NULL DEFAULT 0,
+    bleeding_gt_20wks TINYINT(1) NOT NULL DEFAULT 0,
+    postmaturity_prematurity TINYINT(1) NOT NULL DEFAULT 0,
+    hypertension TINYINT(1) NOT NULL DEFAULT 0,
+    prom TINYINT(1) NOT NULL DEFAULT 0,
+    poly_oligohydramnios TINYINT(1) NOT NULL DEFAULT 0,
+    iugr TINYINT(1) NOT NULL DEFAULT 0,
+    multiple_pregnancy TINYINT(1) NOT NULL DEFAULT 0,
+    breech_malpresentation TINYINT(1) NOT NULL DEFAULT 0,
+    rh_isoimmunization TINYINT(1) NOT NULL DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB");
+
+// Sync new mobile app symptoms to the symptom_catalog to prevent foreign key constraint violations
+$pdo->exec("INSERT IGNORE INTO symptom_catalog (id, name, icon, weight) VALUES
+    ('fluid_loss', 'Loss of Vaginal Fluid', 'fa-water', 1.0),
+    ('chest_pain', 'Chest Pain', 'fa-heart-pulse', 0.9),
+    ('fainting', 'Fainting', 'fa-circle-exclamation', 0.9),
+    ('leg_swelling_pain', 'One-sided Leg Swelling', 'fa-shoe-prints', 0.85),
+    ('urinary_discomfort', 'Painful Urination', 'fa-notes-medical', 0.6),
+    ('reduced_movement', 'Decreased Fetal Movement', 'fa-baby', 0.9)
+");
 
 // 4. JSON Helper Functions
 function json_response($data, int $statusCode = 200) {

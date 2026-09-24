@@ -185,8 +185,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
         }
 
         log_action('symptom_fuzzy_checkin_and_assess');
-        flash("Symptom check-in and risk analysis completed successfully.", "success");
-        redirect("analyze.php?a={$asmId}&c=" . ($cooplandResult['id'] ?? ''));
+        flash("Symptom check-in completed. Your personalized clinical advice has been updated.", "success");
+        redirect("recommendations.php?a={$asmId}&c=" . ($cooplandResult['id'] ?? ''));
     }
 }
 

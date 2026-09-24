@@ -370,13 +370,15 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
 
       await AsyncStorage.removeItem('@pregnacare_resolved_visit').catch(() => {});
 
-      // Use critical recommendations only (not general risk recommendations)
+      const sympRecs = (res?.recommendations && res.recommendations.length > 0)
+        ? res.recommendations
+        : criticalRecs;
+
+      // Result of symptom check-in is strictly for critical recommendations and guidance (NOT risk)
       const mergedResult = {
         source: 'symptoms' as const,
-        score: res?.score ?? 0,
-        level: activeSymptomsList.some(s => s.severity === 'Severe') ? 'Severe' : (activeSymptomsList.length > 0 ? 'High' : 'Low'),
         activeSymptoms: activeSymptomsList,
-        recommendations: criticalRecs,
+        recommendations: sympRecs,
         clinical_alerts: {
           triggered_symptoms: activeSymptomsList.filter(s => s.severity === 'Severe' || s.severity === 'Moderate').map(s => `${s.name} (${s.severity})`),
         },
@@ -385,16 +387,18 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
       setAssessmentResult(mergedResult);
       setShowResultModal(true);
 
-      // Trigger notification for severe or high symptoms
-      if (mergedResult.level === 'Severe') {
+      // Trigger symptom alert notification if severe or moderate symptoms present
+      const hasSevere = activeSymptomsList.some(s => s.severity === 'Severe');
+      const hasMod = activeSymptomsList.some(s => s.severity === 'Moderate');
+      if (hasSevere) {
         sendPhoneNotification(
-          '🚨 Urgent: Severe Maternal Risk Detected',
-          'Severe maternal symptoms were reported. Immediate medical evaluation by an obstetrician or hospital triage is strongly advised.'
+          '🚨 Urgent Maternal Symptom Alert',
+          'Severe maternal symptoms were reported. Immediate clinical consultation or hospital triage is strongly advised.'
         ).catch(() => {});
-      } else if (mergedResult.level === 'High') {
+      } else if (hasMod) {
         sendPhoneNotification(
-          '⚠️ Maternal Risk Alert: High Risk',
-          'High-priority maternal symptoms were recorded. Please schedule an OB-GYN checkup within 24 to 48 hours.'
+          '⚠️ Maternal Symptom Notice',
+          'Moderate maternal symptoms recorded. Please review your personalized critical guidance.'
         ).catch(() => {});
       }
     } catch (e: any) {
@@ -408,8 +412,6 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
 
       setAssessmentResult({
         source: 'symptoms' as const,
-        score: 0,
-        level: activeSymptomsList.some(s => s.severity === 'Severe') ? 'Severe' : (activeSymptomsList.length > 0 ? 'High' : 'Low'),
         activeSymptoms: activeSymptomsList,
         recommendations: criticalRecs,
         clinical_alerts: {
@@ -419,6 +421,52 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
       setShowResultModal(true);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const saveCooplandWithTransition = async (newCoop: {
+    score: number;
+    level: string;
+    factors: string[];
+    date?: string;
+    recommendations?: any[];
+  }) => {
+    try {
+      const assessmentDate = newCoop.date || new Date().toISOString();
+      const newRecord = {
+        ...newCoop,
+        date: assessmentDate,
+      };
+
+      // 1. Fetch current latest Coopland
+      const existingLatestStr = await AsyncStorage.getItem('@pregnacare_latest_coopland');
+      if (existingLatestStr) {
+        try {
+          const existingLatest = JSON.parse(existingLatestStr);
+          // Only shift existing to PREVIOUS if it is a genuinely different assessment (different score or > 1 min apart)
+          const isSameSession =
+            existingLatest &&
+            existingLatest.score === newCoop.score &&
+            existingLatest.date &&
+            Math.abs(new Date(existingLatest.date).getTime() - new Date(assessmentDate).getTime()) < 60000;
+
+          if (existingLatest && existingLatest.score !== undefined && !isSameSession) {
+            await AsyncStorage.setItem('@pregnacare_previous_coopland', existingLatestStr);
+          }
+        } catch {}
+      }
+
+      // 2. Set new record as current latest
+      await AsyncStorage.setItem('@pregnacare_latest_coopland', JSON.stringify(newRecord));
+
+      // 3. Keep local coopland history array
+      const histStr = await AsyncStorage.getItem('@pregnacare_coopland_history');
+      let historyArr = histStr ? JSON.parse(histStr) : [];
+      if (!Array.isArray(historyArr)) historyArr = [];
+      historyArr = [newRecord, ...historyArr.filter((h: any) => h.date !== assessmentDate)].slice(0, 20);
+      await AsyncStorage.setItem('@pregnacare_coopland_history', JSON.stringify(historyArr));
+    } catch (err) {
+      console.warn('Error in saveCooplandWithTransition:', err);
     }
   };
 
@@ -481,6 +529,7 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
       };
 
       // Instantly persist latest Coopland assessment locally for Dashboard & Risk screens
+      // Moving previous current Coopland to previous Coopland!
       const localCoopData = {
         score: liveCoopland.score,
         level: liveCoopland.level,
@@ -488,7 +537,7 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
         date: new Date().toISOString(),
         recommendations: recs,
       };
-      await AsyncStorage.setItem('@pregnacare_latest_coopland', JSON.stringify(localCoopData));
+      await saveCooplandWithTransition(localCoopData);
 
       setAssessmentResult(assessmentPayload);
       setShowResultModal(true);
@@ -519,13 +568,13 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
               : `Low Risk profile (Coopland Score: ${liveCoopland.score}). Maintain your routine prenatal visit schedule.`)
       ];
 
-      AsyncStorage.setItem('@pregnacare_latest_coopland', JSON.stringify({
+      await saveCooplandWithTransition({
         score: liveCoopland.score,
         level: liveCoopland.level,
         factors: liveCoopland.factors.map(f => `${f.label} (+${f.points})`),
         date: new Date().toISOString(),
         recommendations: fallbackRecs,
-      })).catch(() => {});
+      });
 
       setAssessmentResult({
         source: 'coopland' as const,
@@ -557,6 +606,108 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSaveToAdvice = async () => {
+    try {
+      const isSymptomsSource = assessmentResult?.source === 'symptoms';
+      const displayLevel = assessmentResult?.level ?? liveRisk?.level ?? 'Low';
+      const displayScore = assessmentResult?.score ?? liveRisk?.score ?? 0;
+      const rawRecs = (assessmentResult?.recommendations && assessmentResult.recommendations.length > 0)
+        ? assessmentResult.recommendations
+        : (liveRisk?.recommendations && liveRisk.recommendations.length > 0 ? liveRisk.recommendations : []);
+
+      const symptomsList = isSymptomsSource
+        ? (assessmentResult?.activeSymptoms || [])
+        : (assessmentResult?.coopland?.factors || assessmentResult?.factors || []).map((f: string) => {
+            const parts = f.split(' (');
+            return { name: parts[0], severity: parts[1] ? parts[1].replace(')', '') : 'High' };
+          });
+
+      const formattedRecs = rawRecs.map((r: any, idx: number) => {
+        const text = typeof r === 'string' ? r : (r.text || '');
+        const isUrgent = typeof r === 'string'
+          ? (text.toLowerCase().includes('urgent') || text.toLowerCase().includes('immediate') || text.toLowerCase().includes('hospital') || text.startsWith('🚨') || text.startsWith('⚠️') || displayLevel === 'Severe')
+          : Boolean(r.urgent || (r.category && r.category.toLowerCase().includes('urgent')));
+        const category = typeof r === 'string'
+          ? (isUrgent ? 'Urgent Action' : 'Daily Care')
+          : (r.category || (isUrgent ? 'Urgent Action' : 'Daily Care'));
+        const icon = typeof r === 'string'
+          ? (isUrgent ? 'alert-circle' : 'checkmark-circle')
+          : (r.icon || (isUrgent ? 'alert-circle' : 'checkmark-circle'));
+
+        return {
+          id: `rec_${Date.now()}_${idx}`,
+          text,
+          category,
+          urgent: isUrgent,
+          icon,
+          completed: false,
+        };
+      });
+
+      const adviceEntry = {
+        id: `adv_${Date.now()}`,
+        source: assessmentResult?.source || 'symptoms',
+        title: isSymptomsSource ? 'Symptom Check-in Guidance' : 'Coopland Risk Evaluation Guidance',
+        date: new Date().toISOString(),
+        // Submit symptoms does NOT score risk (Coopland is the sole risk classifier)
+        riskLevel: isSymptomsSource ? '' : displayLevel,
+        riskScore: isSymptomsSource ? null : displayScore,
+        symptomsReported: symptomsList,
+        recommendations: formattedRecs,
+        notes: '',
+      };
+
+      // 1. Store as the latest active saved advice
+      await AsyncStorage.setItem('@pregnacare_latest_saved_advice', JSON.stringify(adviceEntry));
+
+      // 2. Prepend to saved advice history
+      try {
+        const existingHistoryStr = await AsyncStorage.getItem('@pregnacare_saved_advice_history');
+        let historyList = existingHistoryStr ? JSON.parse(existingHistoryStr) : [];
+        if (!Array.isArray(historyList)) historyList = [];
+        historyList = [adviceEntry, ...historyList.filter((h: any) => h.id !== adviceEntry.id)].slice(0, 30);
+        await AsyncStorage.setItem('@pregnacare_saved_advice_history', JSON.stringify(historyList));
+      } catch (e) {}
+
+      // 3. ONLY Coopland assessments update @pregnacare_latest_coopland for Dashboard
+      if (!isSymptomsSource) {
+        const localAssessmentData = {
+          score: displayScore,
+          level: displayLevel,
+          factors: symptomsList.map((s: any) => `${s.name} (${s.severity})`),
+          date: adviceEntry.date,
+          recommendations: rawRecs,
+        };
+        await saveCooplandWithTransition(localAssessmentData);
+      }
+
+      Alert.alert(
+        'Saved to Recommendations',
+        isSymptomsSource
+          ? 'Your reported symptoms and personalized critical guidance have been saved to your Recommendations page.'
+          : 'Your Coopland risk evaluation and guidance have been saved.',
+        [
+          {
+            text: 'Go to Recommendations',
+            onPress: () => {
+              setShowResultModal(false);
+              if (onNavigate) onNavigate('advice');
+            },
+          },
+          {
+            text: 'Stay Here',
+            style: 'cancel',
+            onPress: () => setShowResultModal(false),
+          }
+        ]
+      );
+    } catch (err: any) {
+      console.warn('Error saving to advice:', err);
+      setShowResultModal(false);
+      if (onNavigate) onNavigate('advice');
     }
   };
 
@@ -1854,13 +2005,11 @@ export const SymptomsScreen: React.FC<SymptomsScreenProps> = ({ onNavigate }) =>
 
                     <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
                       <TouchableOpacity
-                        onPress={() => {
-                          setShowResultModal(false);
-                          if (onNavigate) onNavigate('home');
-                        }}
-                        style={[styles.modalDoneBtn, { flex: 1, backgroundColor: modalThemeColor }]}
+                        onPress={handleSaveToAdvice}
+                        style={[styles.modalDoneBtn, { flex: 1, backgroundColor: modalThemeColor, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }]}
                       >
-                        <Text style={[styles.modalDoneBtnText, { color: '#FFF' }]}>View on Dashboard</Text>
+                        <Ionicons name="bookmark" size={16} color="#FFF" />
+                        <Text style={[styles.modalDoneBtnText, { color: '#FFF' }]}>Save to Advice</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => setShowResultModal(false)}

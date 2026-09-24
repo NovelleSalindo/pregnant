@@ -49,6 +49,44 @@ try {
         SELECT 'r_bp_red', 'systolic_blood_pressure is outside 110–130 mmHg OR diastolic_blood_pressure is outside 75–85 mmHg', 'Trigger Red_Alert (Severe Risk)', 1
         WHERE NOT EXISTS (SELECT 1 FROM rule_base WHERE rule_key = 'r_bp_red')");
 } catch (Throwable $ignored) {}
+
+// Auto-migration: ensure users table has username, first_name, middle_name, last_name
+try {
+    $uCols = $pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_COLUMN);
+    if (!in_array('username', $uCols)) {
+        $pdo->exec("ALTER TABLE users ADD COLUMN username VARCHAR(80) NULL UNIQUE AFTER role");
+    }
+    if (!in_array('first_name', $uCols)) {
+        $pdo->exec("ALTER TABLE users ADD COLUMN first_name VARCHAR(80) NULL AFTER username");
+    }
+    if (!in_array('middle_name', $uCols)) {
+        $pdo->exec("ALTER TABLE users ADD COLUMN middle_name VARCHAR(80) NULL AFTER first_name");
+    }
+    if (!in_array('last_name', $uCols)) {
+        $pdo->exec("ALTER TABLE users ADD COLUMN last_name VARCHAR(80) NULL AFTER middle_name");
+    }
+    $pdo->exec("UPDATE users SET username = SUBSTRING_INDEX(email, '@', 1) WHERE (username IS NULL OR username = '')");
+} catch (Throwable $ignored) {}
+
+// Auto-migration: ensure patient_profiles table has all expected columns
+try {
+    $pCols = $pdo->query("SHOW COLUMNS FROM patient_profiles")->fetchAll(PDO::FETCH_COLUMN);
+    $neededProfileCols = [
+        'pre_pregnancy_weight_kg' => 'DECIMAL(5,1) NULL',
+        'occupation' => 'VARCHAR(100) NULL',
+        'gravida' => 'INT NULL',
+        'prior_miscarriage' => 'TINYINT(1) DEFAULT 0',
+        'prior_csection' => 'TINYINT(1) DEFAULT 0',
+        'emergency_name' => 'VARCHAR(120) NULL',
+        'emergency_relation' => 'VARCHAR(60) NULL',
+        'emergency_phone' => 'VARCHAR(30) NULL'
+    ];
+    foreach ($neededProfileCols as $col => $def) {
+        if (!in_array($col, $pCols)) {
+            $pdo->exec("ALTER TABLE patient_profiles ADD COLUMN $col $def");
+        }
+    }
+} catch (Throwable $ignored) {}
 $pdo->exec("CREATE TABLE IF NOT EXISTS risk_history (
   user_id VARCHAR(20) PRIMARY KEY,
   parity INT NULL,
@@ -103,6 +141,7 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS pregnancy_problems (
 
 // Safe column migrations for existing pregnancy_problems tables
 try { $pdo->exec("ALTER TABLE pregnancy_problems ADD COLUMN anemia TINYINT(1) DEFAULT 0"); } catch (Throwable $e) {}
+try { $pdo->exec("ALTER TABLE assessments ADD COLUMN recommendations_json JSON NULL"); } catch (Throwable $e) {}
 
 // Postpartum tracking — delivery status + baby vaccination schedule
 $pdo->exec("CREATE TABLE IF NOT EXISTS postpartum_status (

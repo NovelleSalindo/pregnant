@@ -415,7 +415,7 @@ function MainApp() {
         {activeTab === 'vitals' && <VitalsScreen isDarkMode={isDarkMode} />}
         {activeTab === 'symptoms' && <SymptomsScreen onNavigate={handleNavigate} />}
         {activeTab === 'analyze' && <AnalyzeScreen onNavigate={handleNavigate} />}
-        {activeTab === 'advice' && <AdviceScreen onNavigate={handleNavigate} />}
+        {activeTab === 'advice' && <AdviceScreen onNavigate={handleNavigate} isDarkMode={isDarkMode} />}
         {activeTab === 'profile' && <ProfileScreen user={user} onLogout={handleLogout} />}
         {activeTab === 'wellness' && (
           <WellnessScreen

@@ -80,7 +80,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     AsyncStorage.getItem('@pregnacare_latest_coopland').then((val) => {
       if (val) {
         try {
-          setLatestCoopland(JSON.parse(val));
+          const parsed = JSON.parse(val);
+          if (parsed && parsed.source !== 'symptoms') {
+            setLatestCoopland(parsed);
+          }
         } catch {}
       }
     });
@@ -94,11 +97,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   }, []);
 
   const fetchDashboard = useCallback(async () => {
-    // 1. Immediately read latest local Coopland assessment so UI updates instantaneously
+    // 1. Immediately read latest local Coopland assessment so UI updates instantaneously (Coopland is sole risk identifier)
     try {
       const val = await AsyncStorage.getItem('@pregnacare_latest_coopland');
       if (val) {
-        setLatestCoopland(JSON.parse(val));
+        const parsed = JSON.parse(val);
+        if (parsed && parsed.source !== 'symptoms') {
+          setLatestCoopland(parsed);
+        }
       }
       const resVisit = await AsyncStorage.getItem('@pregnacare_resolved_visit');
       if (resVisit) {
@@ -245,14 +251,26 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const riskBgColor = isSevereLevel ? '#FEE2E2' : (isHighLevel ? '#FEF3C7' : '#DCFCE7');
   const riskBorderColor = isSevereLevel ? '#FCA5A5' : (isHighLevel ? '#FCD34D' : '#BBF7D0');
 
-  let recs = (latestCoopland?.recommendations && latestCoopland.recommendations.length > 0)
-    ? latestCoopland.recommendations.map((r: string, idx: number) => ({
+  const rawRecsList = (risk?.topRecommendations && risk.topRecommendations.length > 0)
+    ? risk.topRecommendations
+    : (latestCoopland?.recommendations || []);
+
+  let recs = rawRecsList.map((r: any, idx: number) => {
+    if (typeof r === 'string') {
+      return {
         text: r,
         urgent: isSevereLevel || (isHighLevel && idx === 0),
         category: isSevereLevel ? 'Urgent Action' : (isHighLevel ? 'Priority Care' : 'Routine Care'),
         icon: isSevereLevel ? 'alert-circle' : (isHighLevel ? 'warning' : 'checkmark-circle'),
-      }))
-    : (risk?.topRecommendations || []);
+      };
+    }
+    return {
+      text: r.text || '',
+      urgent: Boolean(r.urgent || r.category === 'Urgent Action'),
+      category: r.category || (isSevereLevel ? 'Urgent Action' : (isHighLevel ? 'Priority Care' : 'Routine Care')),
+      icon: r.icon || (isSevereLevel ? 'alert-circle' : (isHighLevel ? 'warning' : 'checkmark-circle')),
+    };
+  });
 
   if (recs.length === 0) {
     const defaultLevel = isSevereLevel ? 'Severe' : (isHighLevel ? 'High' : 'Low');

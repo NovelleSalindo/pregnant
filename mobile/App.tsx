@@ -162,6 +162,17 @@ function MainApp() {
     setAuthView('front');
   };
 
+  const handleMarkNotificationRead = async (id: string) => {
+    try {
+      const updated = notifications.map((n) => (n.id === id ? { ...n, is_read: 1 } : n));
+      setNotifications(updated);
+      await AsyncStorage.setItem(api.getUserStorageKey('notifications'), JSON.stringify(updated));
+      await api.markNotificationRead(id).catch(() => {});
+    } catch (e) {
+      console.warn('Mark single read error:', e);
+    }
+  };
+
   const handleMarkAllNotificationsRead = async () => {
     try {
       const updated = notifications.map((n) => ({ ...n, is_read: 1 }));
@@ -539,6 +550,8 @@ function MainApp() {
         onMarkAllRead={handleMarkAllNotificationsRead}
         onClearAll={handleClearAllNotifications}
         onDeleteNotification={handleDeleteNotification}
+        onItemPress={(item) => handleMarkNotificationRead(item.id)}
+        onMarkAsRead={handleMarkNotificationRead}
         isDarkMode={isDarkMode}
       />
 

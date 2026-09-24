@@ -28,6 +28,7 @@ interface NotificationModalProps {
   onClearAll?: () => void;
   onDeleteNotification?: (id: string) => void;
   onItemPress?: (item: NotificationItem) => void;
+  onMarkAsRead?: (id: string) => void;
   isDarkMode?: boolean;
 }
 
@@ -39,6 +40,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   onClearAll,
   onDeleteNotification,
   onItemPress,
+  onMarkAsRead,
   isDarkMode = false,
 }) => {
   const getIconForKind = (kind?: string, title: string = '') => {
@@ -158,7 +160,13 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                         borderColor: '#FCD34D',
                       },
                     ]}
-                    onPress={() => onItemPress?.(item)}
+                    onPress={() => {
+                      if (onItemPress) {
+                        onItemPress(item);
+                      } else if (onMarkAsRead) {
+                        onMarkAsRead(item.id);
+                      }
+                    }}
                     activeOpacity={0.7}
                   >
                     <View style={[styles.iconCircle, { backgroundColor: icon.color + '1A' }]}>
@@ -166,18 +174,27 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                     </View>
                     <View style={styles.itemBody}>
                       <View style={styles.itemHeader}>
-                        <Text
-                          style={[
-                            styles.itemTitle,
-                            isSevere && { color: '#DC2626', fontWeight: '800' },
-                            isHigh && { color: '#B45309', fontWeight: '800' },
-                            !isSevere && !isHigh && isDarkMode && { color: '#F0EEF0' },
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {item.title}
-                        </Text>
+                        <View style={styles.titleRow}>
+                          {isUnread && <View style={styles.unreadDot} />}
+                          <Text
+                            style={[
+                              styles.itemTitle,
+                              isSevere && { color: '#DC2626', fontWeight: '800' },
+                              isHigh && { color: '#B45309', fontWeight: '800' },
+                              !isSevere && !isHigh && isDarkMode && { color: '#F0EEF0' },
+                              isUnread && { fontWeight: '800' },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {item.title}
+                          </Text>
+                        </View>
                         <View style={styles.metaRight}>
+                          {isUnread && (
+                            <View style={[styles.unreadBadge, isDarkMode && { backgroundColor: '#4A1D32', borderColor: '#831843' }]}>
+                              <Text style={styles.unreadBadgeText}>NEW</Text>
+                            </View>
+                          )}
                           <Text style={[styles.itemDate, isDarkMode && { color: '#85818A' }]}>
                             {item.date?.slice(5, 16) || ''}
                           </Text>
@@ -208,6 +225,15 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                       ]}>
                         {item.body}
                       </Text>
+
+                      {isUnread && (
+                        <View style={styles.tapToReadHint}>
+                          <Ionicons name="checkmark-done" size={12} color={isDarkMode ? '#FF94B8' : Colors.primaryDark} />
+                          <Text style={[styles.tapToReadText, isDarkMode && { color: '#FF94B8' }]}>
+                            Tap message to mark as read
+                          </Text>
+                        </View>
+                      )}
                     </View>
                   </TouchableOpacity>
                 );
@@ -340,6 +366,46 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 6,
+  },
+  unreadDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: Colors.primaryDark,
+    marginRight: 6,
+  },
+  unreadBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    backgroundColor: '#FCE7F3',
+    borderWidth: 1,
+    borderColor: '#FBCFE8',
+    marginRight: 4,
+  },
+  unreadBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: Colors.primaryDark,
+    letterSpacing: 0.3,
+  },
+  tapToReadHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  tapToReadText: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: Colors.primaryDark,
   },
   itemTitle: {
     fontSize: 14,

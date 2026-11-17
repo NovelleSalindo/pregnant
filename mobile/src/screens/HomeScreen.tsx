@@ -453,7 +453,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         )}
 
         {/* Daily Check-in Reminder Banner (#dailyReminderBanner in dashboard.php) */}
-        {(!checkin.vitalsLoggedToday || !checkin.symptomsLoggedToday) && (
+        {hasPregnancy && (!checkin.vitalsLoggedToday || !checkin.symptomsLoggedToday) && (
           <View
             style={[
               styles.reminderBanner,
@@ -506,7 +506,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         )}
 
         {/* Reminders Card (at the top before BabySizeCard) */}
-        <View style={[styles.card, Shadows.card, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
+        {hasPregnancy && (
+          <View style={[styles.card, Shadows.card, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
           <View style={styles.cardHeader}>
             <Text style={[styles.eyebrow, { color: isDarkMode ? '#FF94B8' : '#C2577D' }]}>REMINDERS</Text>
             <TouchableOpacity onPress={() => onNavigate('reminders')} style={styles.linkRow} activeOpacity={0.7}>
@@ -637,6 +638,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </LinearGradient>
           </TouchableOpacity>
         </View>
+        )}
 
         {/* Baby Milestone & Due Date Countdown Card OR Add Pregnancy Prompt */}
         {!hasPregnancy ? (
@@ -690,7 +692,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         )}
 
         {/* Active Severe or High Maternal Risk Alert Banner */}
-        {isSevere && (
+        {hasPregnancy && isSevere && (
           <View
             style={[
               styles.riskBanner,
@@ -734,7 +736,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </View>
         )}
 
-        {isHigh && (
+        {hasPregnancy && isHigh && (
           <View
             style={[
               styles.riskBanner,
@@ -772,6 +774,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         )}
 
         {/* Current Maternal Risk Status Card */}
+        {hasPregnancy && (
         <View
           style={[
             styles.card,
@@ -996,6 +999,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </View>
           ) : null}
         </View>
+        )}
 
         {/* Quick Action Navigation Grid */}
         <View style={styles.actionsGrid}>

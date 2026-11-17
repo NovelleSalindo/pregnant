@@ -20,55 +20,49 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '')
 }
 
 $actPregId = get_active_pregnancy_id($pdo, $u['id']);
+$hasActivePregnancy = !empty($actPregId);
 
 // Fetch Coopland Assessment (definitive maternal risk classifier)
-if ($actPregId) {
+$latestCoopland = null;
+$latest = null;
+$coopScore = 0;
+$coopLevel = 'Low';
+$coopFactors = [];
+
+if ($hasActivePregnancy) {
     $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC, id DESC LIMIT 1");
     $stmt->execute([$u['id'], $actPregId]);
-} else {
-    $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
-    $stmt->execute([$u['id']]);
-}
-$latestCoopland = $stmt->fetch();
+    $latestCoopland = $stmt->fetch();
 
-if (!$latestCoopland) {
-    require_once __DIR__ . '/coopland_engine.php';
-    $eval = evaluate_coopland($u['id'], $pdo, [], []);
-    if ($eval) {
-        $initId = 'ca-' . uniqid();
-        $pdo->prepare("INSERT INTO coopland_assessments (id, user_id, pregnancy_id, date, score, risk_level, factors_json) VALUES (?, ?, ?, NOW(), ?, ?, ?)")
-            ->execute([
-                $initId,
-                $u['id'],
-                $actPregId,
-                $eval['coopland_score'],
-                $eval['coopland_risk'],
-                json_encode($eval['contributing_factors'] ?? [])
-            ]);
-        if ($actPregId) {
+    if (!$latestCoopland) {
+        require_once __DIR__ . '/coopland_engine.php';
+        $eval = evaluate_coopland($u['id'], $pdo, [], []);
+        if ($eval) {
+            $initId = 'ca-' . uniqid();
+            $pdo->prepare("INSERT INTO coopland_assessments (id, user_id, pregnancy_id, date, score, risk_level, factors_json) VALUES (?, ?, ?, NOW(), ?, ?, ?)")
+                ->execute([
+                    $initId,
+                    $u['id'],
+                    $actPregId,
+                    $eval['coopland_score'],
+                    $eval['coopland_risk'],
+                    json_encode($eval['contributing_factors'] ?? [])
+                ]);
             $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC, id DESC LIMIT 1");
             $stmt->execute([$u['id'], $actPregId]);
-        } else {
-            $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
-            $stmt->execute([$u['id']]);
+            $latestCoopland = $stmt->fetch();
         }
-        $latestCoopland = $stmt->fetch();
     }
-}
 
-// General assessment for visit resolution
-if ($actPregId) {
+    // General assessment for visit resolution
     $stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC LIMIT 1");
     $stmt->execute([$u['id'], $actPregId]);
-} else {
-    $stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 1");
-    $stmt->execute([$u['id']]);
-}
-$latest = $stmt->fetch();
+    $latest = $stmt->fetch();
 
-$coopScore = $latestCoopland ? (int)$latestCoopland['score'] : 0;
-$coopLevel = $latestCoopland ? ucfirst(strtolower($latestCoopland['risk_level'])) : 'Low';
-$coopFactors = $latestCoopland ? json_decode($latestCoopland['factors_json'] ?? '[]', true) : [];
+    $coopScore = $latestCoopland ? (int)$latestCoopland['score'] : 0;
+    $coopLevel = $latestCoopland ? ucfirst(strtolower($latestCoopland['risk_level'])) : 'Low';
+    $coopFactors = $latestCoopland ? json_decode($latestCoopland['factors_json'] ?? '[]', true) : [];
+}
 
 // Recommendations based on latest assessment or Coopland risk level
 $topRecs = [];
@@ -299,7 +293,7 @@ render_header('Dashboard', 'dashboard');
 </div>
 <?php endif; ?>
 
-<?php if (!$loggedVitalsToday || !$loggedSymptomsToday): ?>
+<?php if ($hasActivePregnancy && (!$loggedVitalsToday || !$loggedSymptomsToday)): ?>
 <div class="daily-reminder-banner" id="dailyReminderBanner">
   <div class="daily-reminder-top">
     <div class="daily-reminder-bell-wrap">
@@ -350,6 +344,7 @@ render_header('Dashboard', 'dashboard');
 </script>
 <?php endif; ?>
 
+<?php if ($hasActivePregnancy): ?>
 <div class="card" style="margin-bottom:16px;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
     <div class="eyebrow" style="margin:0;">Reminders</div>
@@ -409,6 +404,7 @@ render_header('Dashboard', 'dashboard');
   <?php endif; ?>
   <a class="btn btn-outline btn-block btn-sm" href="reminders.php" style="margin-top:4px;"><i class="fa-solid fa-bell"></i> Open Reminders</a>
 </div>
+<?php endif; ?>
 
 <?php if (!$hasActivePregnancy): ?>
 <div class="card" style="margin-bottom:20px;text-align:center;padding:36px 20px;background:linear-gradient(135deg, #fff5f8 0%, #ffffff 100%);border:1px solid #fbcfe8;border-radius:20px;box-shadow:0 4px 16px rgba(194,87,125,0.08);">
@@ -467,6 +463,7 @@ render_header('Dashboard', 'dashboard');
 </div>
 <?php endif; ?>
 
+<?php if ($hasActivePregnancy): ?>
 <div class="grid grid-3" style="align-items:stretch;">
   <div class="card" style="grid-column:span 1;text-align:center;border-radius:24px;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -524,6 +521,7 @@ render_header('Dashboard', 'dashboard');
       </div>
     <?php endif; ?>
   </div>
+</div>
 
 <div class="card" style="margin-top:16px;">
   <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -536,6 +534,7 @@ render_header('Dashboard', 'dashboard');
     </button>
   </div>
 </div>
+<?php endif; ?>
 
 <div class="card" style="margin-top:16px;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">

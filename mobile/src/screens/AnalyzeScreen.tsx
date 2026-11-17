@@ -37,10 +37,12 @@ export const AnalyzeScreen: React.FC<AnalyzeScreenProps> = ({ onNavigate }) => {
     try {
       const d = new Date(dStr);
       if (!isNaN(d.getTime())) {
-        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const datePart = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const timePart = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        return `${datePart} • ${timePart}`;
       }
     } catch {}
-    return (dStr || '').split('T')[0].split(' ')[0] || 'Current';
+    return dStr || 'Current';
   };
 
   const loadData = async () => {

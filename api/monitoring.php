@@ -13,12 +13,14 @@ $u = require_api_user('patient');
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $limit = isset($_GET['limit']) ? max(1, min(100, (int)$_GET['limit'])) : 30;
+    $actPregId = get_active_pregnancy_id($pdo, $u['id']);
 
     // Laboratory section
     if (isset($_GET['section']) && $_GET['section'] === 'laboratory') {
-        $stmt = $pdo->prepare("SELECT * FROM prenatal_laboratories WHERE user_id = ? ORDER BY date DESC LIMIT ?");
+        $stmt = $pdo->prepare("SELECT * FROM prenatal_laboratories WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC LIMIT ?");
         $stmt->bindValue(1, $u['id']);
-        $stmt->bindValue(2, $limit, PDO::PARAM_INT);
+        $stmt->bindValue(2, $actPregId);
+        $stmt->bindValue(3, $limit, PDO::PARAM_INT);
         $stmt->execute();
         $labs = $stmt->fetchAll();
 
@@ -28,9 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         ]);
     }
 
-    $stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? ORDER BY date DESC LIMIT ?");
+    $stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC LIMIT ?");
     $stmt->bindValue(1, $u['id']);
-    $stmt->bindValue(2, $limit, PDO::PARAM_INT);
+    $stmt->bindValue(2, $actPregId);
+    $stmt->bindValue(3, $limit, PDO::PARAM_INT);
     $stmt->execute();
     $logs = $stmt->fetchAll();
 
@@ -48,6 +51,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $avgDia = count($bpDiaValues) ? round(array_sum($bpDiaValues) / count($bpDiaValues)) : null;
     $avgSugar = count($sugarValues) ? round(array_sum($sugarValues) / count($sugarValues)) : null;
 
+    $trends = compute_vitals_trends($pdo, $u['id'], $actPregId);
+
     json_success([
         'logs' => $logs,
         'stats' => [
@@ -56,7 +61,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'avgBpDia' => $avgDia,
             'avgSugar' => $avgSugar,
             'latest' => $logs[0] ?? null,
-        ]
+        ],
+        'trends' => $trends,
     ]);
 }
 
@@ -67,6 +73,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ((isset($_GET['section']) && $_GET['section'] === 'laboratory') || (!empty($input['section']) && $input['section'] === 'laboratory')) {
         $id = uid('lab');
         $date = !empty($input['date']) ? $input['date'] : now_iso();
+    if (strlen($date) === 10) {
+        $date .= ' ' . date('H:i:s');
+    }
+        if (strlen($date) === 10) {
+            $date .= ' ' . date('H:i:s');
+        }
         $labType = !empty($input['lab_type']) ? $input['lab_type'] : 'initial';
         $cbcHb = !empty($input['cbc_hemoglobin']) ? (float)$input['cbc_hemoglobin'] : null;
         $cbcHct = !empty($input['cbc_hematocrit']) ? (float)$input['cbc_hematocrit'] : null;
@@ -90,9 +102,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $notes = !empty($input['notes']) ? trim($input['notes']) : null;
         $createdAt = now_iso();
 
+        $actPregId = get_active_pregnancy_id($pdo, $u['id']);
         try {
             $stmt = $pdo->prepare("INSERT INTO prenatal_laboratories (
-                id, user_id, date, lab_type,
+                id, user_id, pregnancy_id, date, lab_type,
                 cbc_hemoglobin, cbc_hematocrit, cbc_wbc, cbc_platelets,
                 blood_type, rh_factor,
                 urinalysis_protein, urinalysis_glucose, urinalysis_ketones,
@@ -101,9 +114,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 urine_culture, other_tests,
                 ultrasound_notes, fetal_heart_rate, fundal_height_cm, fetal_movement,
                 notes, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             $stmt->execute([
-                $id, $u['id'], $date, $labType,
+                $id, $u['id'], $actPregId, $date, $labType,
                 $cbcHb, $cbcHct, $cbcWbc, $cbcPlt,
                 $bloodType, $rhFactor,
                 $urinProt, $urinGlu, $urinKet,
@@ -161,6 +174,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $mood = !empty($input['mood']) ? trim($input['mood']) : null;
     $activity = !empty($input['activity']) ? trim($input['activity']) : null;
     $date = !empty($input['date']) ? $input['date'] : now_iso();
+    if (strlen($date) === 10) {
+        $date .= ' ' . date('H:i:s');
+    }
     $glucoseTiming = !empty($input['glucose_timing']) ? trim($input['glucose_timing']) : 'preprandial';
 
 
@@ -211,11 +227,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ----------------------------------------------------------------
 
     $id = uid('mon');
+    $actPregId = get_active_pregnancy_id($pdo, $u['id']);
     try {
-        $stmt = $pdo->prepare("INSERT INTO monitoring (id, user_id, date, bp_sys, bp_dia, weight_kg, hemoglobin, blood_sugar, temp, heart_rate, fetal_movement, sleep_hours, water_intake, mood, activity, respiratory_rate, spo2, fetal_heart_rate)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt = $pdo->prepare("INSERT INTO monitoring (id, user_id, pregnancy_id, date, bp_sys, bp_dia, weight_kg, hemoglobin, blood_sugar, temp, heart_rate, fetal_movement, sleep_hours, water_intake, mood, activity, respiratory_rate, spo2, fetal_heart_rate)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
-            $id, $u['id'], $date,
+            $id, $u['id'], $actPregId, $date,
             $bpSys, $bpDia, $weight, $hb, $sugar, $temp,
             $heartRate, $fetalMovement, $sleepHours, $waterIntake, $mood, $activity,
             $respRate, $spo2, $fetalHr
@@ -228,8 +245,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $warnings = [];
     if ($bpSys && ($bpSys >= 140 || ($bpDia && $bpDia >= 90))) {
         $warnings[] = 'Elevated blood pressure detected. Rest and check again; consult your doctor if it stays high.';
-        $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
-            ->execute([uid('ntf'), $u['id'], 'High Blood Pressure Alert', "Recorded BP {$bpSys}/{$bpDia} mmHg. Please inform your OB-GYN.", now_iso(), 'bp_alert']);
+        $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+            ->execute([uid('ntf'), $u['id'], $actPregId, 'High Blood Pressure Alert', "Recorded BP {$bpSys}/{$bpDia} mmHg. Please inform your OB-GYN.", now_iso(), 'bp_alert']);
     }
     if ($sugar && $sugar >= 140) {
         $warnings[] = 'Elevated blood sugar detected.';
@@ -243,8 +260,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Notify doctor dashboard when Severe / High Risk is detected
     if ($engineRan && in_array($overallRisk, ['High Risk', 'Severe Risk'], true)) {
-        $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
-            ->execute([uid('ntf'), $u['id'], 'Risk Alert from Vitals Log', "Risk level: {$overallRisk}. Alert: {$alertLevel}.", now_iso(), 'risk_alert']);
+        $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+            ->execute([uid('ntf'), $u['id'], $actPregId, 'Risk Alert from Vitals Log', "Risk level: {$overallRisk}. Alert: {$alertLevel}.", now_iso(), 'risk_alert']);
     }
 
     json_success([

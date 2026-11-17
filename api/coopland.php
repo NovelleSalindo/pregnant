@@ -19,40 +19,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Evaluate without auto-saving an unpopulated record
     $cooplandResult = evaluate_coopland($u['id'], $pdo, $symptoms, $pp, false);
     
+    $actPregId = get_active_pregnancy_id($pdo, $u['id']);
     // If client supplied calculated score/factors from the mobile Coopland checklist
+    $now = now_iso();
     if (isset($input['score']) && isset($input['risk_level'])) {
         $assessment_id = 'ca-' . uniqid();
         $riskLvl = ucfirst(strtolower($input['risk_level']));
         $scoreVal = (int)$input['score'];
         $factorsList = $input['matched_factors'] ?? [];
-        $stmt = $pdo->prepare("INSERT INTO coopland_assessments (id, user_id, date, score, risk_level, factors_json) VALUES (?, ?, NOW(), ?, ?, ?)");
+        $stmt = $pdo->prepare("INSERT INTO coopland_assessments (id, user_id, pregnancy_id, date, score, risk_level, factors_json) VALUES (?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
             $assessment_id,
             $u['id'],
+            $actPregId,
+            $now,
             $scoreVal,
             $riskLvl,
             json_encode($factorsList)
         ]);
         $cooplandResult = [
             'id' => $assessment_id,
+            'date' => $now,
             'coopland_score' => $scoreVal,
             'coopland_risk' => $riskLvl,
-            'contributing_factors' => $factorsList
+            'contributing_factors' => $factorsList,
+            'factors' => $factorsList,
         ];
     } else {
         $assessment_id = 'ca-' . uniqid();
         $riskLvl = $cooplandResult['coopland_risk'] ?? 'Low';
         $scoreVal = $cooplandResult['coopland_score'] ?? 0;
         $factorsList = $cooplandResult['contributing_factors'] ?? [];
-        $stmt = $pdo->prepare("INSERT INTO coopland_assessments (id, user_id, date, score, risk_level, factors_json) VALUES (?, ?, NOW(), ?, ?, ?)");
+        $stmt = $pdo->prepare("INSERT INTO coopland_assessments (id, user_id, pregnancy_id, date, score, risk_level, factors_json) VALUES (?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
             $assessment_id,
             $u['id'],
+            $actPregId,
+            $now,
             $scoreVal,
             $riskLvl,
             json_encode($factorsList)
         ]);
         $cooplandResult['id'] = $assessment_id;
+        $cooplandResult['date'] = $now;
     }
 
     // Insert notification according to Coopland risk level for notification.php and mobile notifications
@@ -72,8 +81,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     try {
-        $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
-            ->execute([$notifId, $u['id'], $notifTitle, $notifBody, now_iso(), $notifKind]);
+        $actPregId = get_active_pregnancy_id($pdo, $u['id']);
+        $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+            ->execute([$notifId, $u['id'], $actPregId, $notifTitle, $notifBody, now_iso(), $notifKind]);
     } catch (Exception $e) {}
 
     $recs = generate_recommendations($cooplandResult, []);
@@ -83,13 +93,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     ], 'Coopland assessment evaluated successfully', 201);
 }
 
-// GET handler
-$stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? ORDER BY date DESC LIMIT 1");
-$stmt->execute([$u['id']]);
+// GET handler (Scoped to Active Pregnancy)
+$actPregId = get_active_pregnancy_id($pdo, $u['id']);
+$stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC LIMIT 1");
+$stmt->execute([$u['id'], $actPregId]);
 $vitals = $stmt->fetch() ?: [];
 
-$cStmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
-$cStmt->execute([$u['id']]);
+$cStmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC, id DESC LIMIT 1");
+$cStmt->execute([$u['id'], $actPregId]);
 $savedCoop = $cStmt->fetch();
 
 if ($savedCoop) {

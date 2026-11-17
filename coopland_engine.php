@@ -152,19 +152,24 @@ function evaluate_coopland($user_id, $pdo, $symptoms = [], $pregnancy_problems =
     
     // Save Assessment if requested
     $assessment_id = 'ca-' . uniqid();
+    $recordedAt = now_iso();
     if ($save) {
-        $stmt = $pdo->prepare("INSERT INTO coopland_assessments (id, user_id, date, score, risk_level, factors_json) VALUES (?, ?, NOW(), ?, ?, ?)");
+        $actPregId = get_active_pregnancy_id($pdo, $user_id);
+        $stmt = $pdo->prepare("INSERT INTO coopland_assessments (id, user_id, pregnancy_id, date, score, risk_level, factors_json) VALUES (?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([
             $assessment_id,
             $user_id,
+            $actPregId,
+            $recordedAt,
             $score,
             $risk_level,
             json_encode($matched_factors)
         ]);
 
         try {
-            $stmtChk = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND date >= DATE_SUB(NOW(), INTERVAL 30 SECOND) AND (kind LIKE '%risk%' OR title LIKE '%Risk%')");
-            $stmtChk->execute([$user_id]);
+            $actPregId = get_active_pregnancy_id($pdo, $user_id);
+            $stmtChk = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND pregnancy_id = ? AND date >= DATE_SUB(NOW(), INTERVAL 30 SECOND) AND (kind LIKE '%risk%' OR title LIKE '%Risk%')");
+            $stmtChk->execute([$user_id, $actPregId]);
             if (!$stmtChk->fetch()) {
                 $notifId = uid('ntf');
                 if ($risk_level === 'Severe') {
@@ -180,14 +185,15 @@ function evaluate_coopland($user_id, $pdo, $symptoms = [], $pregnancy_problems =
                     $notifBody = "Your Coopland risk score is {$score} (Low Risk). Continue your routine prenatal checkup schedule.";
                     $notifKind = 'low_risk_assessment';
                 }
-                $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
-                    ->execute([$notifId, $user_id, $notifTitle, $notifBody, now_iso(), $notifKind]);
+                $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+                    ->execute([$notifId, $user_id, $actPregId, $notifTitle, $notifBody, now_iso(), $notifKind]);
             }
         } catch (Exception $e) {}
     }
     
     return [
         'id' => $assessment_id,
+        'date' => $recordedAt,
         'coopland_score' => $score,
         'coopland_risk' => $risk_level,
         'contributing_factors' => $matched_factors

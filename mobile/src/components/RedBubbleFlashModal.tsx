@@ -42,9 +42,9 @@ export const RedBubbleFlashModal: React.FC<RedBubbleFlashProps> = ({
   if (!visible) return null;
 
   // Determine styling based on theme
-  const isSoftPink = theme === 'softpink' || theme === 'pink' || title.includes('Saved to Recommendations');
+  const isSoftPink = theme === 'softpink' || theme === 'pink' || title.includes('High') || title.includes('Saved to Recommendations');
   const isRed = !isSoftPink && (theme === 'red' || title.includes('Severe') || title.includes('🚨') || title.includes('Urgent'));
-  const isYellow = !isSoftPink && !isRed && (theme === 'yellow' || title.includes('High') || title.includes('⚠️'));
+  const isYellow = !isSoftPink && !isRed && (theme === 'yellow');
 
   let primaryColor = isSoftPink ? '#DB2777' : (isRed ? '#DC2626' : (isYellow ? '#D97706' : '#BE185D'));
   let titleColor = isSoftPink

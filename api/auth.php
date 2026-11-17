@@ -66,12 +66,12 @@ switch ($action) {
         }
 
         try {
-            $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? OR username = ?");
-            $stmt->execute([$loginInput, $loginInput]);
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? OR username = ? OR name = ? OR email LIKE ?");
+            $stmt->execute([$loginInput, $loginInput, $loginInput, $loginInput . '@%']);
             $user = $stmt->fetch();
         } catch (Throwable $e) {
-            $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
-            $stmt->execute([$loginInput]);
+            $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? OR name = ? OR email LIKE ?");
+            $stmt->execute([$loginInput, $loginInput, $loginInput . '@%']);
             $user = $stmt->fetch();
         }
 
@@ -185,6 +185,50 @@ switch ($action) {
         ]);
         break;
 
+    case 'pregnancies':
+        $user = require_api_user('patient');
+        $pregnancies = get_user_pregnancies($pdo, $user['id']);
+        $active = null;
+        foreach ($pregnancies as $pr) {
+            if ($pr['status'] === 'active') { $active = $pr; break; }
+        }
+        json_success([
+            'pregnancies' => $pregnancies,
+            'active' => $active
+        ]);
+        break;
+
+    case 'new_pregnancy':
+        $user = require_api_user('patient');
+        $title = trim($input['title'] ?? '');
+        $edd = !empty($input['edd']) ? $input['edd'] : null;
+        $notes = trim($input['notes'] ?? '');
+        $newId = add_new_pregnancy($pdo, $user['id'], $title, $edd, $notes);
+        $pregnancies = get_user_pregnancies($pdo, $user['id']);
+        $userData = fetch_user_payload($pdo, $user['id']);
+        json_success([
+            'pregnancyId' => $newId,
+            'pregnancies' => $pregnancies,
+            'user' => $userData['user'],
+            'profile' => $userData['profile']
+        ], 'New pregnancy added successfully');
+        break;
+
+    case 'switch_pregnancy':
+        $user = require_api_user('patient');
+        $pid = $input['pregnancy_id'] ?? ($_GET['pregnancy_id'] ?? '');
+        if (!$pid) json_error('pregnancy_id is required', 422);
+        $ok = switch_active_pregnancy($pdo, $user['id'], $pid);
+        if (!$ok) json_error('Pregnancy not found', 404);
+        $pregnancies = get_user_pregnancies($pdo, $user['id']);
+        $userData = fetch_user_payload($pdo, $user['id']);
+        json_success([
+            'pregnancies' => $pregnancies,
+            'user' => $userData['user'],
+            'profile' => $userData['profile']
+        ], 'Active pregnancy switched successfully');
+        break;
+
     case 'update_profile':
         $user = require_api_user('patient');
         $allowed = [
@@ -209,6 +253,29 @@ switch ($action) {
             $sql = "UPDATE patient_profiles SET " . implode(', ', $sets) . " WHERE user_id = ?";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
+
+            // Sync next_ob_visit into ob_visits if updated
+            if (array_key_exists('next_ob_visit', $input) && !empty($input['next_ob_visit'])) {
+                $actPregId = get_active_pregnancy_id($pdo, $user['id']);
+                $nDate = $input['next_ob_visit'];
+                try {
+                    if ($actPregId) {
+                        $stmtEx = $pdo->prepare("SELECT id FROM ob_visits WHERE user_id=? AND pregnancy_id=? AND visit_date=?");
+                        $stmtEx->execute([$user['id'], $actPregId, $nDate]);
+                        if (!$stmtEx->fetch()) {
+                            $pdo->prepare("INSERT INTO ob_visits (id, user_id, pregnancy_id, visit_date, title, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())")
+                                ->execute([uid('obv'), $user['id'], $actPregId, $nDate, 'Routine Prenatal Checkup', 'Scheduled via Profile']);
+                        }
+                    } else {
+                        $stmtEx = $pdo->prepare("SELECT id FROM ob_visits WHERE user_id=? AND visit_date=?");
+                        $stmtEx->execute([$user['id'], $nDate]);
+                        if (!$stmtEx->fetch()) {
+                            $pdo->prepare("INSERT INTO ob_visits (id, user_id, visit_date, title, notes, created_at) VALUES (?, ?, ?, ?, ?, NOW())")
+                                ->execute([uid('obv'), $user['id'], $nDate, 'Routine Prenatal Checkup', 'Scheduled via Profile']);
+                        }
+                    }
+                } catch (Exception $e) {}
+            }
         }
 
         // Also update name if provided

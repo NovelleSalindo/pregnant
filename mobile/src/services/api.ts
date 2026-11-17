@@ -1,7 +1,10 @@
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Production Railway backend URL
-const DEFAULT_API_URL = 'https://pregnant-production.up.railway.app/api';
+// Default to Cloudflare public HTTPS tunnel so ANY phone on ANY Wi-Fi or cellular data can connect
+const DEFAULT_API_URL = Platform.OS === 'web'
+  ? 'http://localhost/HAYYYSSSS/pregnacare_old/api'
+  : 'https://eastern-entering-pulled-response.trycloudflare.com/HAYYYSSSS/pregnacare_old/api';
 const STORAGE_KEY_TOKEN = '@pregnacare_token';
 const STORAGE_KEY_USER = '@pregnacare_user';
 const STORAGE_KEY_BASE_URL = '@pregnacare_api_url';
@@ -33,7 +36,12 @@ class ApiService {
         } catch {}
       }
       const savedUrl = await AsyncStorage.getItem(STORAGE_KEY_BASE_URL);
-      if (savedUrl) this.baseUrl = savedUrl;
+      if (savedUrl && !savedUrl.includes('192.168.')) {
+        this.baseUrl = savedUrl;
+      } else if (savedUrl && savedUrl.includes('192.168.')) {
+        await AsyncStorage.removeItem(STORAGE_KEY_BASE_URL);
+        this.baseUrl = DEFAULT_API_URL;
+      }
     } catch (e) {
       console.error('Failed to load stored API settings:', e);
     }
@@ -512,6 +520,10 @@ class ApiService {
     return this.request('symptoms.php');
   }
 
+  async getSymptoms() {
+    return this.request('symptoms.php');
+  }
+
   async submitSymptoms(payload: {
     symptoms: Array<{ id: string; severity: string; duration?: string; frequency?: string }>;
     pregnancy_problems?: Record<string, boolean>;
@@ -587,20 +599,7 @@ class ApiService {
 
   // --- Wellness Tools ---
   async getHospitalBag() {
-    const res = await this.request('wellness.php?section=hospital_bag');
-    if (res && res.categories && typeof res.categories === 'object') {
-      Object.keys(res.categories).forEach((cat) => {
-        if (cat === 'For Mom' && Array.isArray(res.categories[cat])) {
-          res.categories[cat] = res.categories[cat].map((item: any) => {
-            if (item.label === 'ID and hospital documents' || item.label?.toLowerCase() === 'id and hospital documents' || item.label?.toLowerCase().includes('id and hospital')) {
-              return { ...item, label: 'Phil Health/ MDR/Marriage Contract and PSA Birth Certificate' };
-            }
-            return item;
-          });
-        }
-      });
-    }
-    return res;
+    return this.request('wellness.php?section=hospital_bag');
   }
 
   async toggleHospitalBagItem(id: string) {
@@ -721,6 +720,13 @@ class ApiService {
     });
   }
 
+  async toggleNewbornCare(itemId: string, completed: boolean) {
+    return this.request('wellness.php?section=postpartum&action=toggle_newborn_care', {
+      method: 'POST',
+      body: JSON.stringify({ item_id: itemId, is_completed: completed ? 1 : 0 }),
+    });
+  }
+
   // --- Education & Meal Planner ---
   async getEducationGuidance() {
     return this.request('wellness.php?section=education');
@@ -742,6 +748,20 @@ class ApiService {
     });
   }
 
+  async addObVisit(visitDate: string, title?: string, notes?: string) {
+    return this.request('wellness.php?section=reminders&action=add_ob_visit', {
+      method: 'POST',
+      body: JSON.stringify({ visit_date: visitDate, title, notes }),
+    });
+  }
+
+  async deleteObVisit(visitId: string) {
+    return this.request('wellness.php?section=reminders&action=delete_ob_visit', {
+      method: 'POST',
+      body: JSON.stringify({ visit_id: visitId }),
+    });
+  }
+
   async toggleMedicationTaken(medicationId: string) {
     return this.request('wellness.php?section=reminders&action=toggle_taken', {
       method: 'POST',
@@ -754,6 +774,60 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify({ name, dosage, schedule_time: scheduleTime }),
     });
+  }
+
+  // --- Multiple Pregnancies ---
+  async clearPregnancyCaches() {
+    try {
+      const keysToClear = [
+        this.getUserStorageKey('cached_vitals'),
+        this.getUserStorageKey('cached_labs'),
+        this.getUserStorageKey('latest_coopland'),
+        this.getUserStorageKey('previous_coopland'),
+        this.getUserStorageKey('coopland_history'),
+        this.getUserStorageKey('resolved_visit'),
+        this.getUserStorageKey('latest_saved_advice'),
+        this.getUserStorageKey('saved_advice_history'),
+        this.getUserStorageKey('last_notified_week'),
+        this.getUserStorageKey('ob_visits_list'),
+        this.getUserStorageKey('lab_reminders_status'),
+        this.getUserStorageKey('custom_lab_reminders'),
+        this.getUserStorageKey('maternal_vax_reminders_status'),
+        this.getUserStorageKey('custom_vax_reminders'),
+        this.getUserStorageKey('notifications'),
+      ];
+      await AsyncStorage.multiRemove(keysToClear);
+
+      const allKeys = await AsyncStorage.getAllKeys();
+      const offlineKeys = allKeys.filter(k => k.startsWith(this.getUserStorageKey('offline_')));
+      if (offlineKeys.length > 0) {
+        await AsyncStorage.multiRemove(offlineKeys);
+      }
+    } catch (e) {
+      console.warn('[Pregnancy Cache Clear Error]', e);
+    }
+  }
+
+  async getPregnancies() {
+    return this.request('auth.php?action=pregnancies');
+  }
+
+  async addPregnancy(data: { title: string; edd?: string; notes?: string }) {
+    const res = await this.request('auth.php?action=new_pregnancy', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    await this.clearPregnancyCaches();
+    return res;
+  }
+
+  async switchPregnancy(pregnancyId: string) {
+    const res = await this.request('auth.php?action=switch_pregnancy', {
+      method: 'POST',
+      body: JSON.stringify({ pregnancy_id: pregnancyId }),
+    });
+    await this.clearPregnancyCaches();
+    return res;
   }
 }
 

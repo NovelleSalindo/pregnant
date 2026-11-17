@@ -23,13 +23,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = $body['action'];
     }
 
+    $actPregId = get_active_pregnancy_id($pdo, $u['id']);
     if ($action === 'mark_all_read') {
-        $stmt = $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?");
-        $stmt->execute([$u['id']]);
+        if ($actPregId) {
+            $stmt = $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND pregnancy_id = ?");
+            $stmt->execute([$u['id'], $actPregId]);
+        } else {
+            $stmt = $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?");
+            $stmt->execute([$u['id']]);
+        }
         json_success(['message' => 'All notifications marked as read']);
     } elseif ($action === 'clear_all') {
-        $stmt = $pdo->prepare("DELETE FROM notifications WHERE user_id = ?");
-        $stmt->execute([$u['id']]);
+        if ($actPregId) {
+            $stmt = $pdo->prepare("DELETE FROM notifications WHERE user_id = ? AND pregnancy_id = ?");
+            $stmt->execute([$u['id'], $actPregId]);
+        } else {
+            $stmt = $pdo->prepare("DELETE FROM notifications WHERE user_id = ?");
+            $stmt->execute([$u['id']]);
+        }
         json_success(['message' => 'All notifications cleared']);
     } elseif ($action === 'delete') {
         $id = $body['id'] ?? ($_GET['id'] ?? '');
@@ -72,19 +83,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Trigger OB-GYN reminder check
+// Trigger OB-GYN reminder check & Hospital Bag check
 check_ob_visit_reminder($pdo, $u);
+check_hospital_bag_reminder($pdo, $u);
 
-// 1. Patient Profile & Pregnancy Timeline
+// 1. Patient Profile & Active Pregnancy Timeline
 $stmt = $pdo->prepare("SELECT * FROM patient_profiles WHERE user_id = ?");
 $stmt->execute([$u['id']]);
 $profile = $stmt->fetch() ?: [];
+
+$actPregId = get_active_pregnancy_id($pdo, $u['id']);
+$stmtP = $pdo->prepare("SELECT * FROM pregnancies WHERE id = ? AND user_id = ?");
+$stmtP->execute([$actPregId, $u['id']]);
+$activePregnancy = $stmtP->fetch() ?: null;
 
 $weeksPregnant = null;
 $daysPregnant = null;
 $trimester = null;
 $babySize = null;
 $daysToEdd = null;
+
+$eddToUse = ($activePregnancy && !empty($activePregnancy['edd'])) ? $activePregnancy['edd'] : ($profile['edd'] ?? null);
 
 if (!empty($profile['lmp'])) {
     $diffSecs = time() - strtotime($profile['lmp']);
@@ -94,43 +113,43 @@ if (!empty($profile['lmp'])) {
         $trimester = $weeksPregnant < 14 ? 1 : ($weeksPregnant < 28 ? 2 : 3);
         $babySize = baby_size_for_week($weeksPregnant);
     }
-} elseif (!empty($profile['edd'])) {
-    $daysToEdd = (int)ceil((strtotime($profile['edd']) - time()) / 86400);
+} elseif (!empty($eddToUse)) {
+    $daysToEdd = (int)ceil((strtotime($eddToUse) - time()) / 86400);
     $daysPregnant = max(0, 280 - $daysToEdd);
     $weeksPregnant = (int)floor($daysPregnant / 7);
     $trimester = $weeksPregnant < 14 ? 1 : ($weeksPregnant < 28 ? 2 : 3);
     $babySize = baby_size_for_week($weeksPregnant);
 }
 
-if (!empty($profile['edd'])) {
-    $daysToEdd = (int)ceil((strtotime($profile['edd']) - time()) / 86400);
+if (!empty($eddToUse)) {
+    $daysToEdd = (int)ceil((strtotime($eddToUse) - time()) / 86400);
 }
 
-// 2. Latest Risk Assessment (Based on Assess Risk / Coopland Evaluation)
+// 2. Latest Risk Assessment (Scoped strictly to Active Pregnancy)
 $latestAssessment = null;
 $latestCoopland = null;
 $prevCoopland = null;
 $topRecs = [];
 try {
-    // 2.1 Fetch latest Coopland assessment strictly for this authenticated user
-    $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
-    $stmt->execute([$u['id']]);
+    // 2.1 Fetch latest Coopland assessment strictly for this active pregnancy
+    $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC, id DESC LIMIT 1");
+    $stmt->execute([$u['id'], $actPregId]);
     $latestCoopland = $stmt->fetch() ?: null;
 
     // 2.2 Also fetch previous Coopland assessment if available
-    $stmtPrev = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1 OFFSET 1");
-    $stmtPrev->execute([$u['id']]);
+    $stmtPrev = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC, id DESC LIMIT 1 OFFSET 1");
+    $stmtPrev->execute([$u['id'], $actPregId]);
     $prevCoopland = $stmtPrev->fetch() ?: null;
 
     // 2.3 Also fetch latest general assessment for clinical visit status
-    $stmtAsm = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 1");
-    $stmtAsm->execute([$u['id']]);
+    $stmtAsm = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC LIMIT 1");
+    $stmtAsm->execute([$u['id'], $actPregId]);
     $latestAssessment = $stmtAsm->fetch() ?: null;
 
     $latestVisit = null;
     try {
-        $stmtVisit = $pdo->prepare("SELECT * FROM clinical_visits WHERE user_id = ? ORDER BY visit_date DESC, created_at DESC LIMIT 1");
-        $stmtVisit->execute([$u['id']]);
+        $stmtVisit = $pdo->prepare("SELECT * FROM clinical_visits WHERE user_id = ? AND pregnancy_id = ? ORDER BY visit_date DESC, created_at DESC LIMIT 1");
+        $stmtVisit->execute([$u['id'], $actPregId]);
         $latestVisit = $stmtVisit->fetch() ?: null;
     } catch (Exception $e) {}
 
@@ -227,8 +246,8 @@ try {
     // Fetch reported symptoms for the latest assessment or latest symptom log
     $latestSymptoms = [];
     try {
-        $stmtSymLog = $pdo->prepare("SELECT id, date FROM symptom_logs WHERE user_id = ? ORDER BY date DESC LIMIT 1");
-        $stmtSymLog->execute([$u['id']]);
+        $stmtSymLog = $pdo->prepare("SELECT id, date FROM symptom_logs WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC LIMIT 1");
+        $stmtSymLog->execute([$u['id'], $actPregId]);
         $latestSymLog = $stmtSymLog->fetch();
         if ($latestSymLog) {
             $symStmt = $pdo->prepare("
@@ -244,25 +263,25 @@ try {
     } catch (Exception $e) {}
 } catch (Exception $e) {}
 
-// 3. Latest Vitals
+// 3. Latest Vitals (Scoped to Active Pregnancy)
 $lastVitals = null;
 try {
-    $stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? ORDER BY date DESC LIMIT 1");
-    $stmt->execute([$u['id']]);
+    $stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC LIMIT 1");
+    $stmt->execute([$u['id'], $actPregId]);
     $lastVitals = $stmt->fetch();
 } catch (Exception $e) {}
 
-// 4. Daily Check-in Status
+// 4. Daily Check-in Status (Scoped to Active Pregnancy)
 $today = today_iso();
 $loggedVitalsToday = false;
 $loggedSymptomsToday = false;
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM monitoring WHERE user_id = ? AND date >= ?");
-    $stmt->execute([$u['id'], $today . ' 00:00:00']);
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM monitoring WHERE user_id = ? AND pregnancy_id = ? AND date >= ?");
+    $stmt->execute([$u['id'], $actPregId, $today . ' 00:00:00']);
     $loggedVitalsToday = (int)$stmt->fetchColumn() > 0;
 
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM symptom_logs WHERE user_id = ? AND date >= ?");
-    $stmt->execute([$u['id'], $today . ' 00:00:00']);
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM symptom_logs WHERE user_id = ? AND pregnancy_id = ? AND date >= ?");
+    $stmt->execute([$u['id'], $actPregId, $today . ' 00:00:00']);
     $loggedSymptomsToday = (int)$stmt->fetchColumn() > 0;
 } catch (Exception $e) {}
 
@@ -270,9 +289,14 @@ try {
 $notifications = [];
 $unreadCount = 0;
 try {
-    // Ensure active High or Severe risks are notified in notifications table
-    $stmtHighRisks = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND (risk_level IN ('Severe', 'High') OR score >= 3) ORDER BY date DESC");
-    $stmtHighRisks->execute([$u['id']]);
+    // Ensure active High or Severe risks are notified in notifications table FOR THIS PREGNANCY
+    if ($actPregId) {
+        $stmtHighRisks = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND pregnancy_id = ? AND (risk_level IN ('Severe', 'High') OR score >= 3) ORDER BY date DESC");
+        $stmtHighRisks->execute([$u['id'], $actPregId]);
+    } else {
+        $stmtHighRisks = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND (risk_level IN ('Severe', 'High') OR score >= 3) ORDER BY date DESC");
+        $stmtHighRisks->execute([$u['id']]);
+    }
     foreach ($stmtHighRisks->fetchAll() as $rk) {
         $rl = ucfirst(strtolower($rk['risk_level']));
         if ($rl === 'Moderate') $rl = 'High';
@@ -281,8 +305,13 @@ try {
 
         $kindSearch = ($rl === 'Severe') ? 'severe_risk_alert' : 'high_risk_alert';
         $titleSearch = "%{$rl}%";
-        $stmtChk = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND (kind = ? OR title LIKE ?)");
-        $stmtChk->execute([$u['id'], $kindSearch, $titleSearch]);
+        if ($actPregId) {
+            $stmtChk = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND pregnancy_id = ? AND (kind = ? OR title LIKE ?)");
+            $stmtChk->execute([$u['id'], $actPregId, $kindSearch, $titleSearch]);
+        } else {
+            $stmtChk = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND (kind = ? OR title LIKE ?)");
+            $stmtChk->execute([$u['id'], $kindSearch, $titleSearch]);
+        }
         if (!$stmtChk->fetch()) {
             $notifId = uid('ntf');
             if ($rl === 'Severe') {
@@ -294,25 +323,35 @@ try {
                 $notifBody = "Your Coopland risk score is {$rk['score']} (High Risk). Please schedule an OB-GYN checkup within 24 to 48 hours.";
                 $notifKind = 'high_risk_alert';
             }
-            $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
-                ->execute([$notifId, $u['id'], $notifTitle, $notifBody, $rk['date'] ?: now_iso(), $notifKind]);
+            $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+                ->execute([$notifId, $u['id'], $actPregId, $notifTitle, $notifBody, $rk['date'] ?: now_iso(), $notifKind]);
         }
     }
 
-    $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY date DESC LIMIT 20");
-    $stmt->execute([$u['id']]);
-    $notifications = $stmt->fetchAll();
+    if ($actPregId) {
+        $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC LIMIT 20");
+        $stmt->execute([$u['id'], $actPregId]);
+        $notifications = $stmt->fetchAll();
 
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0");
-    $stmt->execute([$u['id']]);
-    $unreadCount = (int)$stmt->fetchColumn();
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND pregnancy_id = ? AND is_read = 0");
+        $stmt->execute([$u['id'], $actPregId]);
+        $unreadCount = (int)$stmt->fetchColumn();
+    } else {
+        $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY date DESC LIMIT 20");
+        $stmt->execute([$u['id']]);
+        $notifications = $stmt->fetchAll();
+
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0");
+        $stmt->execute([$u['id']]);
+        $unreadCount = (int)$stmt->fetchColumn();
+    }
 } catch (Exception $e) {}
 
-// 6. Today's Kicks Count (trackers table with kind='kick')
+// 6. Today's Kicks Count (trackers table with kind='kick', scoped to active pregnancy)
 $kicksToday = 0;
 try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM trackers WHERE user_id = ? AND kind = 'kick' AND at >= ?");
-    $stmt->execute([$u['id'], $today . ' 00:00:00']);
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM trackers WHERE user_id = ? AND pregnancy_id = ? AND kind = 'kick' AND at >= ?");
+    $stmt->execute([$u['id'], $actPregId, $today . ' 00:00:00']);
     $kicksToday = (int)$stmt->fetchColumn();
 } catch (Exception $e) {
     $kicksToday = 0;
@@ -332,6 +371,34 @@ try {
     $medsList = [];
 }
 
+// Fetch next upcoming OB visit from ob_visits or patient_profiles
+$upcomingVisit = null;
+$upcomingVisitsList = [];
+try {
+    if ($actPregId) {
+        $stmtVisit = $pdo->prepare("SELECT * FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
+        $stmtVisit->execute([$u['id'], $actPregId]);
+        $upcomingVisit = $stmtVisit->fetch(PDO::FETCH_ASSOC);
+
+        $stmtAllVisits = $pdo->prepare("SELECT * FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 5");
+        $stmtAllVisits->execute([$u['id'], $actPregId]);
+        $upcomingVisitsList = $stmtAllVisits->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $stmtVisit = $pdo->prepare("SELECT * FROM ob_visits WHERE user_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
+        $stmtVisit->execute([$u['id']]);
+        $upcomingVisit = $stmtVisit->fetch(PDO::FETCH_ASSOC);
+
+        $stmtAllVisits = $pdo->prepare("SELECT * FROM ob_visits WHERE user_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 5");
+        $stmtAllVisits->execute([$u['id']]);
+        $upcomingVisitsList = $stmtAllVisits->fetchAll(PDO::FETCH_ASSOC);
+    }
+} catch (Exception $e) {}
+
+$nextVisitDate = $upcomingVisit ? $upcomingVisit['visit_date'] : ($actPregId ? null : ($profile['next_ob_visit'] ?? null));
+$nextVisitTitle = $upcomingVisit['title'] ?? ($nextVisitDate ? 'Next OB-GYN Visit' : null);
+$nextVisitNotes = $upcomingVisit['notes'] ?? '';
+$daysToVisit = !empty($nextVisitDate) ? (int)ceil((strtotime($nextVisitDate) - strtotime(today_iso())) / 86400) : null;
+
 json_success([
     'user' => [
         'id' => $u['id'],
@@ -344,13 +411,18 @@ json_success([
         'days' => $daysPregnant,
         'trimester' => $trimester,
         'lmp' => $profile['lmp'] ?? null,
-        'edd' => $profile['edd'] ?? null,
-        'formattedEdd' => !empty($profile['edd']) ? fmt_date($profile['edd']) : null,
+        'edd' => $eddToUse,
+        'formattedEdd' => !empty($eddToUse) ? fmt_date($eddToUse) : null,
         'daysToEdd' => $daysToEdd,
-        'nextObVisit' => $profile['next_ob_visit'] ?? null,
-        'daysToVisit' => !empty($profile['next_ob_visit']) ? (int)ceil((strtotime($profile['next_ob_visit']) - time()) / 86400) : null,
+        'nextObVisit' => $nextVisitDate,
+        'nextObVisitTitle' => $nextVisitTitle,
+        'nextObVisitNotes' => $nextVisitNotes,
+        'daysToVisit' => $daysToVisit,
+        'upcomingVisits' => $upcomingVisitsList,
         'babyFruit' => $babySize ? $babySize[0] : null,
         'babyEmoji' => $babySize ? $babySize[1] : null,
+        'activePregnancy' => $activePregnancy,
+        'activePregnancyId' => $actPregId,
     ],
     'risk' => [
         'hasAssessment' => (bool)$latestCoopland || (bool)$latestAssessment,
@@ -360,6 +432,7 @@ json_success([
         'level' => $coopLevel,
         'factors' => $coopFactors ?? [],
         'reportedSymptoms' => $latestSymptoms ?? [],
+        'latestSymptomDate' => $latestSymLog ? $latestSymLog['date'] : null,
         'status' => ($latestAssessment && ($latestAssessment['status'] ?? 'active') === 'resolved') ? 'resolved' : 'active',
         'isResolved' => ($latestAssessment && ($latestAssessment['status'] ?? 'active') === 'resolved'),
         'canResolveVisit' => in_array(strtoupper($coopLevel ?? 'Low'), ['SEVERE', 'HIGH']) && !($latestAssessment && ($latestAssessment['status'] ?? 'active') === 'resolved'),
@@ -380,9 +453,12 @@ json_success([
         'latest' => $lastVitals ?: null,
         'loggedToday' => $loggedVitalsToday,
     ],
+    'symptomTrends' => compute_symptoms_trends($pdo, $u['id'], $actPregId),
     'checkin' => [
         'vitalsLoggedToday' => $loggedVitalsToday,
         'symptomsLoggedToday' => $loggedSymptomsToday,
+        'latestSymptomDate' => $latestSymLog ? $latestSymLog['date'] : null,
+        'latestAssessmentDate' => $latestCoopland ? $latestCoopland['date'] : ($latestAssessment ? $latestAssessment['date'] : null),
         'kicksToday' => $kicksToday,
     ],
     'notifications' => [

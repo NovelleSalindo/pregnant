@@ -1,9 +1,9 @@
 <?php
 require_once __DIR__ . '/base.php';
 $u = require_role('patient');
+$actPregId = get_active_pregnancy_id($pdo, $u['id']);
 
-seed_default_hospital_bag($pdo, $u['id']);
-$pdo->prepare("UPDATE hospital_bag_items SET label = 'Phil Health/ MDR/Marriage Contract and PSA Birth Certificate' WHERE category = 'For Mom' AND (label = 'ID and hospital documents' OR label LIKE '%ID and hospital%')")->execute();
+seed_default_hospital_bag($pdo, $u['id'], $actPregId);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     $action = $_POST['action'] ?? '';
@@ -13,6 +13,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
         $checked = isset($_POST['checked']) ? 1 : 0;
         $pdo->prepare("UPDATE hospital_bag_items SET is_checked=? WHERE id=? AND user_id=?")
             ->execute([$checked, $itemId, $u['id']]);
+
+        if ($actPregId) {
+            $stmtCount = $pdo->prepare("SELECT COUNT(*) as total, COALESCE(SUM(is_checked), 0) as checked FROM hospital_bag_items WHERE user_id = ? AND pregnancy_id = ?");
+            $stmtCount->execute([$u['id'], $actPregId]);
+        } else {
+            $stmtCount = $pdo->prepare("SELECT COUNT(*) as total, COALESCE(SUM(is_checked), 0) as checked FROM hospital_bag_items WHERE user_id = ?");
+            $stmtCount->execute([$u['id']]);
+        }
+        $r = $stmtCount->fetch();
+        if ($r && (int)$r['total'] > 0 && (int)$r['checked'] >= (int)$r['total']) {
+            $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND kind = 'hospital_bag'")->execute([$u['id']]);
+        }
         redirect('hospital_bag.php');
     }
 
@@ -20,11 +32,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
         $label = trim($_POST['label']);
         $category = trim($_POST['category']) ?: 'General';
         if ($label !== ''){
-            $stmt = $pdo->prepare("SELECT COALESCE(MAX(sort_order),0)+1 FROM hospital_bag_items WHERE user_id=?");
-            $stmt->execute([$u['id']]);
+            if ($actPregId) {
+                $stmt = $pdo->prepare("SELECT COALESCE(MAX(sort_order),0)+1 FROM hospital_bag_items WHERE user_id=? AND pregnancy_id=?");
+                $stmt->execute([$u['id'], $actPregId]);
+            } else {
+                $stmt = $pdo->prepare("SELECT COALESCE(MAX(sort_order),0)+1 FROM hospital_bag_items WHERE user_id=?");
+                $stmt->execute([$u['id']]);
+            }
             $sort = (int)$stmt->fetchColumn();
-            $pdo->prepare("INSERT INTO hospital_bag_items (id, user_id, label, category, is_custom, sort_order) VALUES (?,?,?,?,1,?)")
-                ->execute([uid('bag'), $u['id'], $label, $category, $sort]);
+            $pdo->prepare("INSERT INTO hospital_bag_items (id, user_id, pregnancy_id, label, category, is_custom, sort_order) VALUES (?,?,?,?,?,1,?)")
+                ->execute([uid('bag'), $u['id'], $actPregId, $label, $category, $sort]);
         }
         redirect('hospital_bag.php');
     }
@@ -36,8 +53,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     }
 }
 
-$stmt = $pdo->prepare("SELECT * FROM hospital_bag_items WHERE user_id=? ORDER BY category, sort_order ASC");
-$stmt->execute([$u['id']]);
+if ($actPregId) {
+    $stmt = $pdo->prepare("SELECT * FROM hospital_bag_items WHERE user_id=? AND pregnancy_id=? ORDER BY sort_order ASC, id ASC");
+    $stmt->execute([$u['id'], $actPregId]);
+} else {
+    $stmt = $pdo->prepare("SELECT * FROM hospital_bag_items WHERE user_id=? ORDER BY sort_order ASC, id ASC");
+    $stmt->execute([$u['id']]);
+}
 $items = $stmt->fetchAll();
 
 $byCategory = [];
@@ -90,9 +112,9 @@ render_header('Hospital Bag', 'hospital_bag');
       <div class="field">
         <label>Category</label>
         <select name="category">
-          <option>For Mom</option>
-          <option>For Baby</option>
-          <option>For Partner/Support</option>
+          <option>The Grab-and-Go Folder</option>
+          <option>2. For Mom</option>
+          <option>3. For Baby</option>
           <option>General</option>
         </select>
       </div>

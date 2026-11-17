@@ -3,10 +3,16 @@ require_once __DIR__ . '/base.php';
 $u = require_role('patient');
 
 $catalog = get_symptom_catalog();
+$actPregId = get_active_pregnancy_id($pdo, $u['id']);
 
 // Fetch latest recorded vitals for pre-filling form
-$stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? ORDER BY date DESC LIMIT 1");
-$stmt->execute([$u['id']]);
+if ($actPregId) {
+    $stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC LIMIT 1");
+    $stmt->execute([$u['id'], $actPregId]);
+} else {
+    $stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? ORDER BY date DESC LIMIT 1");
+    $stmt->execute([$u['id']]);
+}
 $latestVitals = $stmt->fetch() ?: [];
 
 // Fetch patient profile for Coopland factors
@@ -31,7 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     } else {
         // 2. Save symptom log
         $logId = uid('sym');
-        $pdo->prepare("INSERT INTO symptom_logs (id, user_id, date) VALUES (?,?,?)")->execute([$logId, $u['id'], now_iso()]);
+        $currentTime = now_iso();
+        $pdo->prepare("INSERT INTO symptom_logs (id, user_id, pregnancy_id, date) VALUES (?,?,?,?)")->execute([$logId, $u['id'], $actPregId, $currentTime]);
 
         $symptoms = [];
         $symptomIntensities = [];
@@ -67,10 +74,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
         $pp = [];
         foreach ($ppFields as $f) $pp[$f] = isset($_POST['pp'][$f]) ? 1 : 0;
         $pdo->prepare("INSERT INTO pregnancy_problems
-            (id, user_id, symptom_log_id, date, bleeding_lt_20wks, bleeding_gt_20wks, postmaturity_prematurity, hypertension, prom, poly_oligohydramnios, iugr, multiple_pregnancy, breech_malpresentation, rh_isoimmunization)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+            (id, user_id, pregnancy_id, symptom_log_id, date, bleeding_lt_20wks, bleeding_gt_20wks, postmaturity_prematurity, hypertension, prom, poly_oligohydramnios, iugr, multiple_pregnancy, breech_malpresentation, rh_isoimmunization)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
             ->execute([
-                uid('pp'), $u['id'], $logId, now_iso(),
+                uid('pp'), $u['id'], $actPregId, $logId, $currentTime,
                 $pp['bleeding_lt_20wks'], $pp['bleeding_gt_20wks'], $pp['postmaturity_prematurity'], $pp['hypertension'],
                 $pp['prom'], $pp['poly_oligohydramnios'], $pp['iugr'], $pp['multiple_pregnancy'],
                 $pp['breech_malpresentation'], $pp['rh_isoimmunization'],
@@ -85,8 +92,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
         $sugarTiming = $_POST['glucose_timing'] ?? 'preprandial';
 
         if (!empty($_POST['bp_sys']) || !empty($_POST['temp']) || !empty($_POST['blood_sugar'])){
-            $pdo->prepare("INSERT INTO monitoring (id, user_id, date, bp_sys, bp_dia, temp, heart_rate, blood_sugar) VALUES (?,?,?,?,?,?,?,?)")
-                ->execute([uid('mon'), $u['id'], now_iso(), $bpSys, $bpDia, $tempVal, $hrVal, $sugarVal]);
+            $pdo->prepare("INSERT INTO monitoring (id, user_id, pregnancy_id, date, bp_sys, bp_dia, temp, heart_rate, blood_sugar) VALUES (?,?,?,?,?,?,?,?,?)")
+                ->execute([uid('mon'), $u['id'], $actPregId, $currentTime, $bpSys, $bpDia, $tempVal, $hrVal, $sugarVal]);
         }
 
         // 5. Gather profile and historical risk factors
@@ -148,10 +155,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
 
         // 7. Persist assessment record
         $asmId = uid('asm');
-        $pdo->prepare("INSERT INTO assessments (id, user_id, date, score, level, weighted_score, centroid, ahp_json, fuzzy_json, rules_json, recommendations_json)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+        $pdo->prepare("INSERT INTO assessments (id, user_id, pregnancy_id, date, score, level, weighted_score, centroid, ahp_json, fuzzy_json, rules_json, recommendations_json)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
             ->execute([
-                $asmId, $u['id'], now_iso(), $result['score'], $result['level'],
+                $asmId, $u['id'], $actPregId, $currentTime, $result['score'], $result['level'],
                 $result['structural']['total'], $result['fuzzy']['centroid'],
                 json_encode($result['structural']), json_encode($result['fuzzy']),
                 json_encode($result['main_contributors']), json_encode($result['recommendations']),
@@ -179,8 +186,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
                 $critMsg = $clinicalAlerts['alerts'][0]['title'];
             }
             try {
-                $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
-                    ->execute([uid('ntf'), $u['id'], '🚨 Urgent: Critical Symptoms Detected', $critMsg ?: 'Critical maternal symptoms reported. Please seek immediate medical evaluation.', now_iso(), 'severe_risk_alert']);
+                $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+                    ->execute([uid('ntf'), $u['id'], $actPregId, '🚨 Urgent: Critical Symptoms Detected', $critMsg ?: 'Critical maternal symptoms reported. Please seek immediate medical evaluation.', now_iso(), 'severe_risk_alert']);
             } catch (Exception $e) {}
         }
 

@@ -92,6 +92,12 @@ $stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date
 $stmt->execute([$u['id']]);
 $history = $stmt->fetchAll();
 
+$actPregId = get_active_pregnancy_id($pdo, $u['id']);
+$symptomTrends = compute_symptoms_trends($pdo, $u['id'], $actPregId);
+$sDaily = $symptomTrends['daily'] ?? [];
+$sWeekly = $symptomTrends['weekly'] ?? [];
+$sMonthly = $symptomTrends['monthly'] ?? [];
+
 render_header('Recommendations', 'recommendations');
 ?>
 
@@ -103,43 +109,54 @@ render_header('Recommendations', 'recommendations');
   </div>
 <?php else: ?>
 
-<div class="hero-gradient" style="margin-bottom:20px;">
-  <div class="eyebrow" style="color:rgba(255,255,255,.85);">Clinical Care Recommendations</div>
-  <h1 style="margin:6px 0 4px;color:#fff;font-size:24px;">
-    Personalized Clinical Care Plan
-  </h1>
-  <div style="color:rgba(255,255,255,.9);font-size:14px;">
-    Generated <?php echo e(fmt_datetime($latest['date'])); ?> · Actionable maternal recommendations and care plan tailored to your reported symptoms and check-in.
+<!-- Symptoms Trend Analysis Card -->
+<div class="trends-card" style="background:#ffffff;border:1px solid #edf2f7;border-radius:20px;padding:22px 18px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.03);">
+  <div style="text-align:center;margin-bottom:12px;">
+    <h2 style="font-family:var(--font-display, 'Fraunces', serif);font-size:22px;font-weight:800;color:#0f372a;margin:0 0 8px;letter-spacing:-0.02em;">Trend Analysis</h2>
+    
+    <!-- Legend matching WallStreetMojo style -->
+    <div class="trend-legend-row" style="display:flex;align-items:center;justify-content:center;gap:18px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:#334155;">
+        <span style="display:inline-block;width:12px;height:12px;background:#246944;border-radius:2px;"></span>
+        Active Symptoms (Count)
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:#334155;">
+        <span style="display:inline-block;width:12px;height:12px;background:#02848F;border-radius:2px;"></span>
+        Symptom Severity (Intensity Score)
+      </div>
+    </div>
+  </div>
+
+  <!-- Timeframe Switcher Tabs -->
+  <div style="display:flex;gap:4px;background:#f1f5f9;padding:4px;border-radius:12px;margin-bottom:14px;">
+    <button type="button" class="trend-tab-btn active" id="tabSymTrendDaily" onclick="pcSwitchSymTrendTimeframe('daily')">Daily Readings</button>
+    <button type="button" class="trend-tab-btn" id="tabSymTrendWeekly" onclick="pcSwitchSymTrendTimeframe('weekly')">Weekly</button>
+    <button type="button" class="trend-tab-btn" id="tabSymTrendMonthly" onclick="pcSwitchSymTrendTimeframe('monthly')">Monthly</button>
+  </div>
+
+  <!-- Timeframe Panels -->
+  <div id="symTrendPanel_daily" class="sym-trend-view-panel">
+    <?php echo render_symptoms_trend_analysis_chart_svg($sDaily); ?>
+  </div>
+  <div id="symTrendPanel_weekly" class="sym-trend-view-panel" style="display:none;">
+    <?php echo render_symptoms_trend_analysis_chart_svg($sWeekly); ?>
+  </div>
+  <div id="symTrendPanel_monthly" class="sym-trend-view-panel" style="display:none;">
+    <?php echo render_symptoms_trend_analysis_chart_svg($sMonthly); ?>
   </div>
 </div>
 
-<!-- Reported Symptoms from Check-in -->
-<div class="card" style="margin-bottom:16px;">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-    <div class="eyebrow" style="margin-bottom:0;"><i class="fa-solid fa-stethoscope" style="margin-right:6px;color:var(--teal);"></i>Symptoms Reported During Check-in</div>
-    <a href="symptoms.php" class="btn btn-outline btn-sm"><i class="fa-solid fa-plus"></i> New Check-in</a>
-  </div>
-  <?php if (!empty($reportedSymptoms)): ?>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;">
-      <?php foreach ($reportedSymptoms as $sym):
-        $sev = strtolower($sym['severity'] ?? 'mild');
-        $isSev = strpos($sev, 'severe') !== false;
-        $isMod = strpos($sev, 'moderate') !== false;
-        $badgeClass = $isSev ? 'badge-danger' : ($isMod ? 'badge-warning' : 'badge-primary');
-        $badgeBg = $isSev ? '#FEE2E2' : ($isMod ? '#FEF3C7' : '#E6F4F1');
-        $badgeColor = $isSev ? '#DC2626' : ($isMod ? '#D97706' : 'var(--teal)');
-        $badgeBorder = $isSev ? '#FCA5A5' : ($isMod ? '#FCD34D' : '#B2DFDB');
-      ?>
-        <span style="font-size:12.5px;padding:6px 12px;border-radius:12px;background:<?php echo $badgeBg; ?>;color:<?php echo $badgeColor; ?>;border:1px solid <?php echo $badgeBorder; ?>;display:inline-flex;align-items:center;gap:6px;">
-          <i class="fa-solid <?php echo $isSev ? 'fa-triangle-exclamation' : ($isMod ? 'fa-circle-exclamation' : 'fa-circle-check'); ?>"></i>
-          <strong><?php echo e($sym['name'] ?? $sym['symptom_id'] ?? 'Symptom'); ?>:</strong> <?php echo e($sym['severity']); ?>
-        </span>
-      <?php endforeach; ?>
-    </div>
-  <?php else: ?>
-    <p class="muted" style="margin:0;font-size:13.5px;"><i class="fa-solid fa-circle-check" style="color:var(--teal);margin-right:6px;"></i>Routine maternal check-in: No acute critical symptoms reported.</p>
-  <?php endif; ?>
-</div>
+<script>
+function pcSwitchSymTrendTimeframe(tf) {
+  document.querySelectorAll('#tabSymTrendDaily, #tabSymTrendWeekly, #tabSymTrendMonthly').forEach(function(b){ b.classList.remove('active'); });
+  var activeBtn = document.getElementById(tf === 'daily' ? 'tabSymTrendDaily' : (tf === 'weekly' ? 'tabSymTrendWeekly' : 'tabSymTrendMonthly'));
+  if (activeBtn) activeBtn.classList.add('active');
+
+  document.querySelectorAll('.sym-trend-view-panel').forEach(function(p){ p.style.display = 'none'; });
+  var panel = document.getElementById('symTrendPanel_' + tf);
+  if (panel) panel.style.display = 'block';
+}
+</script>
 
 <?php if ($urgentRecs): ?>
 <div class="card" style="margin-bottom:16px;border-color:var(--risk-high);">

@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Shadows, Gradients } from '../theme/colors';
 import { api } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { sendPhoneNotification, scheduleObVisitNotification } from '../services/notifications';
 
 type WellnessTabKey = 'education' | 'meals' | 'meds' | 'weight' | 'plan' | 'bag' | 'postpartum' | 'reminders';
@@ -101,6 +102,187 @@ const MED_SCHEDULE_OPTIONS = [
   'Evening, after dinner',
   'Before bedtime',
   'Other (type it in)',
+];
+
+const PLAN_LOCATION_OPTIONS = [
+  'City Hospital / Tertiary Medical Center',
+  'Private Hospital',
+  'Public District Hospital',
+  'Maternity / Lying-in Clinic',
+  'Birthing Center / Water Birth Center',
+  'Home Birth (with licensed midwife)',
+];
+
+const PLAN_SUPPORT_OPTIONS = [
+  'Partner / Husband',
+  'Partner & Mother',
+  'Partner & Doula',
+  'Mother only',
+  'Doula only',
+  'Family Member / Sister',
+  'Medical Staff only',
+];
+
+const PLAN_PAIN_OPTIONS = [
+  'Unmedicated / Natural (Breathing & Movement)',
+  'Epidural',
+  'Nitrous Oxide (Gas & Air)',
+  'IV Pain Relief / Analgesics',
+  'Water Immersion / Warm Bath',
+  'Open to options as labor progresses',
+];
+
+const PLAN_REQUESTS_OPTIONS = [
+  'Immediate skin-to-skin contact & delayed cord clamping',
+  'Quiet, dim room with soothing music',
+  'Delayed cord clamping only',
+  'Partner to cut the umbilical cord',
+  'No episiotomy unless medically necessary',
+  'Breastfeeding support within the first hour',
+  'Standard hospital protocol (no special requests)',
+];
+
+export interface PrenatalLabItem {
+  id: string;
+  name: string;
+  trimester: '1st Tri' | '2nd Tri' | '3rd Tri';
+  timing: string;
+  purpose: string;
+  isCustom?: boolean;
+}
+
+export const DEFAULT_PRENATAL_LABS: PrenatalLabItem[] = [
+  {
+    id: 'lab-cbc-1',
+    name: 'Complete Blood Count (CBC)',
+    trimester: '1st Tri',
+    timing: '6–12 Weeks (Initial Visit)',
+    purpose: 'Evaluates hemoglobin and hematocrit to screen for maternal anemia and baseline infection status.',
+  },
+  {
+    id: 'lab-blood-type',
+    name: 'Blood Typing & Rh Factor Screen',
+    trimester: '1st Tri',
+    timing: '6–12 Weeks (Initial Visit)',
+    purpose: 'Determines ABO blood group and Rh status to prevent Rh isoimmunization / hemolytic disease in the fetus.',
+  },
+  {
+    id: 'lab-urinalysis-1',
+    name: 'Urinalysis & Urine Culture',
+    trimester: '1st Tri',
+    timing: '6–12 Weeks (Initial Visit)',
+    purpose: 'Screens for asymptomatic bacteriuria and urinary tract infection to prevent kidney complications and preterm labor.',
+  },
+  {
+    id: 'lab-fbs',
+    name: 'Fasting Blood Sugar (FBS)',
+    trimester: '1st Tri',
+    timing: '6–12 Weeks (Initial Visit)',
+    purpose: 'Baseline glucose test to screen for overt pre-existing diabetes in early pregnancy.',
+  },
+  {
+    id: 'lab-hbsag',
+    name: 'Hepatitis B Surface Antigen (HBsAg)',
+    trimester: '1st Tri',
+    timing: '6–12 Weeks (Initial Visit)',
+    purpose: 'Screens for maternal Hepatitis B carriage to protect baby with birth-dose immunoglobulin & vaccine.',
+  },
+  {
+    id: 'lab-vdrl',
+    name: 'Syphilis Serology (VDRL / RPR)',
+    trimester: '1st Tri',
+    timing: '6–12 Weeks (Initial Visit)',
+    purpose: 'Early detection of maternal syphilis for prompt penicillin treatment to protect the unborn child.',
+  },
+  {
+    id: 'lab-us-early',
+    name: 'Early Dating Ultrasound Scan',
+    trimester: '1st Tri',
+    timing: '6–12 Weeks',
+    purpose: 'Confirms intrauterine viability, heartbeat, and accurately establishes the Estimated Due Date (EDD).',
+  },
+  {
+    id: 'lab-cas-us',
+    name: 'Anatomy Ultrasound Scan (CAS)',
+    trimester: '2nd Tri',
+    timing: '18–22 Weeks',
+    purpose: 'Detailed anatomical assessment of fetal organs, spine, placental location, and amniotic fluid volume.',
+  },
+  {
+    id: 'lab-ogtt',
+    name: '75g Oral Glucose Tolerance Test (OGTT)',
+    trimester: '2nd Tri',
+    timing: '24–28 Weeks',
+    purpose: 'Gold standard diagnostic screening to detect and manage Gestational Diabetes Mellitus (GDM).',
+  },
+  {
+    id: 'lab-cbc-2',
+    name: 'Repeat CBC (Hemoglobin & Platelets)',
+    trimester: '2nd Tri',
+    timing: '24–28 Weeks',
+    purpose: 'Checks for physiological dilution anemia as maternal blood volume peaks in the second trimester.',
+  },
+  {
+    id: 'lab-gbs',
+    name: 'Group B Streptococcus (GBS) Screen',
+    trimester: '3rd Tri',
+    timing: '35–37 Weeks',
+    purpose: 'Vaginal-rectal swab culture to determine need for protective intrapartum antibiotics during labor.',
+  },
+  {
+    id: 'lab-urinalysis-3',
+    name: 'Urinalysis (Protein & Ketones)',
+    trimester: '3rd Tri',
+    timing: '32–36 Weeks',
+    purpose: 'Screens for proteinuria (critical sign of preeclampsia) and late gestational kidney stress.',
+  },
+];
+
+export interface MaternalVaccineItem {
+  id: string;
+  name: string;
+  timing: string;
+  dosage: string;
+  purpose: string;
+  isCustom?: boolean;
+}
+
+export const DEFAULT_MATERNAL_VACCINES: MaternalVaccineItem[] = [
+  {
+    id: 'vax-tdap',
+    name: 'Tdap (Tetanus, Diphtheria, Pertussis)',
+    timing: '27–36 Weeks (Every Pregnancy)',
+    dosage: '0.5 mL IM',
+    purpose: 'Provides vital maternal antibodies to shield the baby against whooping cough (pertussis) during the first 2 months of life.',
+  },
+  {
+    id: 'vax-tt1',
+    name: 'Tetanus Toxoid Dose 1 (TT1)',
+    timing: '1st Contact / 1st Trimester',
+    dosage: '0.5 mL IM',
+    purpose: 'First immunizing dose; establishes baseline protection against maternal and neonatal tetanus.',
+  },
+  {
+    id: 'vax-tt2',
+    name: 'Tetanus Toxoid Dose 2 (TT2)',
+    timing: 'At least 4 weeks after TT1',
+    dosage: '0.5 mL IM',
+    purpose: 'Provides 80% protection for 3 years; critical in preventing neonatal tetanus at birth.',
+  },
+  {
+    id: 'vax-tt3',
+    name: 'Tetanus Toxoid Booster (TT3 / TT4 / TT5)',
+    timing: 'At least 6 months after TT2',
+    dosage: '0.5 mL IM',
+    purpose: 'Extends protection to 5 years (TT3), 10 years (TT4), or lifetime protection (TT5) for future pregnancies.',
+  },
+  {
+    id: 'vax-flu',
+    name: 'Inactivated Influenza (Flu) Vaccine',
+    timing: 'Any Trimester (Flu Season)',
+    dosage: 'Annual Dose (0.5 mL IM)',
+    purpose: 'Protects against severe maternal respiratory infection and passes immune protection to baby for the first 6 months.',
+  },
 ];
 
 const DEFAULT_EDUCATION_GUIDANCE: Record<number, { label: string; categories: Record<string, any> }> = {
@@ -304,7 +486,7 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
   const [bagCategories, setBagCategories] = useState<Record<string, any[]>>({});
   const [bagProgress, setBagProgress] = useState(0);
   const [newItemLabel, setNewItemLabel] = useState('');
-  const [newItemCat, setNewItemCat] = useState('For Mom');
+  const [newItemCat, setNewItemCat] = useState('The Grab-and-Go Folder');
 
   // Medications State
   const [meds, setMeds] = useState<any[]>([]);
@@ -315,11 +497,30 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
   const [selectedSchedule, setSelectedSchedule] = useState('');
   const [customSchedule, setCustomSchedule] = useState('');
   const [activePicker, setActivePicker] = useState<
-    'name' | 'dosage' | 'schedule' | 'rem_name' | 'rem_dosage' | 'rem_schedule' | null
+    | 'name'
+    | 'dosage'
+    | 'schedule'
+    | 'rem_name'
+    | 'rem_dosage'
+    | 'rem_schedule'
+    | 'plan_location'
+    | 'plan_support'
+    | 'plan_pain'
+    | 'plan_requests'
+    | null
   >(null);
   const [isSubmittingMed, setIsSubmittingMed] = useState(false);
 
-  // Birth Plan State
+  // Birth Plan State & Custom Inputs
+  const [customPlanLocation, setCustomPlanLocation] = useState('');
+  const [customPlanSupport, setCustomPlanSupport] = useState('');
+  const [customPlanPain, setCustomPlanPain] = useState('');
+  const [customPlanRequests, setCustomPlanRequests] = useState('');
+  const [isOtherLocation, setIsOtherLocation] = useState(false);
+  const [isOtherSupport, setIsOtherSupport] = useState(false);
+  const [isOtherPain, setIsOtherPain] = useState(false);
+  const [isOtherRequests, setIsOtherRequests] = useState(false);
+
   const [birthPlan, setBirthPlan] = useState<any>({
     delivery_location: '',
     support_people: '',
@@ -339,10 +540,15 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
   const [deliveryType, setDeliveryType] = useState('Vaginal');
   const [babyName, setBabyName] = useState('');
   const [recoveryNotes, setRecoveryNotes] = useState('');
+  const [newbornCareFilter, setNewbornCareFilter] = useState<'all' | 'todo' | 'done'>('all');
 
   // Reminders State (matching reminders.php)
   const [remindersData, setRemindersData] = useState<any>(null);
   const [nextObDate, setNextObDate] = useState('');
+  const [obVisitsList, setObVisitsList] = useState<any[]>([]);
+  const [newObVisitDate, setNewObVisitDate] = useState('');
+  const [newObVisitTitle, setNewObVisitTitle] = useState('Routine Prenatal Checkup');
+  const [newObVisitNotes, setNewObVisitNotes] = useState('');
   const [showAddSupp, setShowAddSupp] = useState(false);
   const [suppName, setSuppName] = useState('');
   const [customSuppName, setCustomSuppName] = useState('');
@@ -353,20 +559,51 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
   const [isSubmittingSupp, setIsSubmittingSupp] = useState(false);
   const [isSavingObVisit, setIsSavingObVisit] = useState(false);
 
+  // Reminders Category & Laboratory / Vaccine State
+  const [reminderCategory, setReminderCategory] = useState<'all' | 'supplements' | 'laboratories' | 'vaccination'>('all');
+  const [labStatusMap, setLabStatusMap] = useState<Record<string, { completed: boolean; date?: string }>>({});
+  const [customLabs, setCustomLabs] = useState<PrenatalLabItem[]>([]);
+  const [labTriFilter, setLabTriFilter] = useState<'all' | '1st Tri' | '2nd Tri' | '3rd Tri'>('all');
+  const [showAddLabModal, setShowAddLabModal] = useState(false);
+  const [newLabName, setNewLabName] = useState('');
+  const [newLabTrimester, setNewLabTrimester] = useState<'1st Tri' | '2nd Tri' | '3rd Tri'>('1st Tri');
+  const [newLabTiming, setNewLabTiming] = useState('');
+  const [newLabPurpose, setNewLabPurpose] = useState('');
+
+  const [vaxStatusMap, setVaxStatusMap] = useState<Record<string, { completed: boolean; date?: string }>>({});
+  const [customVaxes, setCustomVaxes] = useState<MaternalVaccineItem[]>([]);
+  const [showAddVaxModal, setShowAddVaxModal] = useState(false);
+  const [newVaxName, setNewVaxName] = useState('');
+  const [newVaxTiming, setNewVaxTiming] = useState('');
+  const [newVaxDosage, setNewVaxDosage] = useState('');
+  const [newVaxPurpose, setNewVaxPurpose] = useState('');
+
   // Calendar Modal State
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
 
   const openCalendarModal = () => {
-    if (nextObDate) {
-      const parts = nextObDate.split('-');
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const dateToInspect = newObVisitDate || nextObDate;
+    if (dateToInspect) {
+      const parts = dateToInspect.split('-');
       if (parts.length === 3) {
-        setCalYear(parseInt(parts[0], 10));
-        setCalMonth(parseInt(parts[1], 10) - 1);
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        const target = new Date(y, m, d);
+        target.setHours(0, 0, 0, 0);
+        if (target.getTime() > now.getTime()) {
+          setCalYear(y);
+          setCalMonth(m);
+        } else {
+          setCalYear(now.getFullYear());
+          setCalMonth(now.getMonth());
+        }
       }
     } else {
-      const now = new Date();
       setCalYear(now.getFullYear());
       setCalMonth(now.getMonth());
     }
@@ -399,7 +636,25 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
         setMeds(res.medications || []);
       } else if (tab === 'plan') {
         const res = await api.getBirthPlan();
-        if (res.birthPlan) setBirthPlan(res.birthPlan);
+        if (res.birthPlan) {
+          setBirthPlan(res.birthPlan);
+          if (res.birthPlan.delivery_location && !PLAN_LOCATION_OPTIONS.slice(0, -1).includes(res.birthPlan.delivery_location)) {
+            setIsOtherLocation(true);
+            setCustomPlanLocation(res.birthPlan.delivery_location);
+          }
+          if (res.birthPlan.support_people && !PLAN_SUPPORT_OPTIONS.slice(0, -1).includes(res.birthPlan.support_people)) {
+            setIsOtherSupport(true);
+            setCustomPlanSupport(res.birthPlan.support_people);
+          }
+          if (res.birthPlan.pain_management && !PLAN_PAIN_OPTIONS.slice(0, -1).includes(res.birthPlan.pain_management)) {
+            setIsOtherPain(true);
+            setCustomPlanPain(res.birthPlan.pain_management);
+          }
+          if (res.birthPlan.special_requests && !PLAN_REQUESTS_OPTIONS.slice(0, -1).includes(res.birthPlan.special_requests)) {
+            setIsOtherRequests(true);
+            setCustomPlanRequests(res.birthPlan.special_requests);
+          }
+        }
       } else if (tab === 'weight') {
         const res = await api.getWeightGain();
         setWeightData(res);
@@ -413,6 +668,39 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
         const res = await api.getReminders();
         setRemindersData(res);
         if (res.nextObVisit) setNextObDate(res.nextObVisit);
+        if (Array.isArray(res.obVisits)) {
+          setObVisitsList(res.obVisits);
+          try {
+            await AsyncStorage.setItem(api.getUserStorageKey('ob_visits_list'), JSON.stringify(res.obVisits));
+          } catch (e) {}
+        }
+
+        // Load persisted lab status & custom labs
+        try {
+          const storedObVisits = await AsyncStorage.getItem(api.getUserStorageKey('ob_visits_list'));
+          if (storedObVisits && (!res.obVisits || res.obVisits.length === 0)) {
+            setObVisitsList(JSON.parse(storedObVisits));
+          } else if (!storedObVisits && (!res.obVisits || res.obVisits.length === 0)) {
+            setObVisitsList([]);
+          }
+          const storedLabs = await AsyncStorage.getItem(api.getUserStorageKey('lab_reminders_status'));
+          if (storedLabs) setLabStatusMap(JSON.parse(storedLabs));
+          else setLabStatusMap({});
+
+          const storedCustomLabs = await AsyncStorage.getItem(api.getUserStorageKey('custom_lab_reminders'));
+          if (storedCustomLabs) setCustomLabs(JSON.parse(storedCustomLabs));
+          else setCustomLabs([]);
+
+          const storedVax = await AsyncStorage.getItem(api.getUserStorageKey('maternal_vax_reminders_status'));
+          if (storedVax) setVaxStatusMap(JSON.parse(storedVax));
+          else setVaxStatusMap({});
+
+          const storedCustomVax = await AsyncStorage.getItem(api.getUserStorageKey('custom_vax_reminders'));
+          if (storedCustomVax) setCustomVaxes(JSON.parse(storedCustomVax));
+          else setCustomVaxes([]);
+        } catch (err) {
+          console.warn('Error reading reminders storage:', err);
+        }
       }
     } catch (e: any) {
       console.warn('Wellness load error:', e.message);
@@ -537,38 +825,152 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
     }
   };
 
+  const handleToggleNewbornCare = async (itemId: string, currentCompleted: boolean) => {
+    try {
+      const newCompleted = !currentCompleted;
+      setPostpartumData((prev: any) => {
+        if (!prev) return prev;
+        const updatedList = (prev.newbornCareChecklist || []).map((item: any) => {
+          if (item.id === itemId) {
+            return {
+              ...item,
+              is_completed: newCompleted ? 1 : 0,
+              completed_at: newCompleted ? new Date().toISOString() : null,
+            };
+          }
+          return item;
+        });
+        const total = updatedList.length;
+        const completed = updatedList.filter((i: any) => i.is_completed).length;
+        return {
+          ...prev,
+          newbornCareChecklist: updatedList,
+          newbornCareStats: {
+            total,
+            completed,
+            pending: total - completed,
+            percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+          },
+        };
+      });
+
+      const res = await api.toggleNewbornCare(itemId, newCompleted);
+      if (res && res.newbornCareChecklist) {
+        setPostpartumData((prev: any) => ({
+          ...prev,
+          newbornCareChecklist: res.newbornCareChecklist,
+          newbornCareStats: res.newbornCareStats,
+        }));
+      }
+      loadTabContent('postpartum');
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    }
+  };
+
   // --- Reminders Actions (matching reminders.php) ---
   const handleSaveObVisit = async () => {
+    const targetDate = (newObVisitDate.trim() || nextObDate.trim());
+    if (!targetDate) {
+      Alert.alert('Select Date', 'Please select an upcoming checkup date using the calendar.');
+      return;
+    }
+
+    const parts = targetDate.split('-');
+    if (parts.length === 3) {
+      const target = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      target.setHours(0, 0, 0, 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (target.getTime() <= today.getTime()) {
+        Alert.alert('Invalid Date', 'Please select an upcoming future date for your prenatal checkup. Today and past dates cannot be scheduled.');
+        return;
+      }
+    }
+
+    // Check duplicate
+    const isDuplicate = obVisitsList.some((v) => v.visit_date === targetDate);
+    if (isDuplicate) {
+      Alert.alert('Already Scheduled', `A prenatal checkup on ${formatReminderDate(targetDate)} is already in your schedule.`);
+      return;
+    }
+
     setIsSavingObVisit(true);
     try {
-      await api.setObVisit(nextObDate.trim());
+      const visitTitle = newObVisitTitle.trim() || 'Prenatal Checkup';
+      const visitNotes = newObVisitNotes.trim();
 
-      // Trigger phone system notification
-      if (nextObDate.trim()) {
-        const parts = nextObDate.trim().split('-');
-        let bodyText = `Your prenatal checkup has been scheduled for ${nextObDate.trim()}.`;
-        if (parts.length === 3) {
-          const target = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-          target.setHours(0,0,0,0);
-          const today = new Date();
-          today.setHours(0,0,0,0);
-          const diffDays = Math.ceil((target.getTime() - today.getTime()) / 86400000);
-          const dateLabel = formatReminderDate(nextObDate.trim());
-          bodyText = diffDays === 0
-            ? `Your prenatal checkup is TODAY (${dateLabel})! Please visit your clinic.`
-            : `Your prenatal checkup is in ${diffDays} day(s), on ${dateLabel}.`;
-        }
-        await sendPhoneNotification('OB-GYN Visit Reminder 🩺', bodyText, { date: nextObDate.trim() });
-        await scheduleObVisitNotification(nextObDate.trim(), formatReminderDate(nextObDate.trim()));
+      const res = await api.addObVisit(targetDate, visitTitle, visitNotes);
+
+      if (Array.isArray(res.obVisits)) {
+        setObVisitsList(res.obVisits);
+        try {
+          await AsyncStorage.setItem(api.getUserStorageKey('ob_visits_list'), JSON.stringify(res.obVisits));
+        } catch (e) {}
+      }
+      if (res.nextObVisit !== undefined) {
+        setNextObDate(res.nextObVisit || '');
       }
 
-      Alert.alert('Saved', 'OB-GYN visit reminder saved. A phone notification has been scheduled.');
+      // Trigger phone system notification
+      if (parts.length === 3) {
+        const target = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        target.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((target.getTime() - today.getTime()) / 86400000);
+        const dateLabel = formatReminderDate(targetDate);
+        const bodyText = diffDays === 1
+          ? `Your ${visitTitle} is scheduled for TOMORROW (${dateLabel})!`
+          : `Your ${visitTitle} is scheduled in ${diffDays} day(s), on ${dateLabel}.`;
+
+        await sendPhoneNotification('OB-GYN Visit Reminder 🩺', bodyText, { date: targetDate });
+        await scheduleObVisitNotification(targetDate, dateLabel);
+      }
+
+      // Reset form
+      setNewObVisitDate('');
+      setNewObVisitNotes('');
+      setNewObVisitTitle('Routine Prenatal Checkup');
+
+      Alert.alert('Visit Scheduled', 'Checkup date saved. A reminder notification has been scheduled.');
       loadTabContent('reminders');
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Could not save visit date.');
+      Alert.alert('Error', e.message || 'Could not save checkup date.');
     } finally {
       setIsSavingObVisit(false);
     }
+  };
+
+  const handleDeleteObVisit = (visitId: string, visitDate: string, visitTitle?: string) => {
+    Alert.alert(
+      'Remove Checkup',
+      `Are you sure you want to remove the visit on ${formatReminderDate(visitDate)}${visitTitle ? ` (${visitTitle})` : ''}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await api.deleteObVisit(visitId);
+              if (Array.isArray(res.obVisits)) {
+                setObVisitsList(res.obVisits);
+                try {
+                  await AsyncStorage.setItem(api.getUserStorageKey('ob_visits_list'), JSON.stringify(res.obVisits));
+                } catch (e) {}
+              }
+              if (res.nextObVisit !== undefined) {
+                setNextObDate(res.nextObVisit || '');
+              }
+              loadTabContent('reminders');
+            } catch (e: any) {
+              Alert.alert('Error', e.message || 'Could not remove checkup visit.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const toggleReminderMed = async (medId: string) => {
@@ -609,6 +1011,121 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
     }
   };
 
+  // --- Prenatal Laboratory Reminders Actions ---
+  const toggleLabReminder = async (labId: string) => {
+    try {
+      const isCompleted = !!labStatusMap[labId]?.completed;
+      const todayFormatted = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const updated = {
+        ...labStatusMap,
+        [labId]: {
+          completed: !isCompleted,
+          date: !isCompleted ? todayFormatted : undefined,
+        },
+      };
+      setLabStatusMap(updated);
+      await AsyncStorage.setItem(api.getUserStorageKey('lab_reminders_status'), JSON.stringify(updated));
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Could not update laboratory reminder.');
+    }
+  };
+
+  const handleAddCustomLab = async () => {
+    if (!newLabName.trim()) {
+      Alert.alert('Required', 'Please enter a laboratory test name.');
+      return;
+    }
+    const item: PrenatalLabItem = {
+      id: `custom-lab-${Date.now()}`,
+      name: newLabName.trim(),
+      trimester: newLabTrimester,
+      timing: newLabTiming.trim() || `${newLabTrimester} Scheduled`,
+      purpose: newLabPurpose.trim() || 'Clinical laboratory evaluation as advised by your healthcare provider.',
+      isCustom: true,
+    };
+    const updated = [...customLabs, item];
+    setCustomLabs(updated);
+    await AsyncStorage.setItem(api.getUserStorageKey('custom_lab_reminders'), JSON.stringify(updated));
+    setNewLabName('');
+    setNewLabTiming('');
+    setNewLabPurpose('');
+    setShowAddLabModal(false);
+    Alert.alert('Reminder Added', `${item.name} added to your laboratory reminders.`);
+  };
+
+  const handleDeleteCustomLab = (id: string, name: string) => {
+    Alert.alert('Remove Reminder', `Remove "${name}" from your laboratory reminders?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          const updated = customLabs.filter((c) => c.id !== id);
+          setCustomLabs(updated);
+          await AsyncStorage.setItem(api.getUserStorageKey('custom_lab_reminders'), JSON.stringify(updated));
+        },
+      },
+    ]);
+  };
+
+  // --- Maternal Vaccination Reminders Actions ---
+  const toggleVaxReminder = async (vaxId: string) => {
+    try {
+      const isCompleted = !!vaxStatusMap[vaxId]?.completed;
+      const todayFormatted = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const updated = {
+        ...vaxStatusMap,
+        [vaxId]: {
+          completed: !isCompleted,
+          date: !isCompleted ? todayFormatted : undefined,
+        },
+      };
+      setVaxStatusMap(updated);
+      await AsyncStorage.setItem(api.getUserStorageKey('maternal_vax_reminders_status'), JSON.stringify(updated));
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Could not update vaccination reminder.');
+    }
+  };
+
+  const handleAddCustomVax = async () => {
+    if (!newVaxName.trim()) {
+      Alert.alert('Required', 'Please enter a vaccine name.');
+      return;
+    }
+    const item: MaternalVaccineItem = {
+      id: `custom-vax-${Date.now()}`,
+      name: newVaxName.trim(),
+      timing: newVaxTiming.trim() || 'As advised by OB-GYN',
+      dosage: newVaxDosage.trim() || 'Recommended Dose',
+      purpose: newVaxPurpose.trim() || 'Maternal immunization for infection protection.',
+      isCustom: true,
+    };
+    const updated = [...customVaxes, item];
+    setCustomVaxes(updated);
+    await AsyncStorage.setItem(api.getUserStorageKey('custom_vax_reminders'), JSON.stringify(updated));
+    setNewVaxName('');
+    setNewVaxTiming('');
+    setNewVaxDosage('');
+    setNewVaxPurpose('');
+    setShowAddVaxModal(false);
+    Alert.alert('Reminder Added', `${item.name} added to your vaccination reminders.`);
+  };
+
+  const handleDeleteCustomVax = (id: string, name: string) => {
+    Alert.alert('Remove Reminder', `Remove "${name}" from your vaccination reminders?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          const updated = customVaxes.filter((c) => c.id !== id);
+          setCustomVaxes(updated);
+          await AsyncStorage.setItem(api.getUserStorageKey('custom_vax_reminders'), JSON.stringify(updated));
+        },
+      },
+    ]);
+  };
+
   const formatReminderDate = (rawDate?: string | null) => {
     if (!rawDate) return '';
     try {
@@ -637,6 +1154,10 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
     const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
     const daysInPrevMonth = new Date(calYear, calMonth, 0).getDate();
 
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const todayTime = now.getTime();
+
     const cells: React.ReactNode[] = [];
 
     // Prev month padding
@@ -644,7 +1165,7 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
       const prevDayNum = daysInPrevMonth - i;
       cells.push(
         <View key={`prev-${prevDayNum}`} style={styles.calCell}>
-          <Text style={[styles.calCellMutedText, isDarkMode && { color: '#555' }]}>{prevDayNum}</Text>
+          <Text style={[styles.calCellMutedText, isDarkMode && { color: '#444' }]}>{prevDayNum}</Text>
         </View>
       );
     }
@@ -652,30 +1173,50 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
     // Current month days
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const isSelected = nextObDate === dateStr;
+      const isSelected = (newObVisitDate === dateStr) || (!newObVisitDate && nextObDate === dateStr);
+      const isAlreadyScheduled = obVisitsList.some((v) => v.visit_date === dateStr);
+
+      const cellDate = new Date(calYear, calMonth, d);
+      cellDate.setHours(0, 0, 0, 0);
+      const cellTime = cellDate.getTime();
+      const isPast = cellTime < todayTime;
+      const isToday = cellTime === todayTime;
+      const isDisabled = isPast || isToday;
 
       cells.push(
         <TouchableOpacity
           key={`day-${d}`}
           style={[
             styles.calCell,
-            isSelected && styles.calCellSelected,
+            isDisabled && styles.calCellDisabled,
+            isToday && styles.calCellToday,
+            isSelected && !isDisabled && styles.calCellSelected,
           ]}
           onPress={() => {
+            if (isDisabled) return;
+            setNewObVisitDate(dateStr);
             setNextObDate(dateStr);
             setShowCalendarModal(false);
           }}
-          activeOpacity={0.7}
+          disabled={isDisabled}
+          activeOpacity={isDisabled ? 1 : 0.7}
         >
           <Text
             style={[
               styles.calCellText,
               isDarkMode && { color: '#FFF' },
-              isSelected && styles.calCellSelectedText,
+              isDisabled && (isDarkMode ? { color: '#4A4A52' } : styles.calCellDisabledText),
+              isToday && (isDarkMode ? { color: '#FF94B8' } : styles.calCellTodayText),
+              isSelected && !isDisabled && styles.calCellSelectedText,
             ]}
           >
             {d}
           </Text>
+          {isToday ? (
+            <View style={[styles.todayIndicatorDot, isDarkMode && { backgroundColor: '#FF94B8' }]} />
+          ) : isAlreadyScheduled ? (
+            <View style={[styles.scheduledIndicatorDot, isDarkMode && { backgroundColor: '#34D399' }]} />
+          ) : null}
         </TouchableOpacity>
       );
     }
@@ -686,7 +1227,7 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
     for (let n = 1; n <= remaining; n++) {
       cells.push(
         <View key={`next-${n}`} style={styles.calCell}>
-          <Text style={[styles.calCellMutedText, isDarkMode && { color: '#555' }]}>{n}</Text>
+          <Text style={[styles.calCellMutedText, isDarkMode && { color: '#444' }]}>{n}</Text>
         </View>
       );
     }
@@ -699,6 +1240,183 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
     DEFAULT_EDUCATION_GUIDANCE[activeTrimester]?.categories ||
     {};
   const currentTrimesterMeals = mealsData?.[activeTrimester] || { focus: '', items: [] };
+
+  const allLabs = [...DEFAULT_PRENATAL_LABS, ...customLabs];
+  const completedLabCount = allLabs.filter((l) => !!labStatusMap[l.id]?.completed).length;
+  const pendingLabCount = allLabs.length - completedLabCount;
+
+  const allVaxes = [...DEFAULT_MATERNAL_VACCINES, ...customVaxes];
+  const completedVaxCount = allVaxes.filter((v) => !!vaxStatusMap[v.id]?.completed).length;
+  const pendingVaxCount = allVaxes.length - completedVaxCount;
+
+  const filteredLabs = allLabs.filter((lab) => {
+    if (labTriFilter === 'all') return true;
+    return lab.trimester === labTriFilter;
+  });
+
+  const renderNewbornCareChecklistCard = () => {
+    const list = postpartumData?.newbornCareChecklist || [];
+    const stats = postpartumData?.newbornCareStats || {
+      total: list.length || 12,
+      completed: list.filter((i: any) => i.is_completed).length,
+      pending: list.filter((i: any) => !i.is_completed).length,
+      percent: 0,
+    };
+    const filteredList = list.filter((item: any) => {
+      if (newbornCareFilter === 'todo') return !item.is_completed;
+      if (newbornCareFilter === 'done') return !!item.is_completed;
+      return true;
+    });
+
+    return (
+      <View style={[styles.card, Shadows.card, { marginTop: 14 }]}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <Text style={styles.eyebrow}>ESSENTIAL NEWBORN CARE CHECKLIST</Text>
+            <Text style={[styles.cardTitle, isDarkMode && { color: '#FFF' }]}>Unang Yakap & Clinical Protocol</Text>
+            <Text style={styles.deliveryDesc}>
+              Monitor what has been done and what still needs to be done according to WHO & Philippine DOH guidelines.
+            </Text>
+          </View>
+          <View style={{ alignItems: 'flex-end', paddingTop: 2 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: Colors.primaryDark }}>
+              {stats.completed} of {stats.total} Done
+            </Text>
+            <Text style={{ fontSize: 12, color: Colors.textMuted }}>
+              {stats.percent}% Completed
+            </Text>
+          </View>
+        </View>
+
+        {/* Progress Bar */}
+        <View style={[styles.progressTrack, { marginVertical: 10 }]}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${stats.percent}%`, backgroundColor: '#059669' },
+            ]}
+          />
+        </View>
+
+        {/* Filter Pills */}
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              newbornCareFilter === 'all' && styles.filterPillActive,
+              isDarkMode && { borderColor: '#333' },
+            ]}
+            onPress={() => setNewbornCareFilter('all')}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.filterPillText,
+                newbornCareFilter === 'all' && styles.filterPillTextActive,
+              ]}
+            >
+              All ({stats.total})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              newbornCareFilter === 'todo' && styles.filterPillActive,
+              isDarkMode && { borderColor: '#333' },
+            ]}
+            onPress={() => setNewbornCareFilter('todo')}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.filterPillText,
+                newbornCareFilter === 'todo' && styles.filterPillTextActive,
+              ]}
+            >
+              To Do ({stats.pending})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              newbornCareFilter === 'done' && styles.filterPillActive,
+              isDarkMode && { borderColor: '#333' },
+            ]}
+            onPress={() => setNewbornCareFilter('done')}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.filterPillText,
+                newbornCareFilter === 'done' && styles.filterPillTextActive,
+              ]}
+            >
+              Completed ({stats.completed})
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Checklist items */}
+        {filteredList.map((item: any) => {
+          const isDone = !!item.is_completed;
+          return (
+            <TouchableOpacity
+              key={item.id}
+              style={[
+                styles.encCardRow,
+                isDone && { backgroundColor: isDarkMode ? '#18181D' : '#F8FAFC' },
+                isDarkMode && { borderColor: '#2C2C31', backgroundColor: '#131316' },
+              ]}
+              onPress={() => handleToggleNewbornCare(item.id, isDone)}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={isDone ? 'checkbox' : 'square-outline'}
+                size={23}
+                color={isDone ? Colors.riskLow : Colors.textMuted}
+                style={{ marginTop: 2 }}
+              />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text
+                  style={[
+                    styles.encTitle,
+                    isDone && styles.encTitleDone,
+                    isDarkMode && { color: isDone ? '#888' : '#FFF' },
+                  ]}
+                >
+                  {item.title}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginVertical: 4, flexWrap: 'wrap' }}>
+                  <View style={[styles.encBadge, isDarkMode && { backgroundColor: '#202026', borderColor: '#333' }]}>
+                    <Text style={[styles.encBadgeText, isDarkMode && { color: '#CCC' }]}>{item.timing_label}</Text>
+                  </View>
+                  <View style={[styles.encBadge, isDarkMode && { backgroundColor: '#202026', borderColor: '#333' }]}>
+                    <Text style={[styles.encBadgeText, isDarkMode && { color: '#CCC' }]}>{item.category}</Text>
+                  </View>
+                </View>
+                <Text style={[styles.encDesc, isDarkMode && { color: '#A0A0A5' }]}>
+                  {item.description}
+                </Text>
+                <View style={{ marginTop: 6 }}>
+                  {isDone ? (
+                    <View style={styles.vaxDoneBadge}>
+                      <Ionicons name="checkmark" size={13} color={Colors.riskLow} style={{ marginRight: 3 }} />
+                      <Text style={styles.vaxDoneText}>Completed</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.vaxDoneBadge, { backgroundColor: isDarkMode ? '#202026' : '#F1F5F9', borderColor: isDarkMode ? '#333' : '#CBD5E1' }]}>
+                      <Ionicons name="time-outline" size={13} color={isDarkMode ? '#AAA' : '#64748B'} style={{ marginRight: 3 }} />
+                      <Text style={[styles.vaxDoneText, { color: isDarkMode ? '#AAA' : '#64748B' }]}>To Do / Pending</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  };
 
   return (
     <ScrollView style={[styles.container, isDarkMode && { backgroundColor: '#0A0A0C' }]} contentContainerStyle={styles.content}>
@@ -1109,46 +1827,111 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
             <View style={[styles.card, Shadows.card]}>
               <Text style={styles.eyebrow}>LABOR & DELIVERY PREFERENCES</Text>
 
+              {/* 1. Delivery Location Preference */}
               <Text style={styles.fieldLabel}>Delivery Location Preference</Text>
-              <TextInput
-                style={styles.input}
-                value={birthPlan.delivery_location || ''}
-                onChangeText={(t) => setBirthPlan({ ...birthPlan, delivery_location: t })}
-                placeholder="e.g. City Hospital, Maternity Clinic, Water Birth Center"
-              />
+              <View
+                style={[
+                  styles.comboboxField,
+                  isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31' },
+                ]}
+              >
+                <TextInput
+                  style={[styles.comboboxInputField, isDarkMode && { color: '#FFF' }]}
+                  value={birthPlan.delivery_location}
+                  onChangeText={(t) => setBirthPlan({ ...birthPlan, delivery_location: t })}
+                  placeholder="e.g. City Hospital, Maternity Clinic, Water Birth"
+                  placeholderTextColor={isDarkMode ? '#666' : '#8E8294'}
+                />
+                <TouchableOpacity
+                  style={styles.comboboxChevronBtn}
+                  onPress={() => setActivePicker('plan_location')}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="chevron-down" size={18} color={isDarkMode ? '#888' : Colors.textSoft} />
+                </TouchableOpacity>
+              </View>
 
+              {/* 2. Labor Support People */}
               <Text style={styles.fieldLabel}>Labor Support People</Text>
-              <TextInput
-                style={styles.input}
-                value={birthPlan.support_people || ''}
-                onChangeText={(t) => setBirthPlan({ ...birthPlan, support_people: t })}
-                placeholder="e.g. Partner, Doula, Mother"
-              />
+              <View
+                style={[
+                  styles.comboboxField,
+                  isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31' },
+                ]}
+              >
+                <TextInput
+                  style={[styles.comboboxInputField, isDarkMode && { color: '#FFF' }]}
+                  value={birthPlan.support_people}
+                  onChangeText={(t) => setBirthPlan({ ...birthPlan, support_people: t })}
+                  placeholder="e.g. Partner, Doula, Mother"
+                  placeholderTextColor={isDarkMode ? '#666' : '#8E8294'}
+                />
+                <TouchableOpacity
+                  style={styles.comboboxChevronBtn}
+                  onPress={() => setActivePicker('plan_support')}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="chevron-down" size={18} color={isDarkMode ? '#888' : Colors.textSoft} />
+                </TouchableOpacity>
+              </View>
 
+              {/* 3. Pain Management Preferences */}
               <Text style={styles.fieldLabel}>Pain Management Preferences</Text>
-              <TextInput
-                style={styles.input}
-                value={birthPlan.pain_management || ''}
-                onChangeText={(t) => setBirthPlan({ ...birthPlan, pain_management: t })}
-                placeholder="e.g. Epidural, Nitrous Oxide, Breathing Exercises, Unmedicated"
-              />
+              <View
+                style={[
+                  styles.comboboxField,
+                  isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31' },
+                ]}
+              >
+                <TextInput
+                  style={[styles.comboboxInputField, isDarkMode && { color: '#FFF' }]}
+                  value={birthPlan.pain_management}
+                  onChangeText={(t) => setBirthPlan({ ...birthPlan, pain_management: t })}
+                  placeholder="e.g. Epidural, Nitrous Oxide, Breathing Exercises"
+                  placeholderTextColor={isDarkMode ? '#666' : '#8E8294'}
+                />
+                <TouchableOpacity
+                  style={styles.comboboxChevronBtn}
+                  onPress={() => setActivePicker('plan_pain')}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="chevron-down" size={18} color={isDarkMode ? '#888' : Colors.textSoft} />
+                </TouchableOpacity>
+              </View>
 
-              <Text style={styles.fieldLabel}>Feeding Preference</Text>
-              <TextInput
-                style={styles.input}
-                value={birthPlan.feeding_preference || ''}
-                onChangeText={(t) => setBirthPlan({ ...birthPlan, feeding_preference: t })}
-                placeholder="e.g. Exclusive Breastfeeding, Formula, Combination"
-              />
-
+              {/* 4. Special Requests or Instructions */}
               <Text style={styles.fieldLabel}>Special Requests or Instructions</Text>
-              <TextInput
-                style={[styles.input, { height: 80 }]}
-                value={birthPlan.special_requests || ''}
-                onChangeText={(t) => setBirthPlan({ ...birthPlan, special_requests: t })}
-                multiline
-                placeholder="Any specific wishes, music, delayed cord clamping, or emergency preferences..."
-              />
+              <View
+                style={[
+                  styles.comboboxField,
+                  { minHeight: 74, alignItems: 'flex-start' },
+                  isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31' },
+                ]}
+              >
+                <TextInput
+                  style={[
+                    styles.comboboxInputField,
+                    { height: 60, textAlignVertical: 'top', paddingTop: 8 },
+                    isDarkMode && { color: '#FFF' },
+                  ]}
+                  value={birthPlan.special_requests}
+                  multiline
+                  onChangeText={(t) => setBirthPlan({ ...birthPlan, special_requests: t })}
+                  placeholder="Any specific wishes, music, delayed cord clamping, or emergency preferences..."
+                  placeholderTextColor={isDarkMode ? '#666' : '#8E8294'}
+                />
+                <TouchableOpacity
+                  style={[styles.comboboxChevronBtn, { paddingTop: 10 }]}
+                  onPress={() => setActivePicker('plan_requests')}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="chevron-down" size={18} color={isDarkMode ? '#888' : Colors.textSoft} />
+                </TouchableOpacity>
+              </View>
 
               <TouchableOpacity
                 style={styles.btnSave}
@@ -1178,27 +1961,23 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
               {Object.keys(bagCategories).map((cat) => (
                 <View key={cat} style={[styles.card, Shadows.card]}>
                   <Text style={styles.catHeader}>{cat}</Text>
-                  {bagCategories[cat]?.map((item) => {
-                    const isLegacyDoc = cat === 'For Mom' && (item.label === 'ID and hospital documents' || item.label?.toLowerCase() === 'id and hospital documents' || item.label?.toLowerCase().includes('id and hospital'));
-                    const displayLabel = isLegacyDoc ? 'Phil Health/ MDR/Marriage Contract and PSA Birth Certificate' : item.label;
-                    return (
-                      <TouchableOpacity
-                        key={item.id}
-                        style={styles.bagItemRow}
-                        onPress={() => toggleBagItem(item.id)}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons
-                          name={item.isChecked ? 'checkbox' : 'square-outline'}
-                          size={22}
-                          color={item.isChecked ? Colors.primaryDark : Colors.textMuted}
-                        />
-                        <Text style={[styles.bagItemText, item.isChecked && styles.bagItemChecked]}>
-                          {displayLabel}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                  {bagCategories[cat]?.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.bagItemRow}
+                      onPress={() => toggleBagItem(item.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={item.isChecked ? 'checkbox' : 'square-outline'}
+                        size={22}
+                        color={item.isChecked ? Colors.primaryDark : Colors.textMuted}
+                      />
+                      <Text style={[styles.bagItemText, item.isChecked && styles.bagItemChecked]}>
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
               ))}
 
@@ -1211,6 +1990,34 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
                   onChangeText={setNewItemLabel}
                   placeholder="e.g. Extra baby blanket, slippers, camera"
                 />
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginVertical: 8 }}>
+                  {['The Grab-and-Go Folder', '2. For Mom', '3. For Baby', 'General'].map((c) => (
+                    <TouchableOpacity
+                      key={c}
+                      onPress={() => setNewItemCat(c)}
+                      style={[
+                        {
+                          paddingVertical: 5,
+                          paddingHorizontal: 10,
+                          borderRadius: 16,
+                          borderWidth: 1,
+                          borderColor: newItemCat === c ? Colors.primaryDark : Colors.border,
+                          backgroundColor: newItemCat === c ? Colors.primaryDark : Colors.surface,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: newItemCat === c ? '#fff' : Colors.text,
+                          fontWeight: newItemCat === c ? '700' : '500',
+                        }}
+                      >
+                        {c}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
                 <TouchableOpacity
                   style={styles.btnSave}
                   onPress={addBagItem}
@@ -1226,44 +2033,49 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
           {activeTab === 'postpartum' && (
             <View>
               {!postpartumData?.isPostpartum ? (
-                <View style={[styles.card, Shadows.card]}>
-                  <Text style={styles.eyebrow}>DELIVERY CONFIRMATION</Text>
-                  <Text style={styles.deliveryDesc}>
-                    When you deliver, mark your delivery date here. PregnaCare will switch to recovery tracking and set up your baby's vaccination calendar automatically.
-                  </Text>
+                <>
+                  <View style={[styles.card, Shadows.card]}>
+                    <Text style={styles.eyebrow}>DELIVERY CONFIRMATION</Text>
+                    <Text style={styles.deliveryDesc}>
+                      When you deliver, mark your delivery date here. PregnaCare will switch to recovery tracking and set up your baby's vaccination calendar automatically.
+                    </Text>
 
-                  <Text style={styles.fieldLabel}>Delivery Date</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={deliveryDate}
-                    onChangeText={setDeliveryDate}
-                    placeholder="YYYY-MM-DD"
-                  />
+                    <Text style={styles.fieldLabel}>Delivery Date</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={deliveryDate}
+                      onChangeText={setDeliveryDate}
+                      placeholder="YYYY-MM-DD"
+                    />
 
-                  <Text style={styles.fieldLabel}>Delivery Type</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={deliveryType}
-                    onChangeText={setDeliveryType}
-                    placeholder="Vaginal or Cesarean"
-                  />
+                    <Text style={styles.fieldLabel}>Delivery Type</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={deliveryType}
+                      onChangeText={setDeliveryType}
+                      placeholder="Vaginal or Cesarean"
+                    />
 
-                  <Text style={styles.fieldLabel}>Baby's Name (Optional)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={babyName}
-                    onChangeText={setBabyName}
-                    placeholder="e.g. Baby Salindo"
-                  />
+                    <Text style={styles.fieldLabel}>Baby's Name (Optional)</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={babyName}
+                      onChangeText={setBabyName}
+                      placeholder="e.g. Baby Salindo"
+                    />
 
-                  <TouchableOpacity
-                    style={styles.btnSave}
-                    onPress={handleMarkDelivered}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.btnSaveText}>Mark as Delivered</Text>
-                  </TouchableOpacity>
-                </View>
+                    <TouchableOpacity
+                      style={styles.btnSave}
+                      onPress={handleMarkDelivered}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.btnSaveText}>Mark as Delivered</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Essential Newborn Care Interactive Checklist */}
+                  {renderNewbornCareChecklistCard()}
+                </>
               ) : (
                 <>
                   {/* Postpartum Hero Banner */}
@@ -1311,34 +2123,48 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
                     </View>
                   </View>
 
-                  {/* Baby Vaccinations Checklist */}
-                  <View style={[styles.card, Shadows.card]}>
-                    <Text style={styles.eyebrow}>BABY VACCINATIONS (PHILIPPINE EPI)</Text>
-                    {postpartumData?.vaccines?.map((v: any) => (
-                      <TouchableOpacity
-                        key={v.id}
-                        style={styles.vaxRow}
-                        onPress={() => handleToggleVaccine(v.id, !!v.given)}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons
-                          name={v.given ? 'checkbox' : 'square-outline'}
-                          size={22}
-                          color={v.given ? Colors.riskLow : Colors.textMuted}
-                        />
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={[styles.vaxName, v.given && styles.vaxNameGiven]}>
-                            {v.vaccine_name}
-                          </Text>
-                          <Text style={styles.vaxAge}>Due: {v.due_age_label}</Text>
-                        </View>
-                        {v.given ? (
-                          <View style={styles.vaxDoneBadge}>
-                            <Text style={styles.vaxDoneText}>Given</Text>
+                  {/* Essential Newborn Care Interactive Checklist */}
+                  {renderNewbornCareChecklistCard()}
+
+                  {/* Baby Vaccinations & Routine EPI Checklist */}
+                  <View style={[styles.card, Shadows.card, { marginTop: 14 }]}>
+                    <Text style={styles.eyebrow}>BABY'S ROUTINE VACCINATIONS (PHILIPPINE EPI)</Text>
+                    <Text style={[styles.cardTitle, isDarkMode && { color: '#FFF' }]}>Childhood Immunization Schedule</Text>
+                    <Text style={styles.deliveryDesc}>
+                      Track routine EPI vaccine doses across weeks and months as your baby grows.
+                    </Text>
+                    {postpartumData?.vaccines?.map((v: any) => {
+                      const isAtBirth = v.vaccine_name?.includes('Screening') || v.vaccine_name?.includes('BCG') || (v.due_age_days !== undefined && v.due_age_days <= 1);
+                      return (
+                        <TouchableOpacity
+                          key={v.id}
+                          style={styles.vaxRow}
+                          onPress={() => handleToggleVaccine(v.id, !!v.given)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons
+                            name={v.given ? 'checkbox' : 'square-outline'}
+                            size={22}
+                            color={v.given ? Colors.riskLow : Colors.textMuted}
+                          />
+                          <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={[styles.vaxName, v.given && styles.vaxNameGiven]}>
+                              {v.vaccine_name}
+                            </Text>
+                            <Text style={styles.vaxAge}>Due: {v.due_age_label}{v.due_date ? ` — ${v.due_date}` : ''}</Text>
                           </View>
-                        ) : null}
-                      </TouchableOpacity>
-                    ))}
+                          {v.given ? (
+                            <View style={styles.vaxDoneBadge}>
+                              <Text style={styles.vaxDoneText}>Completed</Text>
+                            </View>
+                          ) : isAtBirth ? (
+                            <View style={[styles.vaxDoneBadge, { backgroundColor: isDarkMode ? '#202026' : '#F1F5F9', borderColor: isDarkMode ? '#333' : '#CBD5E1' }]}>
+                              <Text style={[styles.vaxDoneText, { color: isDarkMode ? '#AAA' : '#475569' }]}>At-Birth Essential</Text>
+                            </View>
+                          ) : null}
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </>
               )}
@@ -1351,27 +2177,46 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
               {/* Card 1: OB-GYN VISIT REMINDER */}
               <View style={[styles.card, Shadows.card, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
                 <Text style={[styles.eyebrow, { color: '#C2577D' }]}>OB-GYN VISIT REMINDER</Text>
-                <Text style={[styles.cardTitle, isDarkMode && { color: '#F0EEF0' }]}>Next Prenatal Checkup</Text>
+                <Text style={[styles.cardTitle, isDarkMode && { color: '#F0EEF0' }]}>Prenatal Care Schedule</Text>
+                <Text style={[styles.cardSubtitle, isDarkMode && { color: '#A79AA0' }]}>
+                  Schedule and track all your upcoming OB-GYN checkups, scans, and doctor consultations.
+                </Text>
 
                 {(() => {
-                  const calculateDaysUntil = (dStr: string) => {
+                  const nowZero = new Date();
+                  nowZero.setHours(0, 0, 0, 0);
+
+                  const parseDate = (dStr: string) => {
                     if (!dStr) return null;
-                    const parts = dStr.split('-');
-                    if (parts.length === 3) {
-                      const target = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-                      target.setHours(0, 0, 0, 0);
-                      const today = new Date();
-                      today.setHours(0, 0, 0, 0);
-                      return Math.round((target.getTime() - today.getTime()) / 86400000);
+                    const p = dStr.split('-');
+                    if (p.length === 3) {
+                      const dt = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+                      dt.setHours(0, 0, 0, 0);
+                      return dt;
                     }
                     return null;
                   };
 
-                  const daysToVisit = (remindersData?.daysToVisit !== null && remindersData?.daysToVisit !== undefined && nextObDate === remindersData?.next_ob_visit)
-                    ? remindersData.daysToVisit
-                    : calculateDaysUntil(nextObDate);
+                  // Find nearest upcoming visit from list or fallback to nextObDate
+                  const sortedVisits = [...obVisitsList].sort((a, b) => {
+                    const da = parseDate(a.visit_date)?.getTime() || 0;
+                    const db = parseDate(b.visit_date)?.getTime() || 0;
+                    return da - db;
+                  });
 
-                  if (nextObDate && daysToVisit !== null) {
+                  const upcoming = sortedVisits.find((v) => {
+                    const dt = parseDate(v.visit_date);
+                    return dt && dt.getTime() >= nowZero.getTime();
+                  });
+
+                  const heroDate = upcoming ? upcoming.visit_date : nextObDate;
+                  const heroTitle = upcoming?.title || 'Prenatal Checkup';
+                  const heroDateObj = heroDate ? parseDate(heroDate) : null;
+                  const daysToVisit = heroDateObj
+                    ? Math.round((heroDateObj.getTime() - nowZero.getTime()) / 86400000)
+                    : null;
+
+                  if (heroDate && daysToVisit !== null) {
                     return (
                       <View style={{ alignItems: 'center', paddingVertical: 14 }}>
                         {daysToVisit >= 0 ? (
@@ -1380,19 +2225,23 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
                               {daysToVisit}
                             </Text>
                             <Text style={[styles.obMutedLabel, isDarkMode && { color: '#A79AA0' }]}>
-                              {daysToVisit === 0 ? "That's today!" : 'day(s) until your visit'}
+                              {daysToVisit === 0 ? "That's today!" : daysToVisit === 1 ? 'day until your visit (Tomorrow)' : 'day(s) until your next checkup'}
                             </Text>
                           </>
                         ) : (
                           <View style={[styles.passedBadge, isDarkMode && { backgroundColor: '#3A1F26' }]}>
                             <Text style={[styles.passedBadgeText, isDarkMode && { color: '#FF94B8' }]}>
-                              This date has passed — update it below
+                              Previous date has passed — schedule your next visit below
                             </Text>
                           </View>
                         )}
                         <Text style={[styles.obDateBold, isDarkMode && { color: '#F0EEF0' }]}>
-                          {remindersData?.formattedVisit || formatReminderDate(nextObDate)}
+                          {formatReminderDate(heroDate)}
                         </Text>
+                        <View style={[styles.heroVisitTitleBadge, isDarkMode && { backgroundColor: '#2C1D24' }]}>
+                          <Ionicons name="medical" size={13} color="#C2577D" style={{ marginRight: 4 }} />
+                          <Text style={styles.heroVisitTitleText}>{heroTitle}</Text>
+                        </View>
                       </View>
                     );
                   }
@@ -1400,38 +2249,183 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
                   return (
                     <View style={styles.emptyWrap}>
                       <Ionicons name="calendar-outline" size={32} color={Colors.textMuted} />
-                      <Text style={styles.emptyText}>No upcoming visit set yet.</Text>
+                      <Text style={styles.emptyText}>No upcoming checkup set yet.</Text>
+                      <Text style={[styles.emptySubText, isDarkMode && { color: '#888' }]}>
+                        Add your next prenatal visit date below to get automatic countdowns and notifications.
+                      </Text>
                     </View>
                   );
                 })()}
 
-                <Text style={[styles.fieldLabel, isDarkMode && { color: '#A79AA0' }]}>Next OB-GYN Visit Date</Text>
-                <TouchableOpacity
-                  style={[styles.dateInputContainer, isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31' }]}
-                  onPress={openCalendarModal}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[{ flex: 1, fontSize: 14, color: nextObDate ? (isDarkMode ? '#FFF' : '#2D2D3A') : Colors.textMuted, fontWeight: nextObDate ? '600' : '400' }]}>
-                    {nextObDate ? (formatReminderDate(nextObDate) + ` (${nextObDate})`) : 'Tap to select visit date...'}
-                  </Text>
-                  <Ionicons name="calendar" size={22} color="#C2577D" style={{ marginLeft: 8 }} />
-                </TouchableOpacity>
+                {/* List of Scheduled Visits (Multiple) */}
+                {obVisitsList.length > 0 && (
+                  <View style={{ marginTop: 10, marginBottom: 14 }}>
+                    <View style={styles.obSectionHeaderRow}>
+                      <Ionicons name="calendar" size={16} color="#C2577D" style={{ marginRight: 6 }} />
+                      <Text style={[styles.obSectionTitle, isDarkMode && { color: '#F0EEF0' }]}>
+                        Scheduled Visits ({obVisitsList.length})
+                      </Text>
+                    </View>
 
-                <TouchableOpacity
-                  style={[styles.btnSaveReminder, isDarkMode && { backgroundColor: '#C2577D' }]}
-                  onPress={handleSaveObVisit}
-                  disabled={isSavingObVisit}
-                  activeOpacity={0.8}
-                >
-                  {isSavingObVisit ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <>
-                      <Ionicons name="calendar-outline" size={17} color="#FFF" style={{ marginRight: 6 }} />
-                      <Text style={styles.btnSaveReminderText}>Save Reminder</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+                    {obVisitsList.map((item) => {
+                      const p = item.visit_date ? item.visit_date.split('-') : [];
+                      const monthAbbr = p.length === 3 ? CALENDAR_MONTHS[parseInt(p[1], 10) - 1].slice(0, 3).toUpperCase() : '';
+                      const dayNum = p.length === 3 ? parseInt(p[2], 10) : '';
+
+                      const nowZero = new Date();
+                      nowZero.setHours(0, 0, 0, 0);
+                      const targetObj = p.length === 3 ? new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10)) : null;
+                      if (targetObj) targetObj.setHours(0, 0, 0, 0);
+                      const diff = targetObj ? Math.round((targetObj.getTime() - nowZero.getTime()) / 86400000) : null;
+
+                      let pillLabel = '';
+                      let pillBg = '#F3F4F6';
+                      let pillColor = '#4B5563';
+                      if (diff !== null) {
+                        if (diff < 0) {
+                          pillLabel = 'Passed';
+                          pillBg = isDarkMode ? '#2E151A' : '#FDE8E8';
+                          pillColor = '#E02424';
+                        } else if (diff === 0) {
+                          pillLabel = 'Today';
+                          pillBg = isDarkMode ? '#3A1F26' : '#FCE7F0';
+                          pillColor = '#C2577D';
+                        } else if (diff === 1) {
+                          pillLabel = 'Tomorrow';
+                          pillBg = isDarkMode ? '#2E2218' : '#FEF3C7';
+                          pillColor = '#D97706';
+                        } else {
+                          pillLabel = `In ${diff}d`;
+                          pillBg = isDarkMode ? '#14291F' : '#DEF7EC';
+                          pillColor = '#057A55';
+                        }
+                      }
+
+                      return (
+                        <View
+                          key={item.id || item.visit_date}
+                          style={[
+                            styles.obVisitCard,
+                            isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31' },
+                            diff === 0 && { borderColor: '#C2577D', borderWidth: 1.5 },
+                          ]}
+                        >
+                          <View style={[styles.obVisitCalendarBadge, isDarkMode && { backgroundColor: '#2C1D24', borderColor: '#4A2A38' }]}>
+                            <Text style={styles.obVisitBadgeMonth}>{monthAbbr}</Text>
+                            <Text style={styles.obVisitBadgeDay}>{dayNum}</Text>
+                          </View>
+
+                          <View style={{ flex: 1, marginHorizontal: 10 }}>
+                            <Text style={[styles.obVisitTitle, isDarkMode && { color: '#F0EEF0' }]} numberOfLines={1}>
+                              {item.title || 'Prenatal Checkup'}
+                            </Text>
+                            <Text style={[styles.obVisitDateFormatted, isDarkMode && { color: '#A79AA0' }]}>
+                              {formatReminderDate(item.visit_date)}
+                            </Text>
+                            {!!item.notes && (
+                              <Text style={[styles.obVisitNotes, isDarkMode && { color: '#888490' }]} numberOfLines={2}>
+                                {item.notes}
+                              </Text>
+                            )}
+                          </View>
+
+                          <View style={{ alignItems: 'flex-end', justifyContent: 'space-between', minHeight: 44 }}>
+                            {pillLabel ? (
+                              <View style={[styles.obVisitStatusPill, { backgroundColor: pillBg }]}>
+                                <Text style={[styles.obVisitStatusPillText, { color: pillColor }]}>
+                                  {pillLabel}
+                                </Text>
+                              </View>
+                            ) : null}
+                            <TouchableOpacity
+                              onPress={() => handleDeleteObVisit(item.id, item.visit_date, item.title)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              style={styles.obVisitDeleteBtn}
+                            >
+                              <Ionicons name="trash-outline" size={16} color={isDarkMode ? '#F87171' : '#DC2626'} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Form to Add Another / Next Checkup */}
+                <View style={[styles.obAddVisitContainer, isDarkMode && { backgroundColor: '#16161A', borderColor: '#2C2C31' }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                    <Ionicons name="add-circle" size={18} color="#C2577D" style={{ marginRight: 6 }} />
+                    <Text style={[styles.obAddVisitHeader, isDarkMode && { color: '#FF94B8' }]}>
+                      Schedule A Checkup Date
+                    </Text>
+                  </View>
+
+                  <Text style={[styles.fieldLabel, isDarkMode && { color: '#A79AA0' }]}>Select Visit Date *</Text>
+                  <TouchableOpacity
+                    style={[styles.dateInputContainer, isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31' }]}
+                    onPress={openCalendarModal}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[{ flex: 1, fontSize: 14, color: newObVisitDate ? (isDarkMode ? '#FFF' : '#2D2D3A') : Colors.textMuted, fontWeight: newObVisitDate ? '600' : '400' }]}>
+                      {newObVisitDate ? `${formatReminderDate(newObVisitDate)} (${newObVisitDate})` : 'Tap to choose checkup date...'}
+                    </Text>
+                    <Ionicons name="calendar" size={22} color="#C2577D" style={{ marginLeft: 8 }} />
+                  </TouchableOpacity>
+
+                  {/* Quick Purpose Chips */}
+                  <Text style={[styles.fieldLabel, { marginTop: 6 }, isDarkMode && { color: '#A79AA0' }]}>Visit Purpose</Text>
+                  <View style={styles.obPurposeChipsRow}>
+                    {['Routine Checkup', 'Ultrasound Scan', 'Lab Review', 'Specialist Consultation', 'High-Risk Care'].map((pName) => {
+                      const isActive = newObVisitTitle === pName;
+                      return (
+                        <TouchableOpacity
+                          key={pName}
+                          style={[
+                            styles.obPurposeChip,
+                            isActive && styles.obPurposeChipActive,
+                            isDarkMode && !isActive && { backgroundColor: '#1F1F24', borderColor: '#2C2C31' },
+                          ]}
+                          onPress={() => setNewObVisitTitle(pName)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.obPurposeChipText, isActive && styles.obPurposeChipTextActive, isDarkMode && !isActive && { color: '#BBB' }]}>
+                            {pName}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={[styles.fieldLabel, { marginTop: 8 }, isDarkMode && { color: '#A79AA0' }]}>Doctor & Clinical Notes (Optional)</Text>
+                  <TextInput
+                    style={[styles.obNotesInput, isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31', color: '#FFF' }]}
+                    placeholder="e.g., Dr. Reyes, bring urinalysis result, clinic room 204"
+                    placeholderTextColor={isDarkMode ? '#666' : '#9CA3AF'}
+                    value={newObVisitNotes}
+                    onChangeText={setNewObVisitNotes}
+                  />
+
+                  <TouchableOpacity
+                    style={[
+                      styles.btnSaveReminder,
+                      { marginTop: 12 },
+                      !newObVisitDate && { opacity: 0.65 },
+                      isDarkMode && { backgroundColor: '#C2577D' },
+                    ]}
+                    onPress={handleSaveObVisit}
+                    disabled={isSavingObVisit}
+                    activeOpacity={0.8}
+                  >
+                    {isSavingObVisit ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <>
+                        <Ionicons name="calendar-outline" size={17} color="#FFF" style={{ marginRight: 6 }} />
+                        <Text style={styles.btnSaveReminderText}>+ Save Checkup Date</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {/* Calendar Date Picker Modal */}
@@ -1454,35 +2448,53 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
                       <Text style={[styles.calMonthTitle, isDarkMode && { color: '#FFF' }]}>
                         {CALENDAR_MONTHS[calMonth]} {calYear}
                       </Text>
-                      <View style={{ flexDirection: 'row', gap: 6 }}>
-                        <TouchableOpacity
-                          onPress={() => {
-                            if (calMonth === 0) {
-                              setCalMonth(11);
-                              setCalYear(calYear - 1);
-                            } else {
-                              setCalMonth(calMonth - 1);
-                            }
-                          }}
-                          style={[styles.calNavBtn, isDarkMode && { backgroundColor: '#2C2C31' }]}
-                        >
-                          <Ionicons name="arrow-up" size={16} color={isDarkMode ? '#FFF' : '#2D2D3A'} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => {
-                            if (calMonth === 11) {
-                              setCalMonth(0);
-                              setCalYear(calYear + 1);
-                            } else {
-                              setCalMonth(calMonth + 1);
-                            }
-                          }}
-                          style={[styles.calNavBtn, isDarkMode && { backgroundColor: '#2C2C31' }]}
-                        >
-                          <Ionicons name="arrow-down" size={16} color={isDarkMode ? '#FFF' : '#2D2D3A'} />
-                        </TouchableOpacity>
-                      </View>
+                      {(() => {
+                        const now = new Date();
+                        const isPrevMonthDisabled = calYear < now.getFullYear() || (calYear === now.getFullYear() && calMonth <= now.getMonth());
+                        return (
+                          <View style={{ flexDirection: 'row', gap: 6 }}>
+                            <TouchableOpacity
+                              disabled={isPrevMonthDisabled}
+                              onPress={() => {
+                                if (isPrevMonthDisabled) return;
+                                if (calMonth === 0) {
+                                  setCalMonth(11);
+                                  setCalYear(calYear - 1);
+                                } else {
+                                  setCalMonth(calMonth - 1);
+                                }
+                              }}
+                              style={[
+                                styles.calNavBtn,
+                                isDarkMode && { backgroundColor: '#2C2C31' },
+                                isPrevMonthDisabled && { opacity: 0.25 },
+                              ]}
+                              activeOpacity={isPrevMonthDisabled ? 1 : 0.7}
+                            >
+                              <Ionicons name="chevron-back" size={16} color={isDarkMode ? '#FFF' : '#2D2D3A'} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                if (calMonth === 11) {
+                                  setCalMonth(0);
+                                  setCalYear(calYear + 1);
+                                } else {
+                                  setCalMonth(calMonth + 1);
+                                }
+                              }}
+                              style={[styles.calNavBtn, isDarkMode && { backgroundColor: '#2C2C31' }]}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons name="chevron-forward" size={16} color={isDarkMode ? '#FFF' : '#2D2D3A'} />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })()}
                     </View>
+
+                    <Text style={[styles.calHintText, isDarkMode && { color: '#A79AA0' }]}>
+                      Past dates and today are disabled (upcoming visits only)
+                    </Text>
 
                     {/* Day of Week Headers */}
                     <View style={styles.calDaysHeaderRow}>
@@ -1496,110 +2508,527 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
                       {renderCalendarGrid()}
                     </View>
 
-                    {/* Footer Actions: Clear & Today */}
+                    {/* Footer Actions: Clear & Close */}
                     <View style={[styles.calFooterRow, isDarkMode && { borderTopColor: '#2C2C31' }]}>
                       <TouchableOpacity
                         onPress={() => {
+                          setNewObVisitDate('');
                           setNextObDate('');
                           setShowCalendarModal(false);
                         }}
                       >
-                        <Text style={styles.calFooterActionText}>Clear</Text>
+                        <Text style={[styles.calFooterActionText, { color: '#9CA3AF' }]}>Clear</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => {
-                          const now = new Date();
-                          const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-                          setNextObDate(todayStr);
                           setShowCalendarModal(false);
                         }}
                       >
-                        <Text style={styles.calFooterActionText}>Today</Text>
+                        <Text style={[styles.calFooterActionText, { color: isDarkMode ? '#FF94B8' : '#C2577D' }]}>Close</Text>
                       </TouchableOpacity>
                     </View>
                   </Pressable>
                 </Pressable>
               </Modal>
 
-              {/* Card 2: SUPPLEMENT & VITAMIN REMINDER */}
-              <View style={[styles.card, Shadows.card, { marginTop: 14 }, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
-                <Text style={[styles.eyebrow, { color: '#C2577D' }]}>SUPPLEMENT &amp; VITAMIN REMINDER</Text>
-                <Text style={[styles.cardTitle, isDarkMode && { color: '#F0EEF0' }]}>Today's Checklist</Text>
+              {/* Reminder Category Filter Chips */}
+              <View style={styles.remFilterRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.remFilterChip,
+                    reminderCategory === 'all' && styles.remFilterChipActive,
+                    isDarkMode && reminderCategory !== 'all' && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' },
+                  ]}
+                  onPress={() => setReminderCategory('all')}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.remFilterChipText,
+                      reminderCategory === 'all' && styles.remFilterChipTextActive,
+                      isDarkMode && reminderCategory !== 'all' && { color: '#E0DEE0' },
+                    ]}
+                  >
+                    All Reminders
+                  </Text>
+                </TouchableOpacity>
 
-                {(!remindersData?.medications || remindersData.medications.length === 0) ? (
-                  <View style={styles.emptyWrap}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                      <Ionicons name="medical" size={34} color="#FFAFCC" style={{ transform: [{ rotate: '-25deg' }], marginRight: -6 }} />
-                      <Ionicons name="ellipse" size={26} color="#FFC8DD" style={{ transform: [{ rotate: '45deg' }] }} />
+                <TouchableOpacity
+                  style={[
+                    styles.remFilterChip,
+                    reminderCategory === 'supplements' && styles.remFilterChipActive,
+                    isDarkMode && reminderCategory !== 'supplements' && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' },
+                  ]}
+                  onPress={() => setReminderCategory('supplements')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name="medical"
+                    size={13}
+                    color={reminderCategory === 'supplements' ? '#FFF' : '#C2577D'}
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text
+                    style={[
+                      styles.remFilterChipText,
+                      reminderCategory === 'supplements' && styles.remFilterChipTextActive,
+                      isDarkMode && reminderCategory !== 'supplements' && { color: '#E0DEE0' },
+                    ]}
+                  >
+                    Supplements
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.remFilterChip,
+                    reminderCategory === 'laboratories' && styles.remFilterChipActive,
+                    isDarkMode && reminderCategory !== 'laboratories' && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' },
+                  ]}
+                  onPress={() => setReminderCategory('laboratories')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name="flask"
+                    size={13}
+                    color={reminderCategory === 'laboratories' ? '#FFF' : '#C2577D'}
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text
+                    style={[
+                      styles.remFilterChipText,
+                      reminderCategory === 'laboratories' && styles.remFilterChipTextActive,
+                      isDarkMode && reminderCategory !== 'laboratories' && { color: '#E0DEE0' },
+                    ]}
+                  >
+                    Laboratories
+                  </Text>
+                  {pendingLabCount > 0 && (
+                    <View
+                      style={[
+                        styles.remCountBadge,
+                        reminderCategory === 'laboratories' && { backgroundColor: 'rgba(255,255,255,0.3)' },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.remCountBadgeText,
+                          reminderCategory === 'laboratories' && { color: '#FFF' },
+                        ]}
+                      >
+                        {pendingLabCount}
+                      </Text>
                     </View>
-                    <Text style={styles.emptyText}>No supplements/vitamins added yet.</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.remFilterChip,
+                    reminderCategory === 'vaccination' && styles.remFilterChipActive,
+                    isDarkMode && reminderCategory !== 'vaccination' && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' },
+                  ]}
+                  onPress={() => setReminderCategory('vaccination')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name="shield-checkmark"
+                    size={13}
+                    color={reminderCategory === 'vaccination' ? '#FFF' : '#C2577D'}
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text
+                    style={[
+                      styles.remFilterChipText,
+                      reminderCategory === 'vaccination' && styles.remFilterChipTextActive,
+                      isDarkMode && reminderCategory !== 'vaccination' && { color: '#E0DEE0' },
+                    ]}
+                  >
+                    Vaccination
+                  </Text>
+                  {pendingVaxCount > 0 && (
+                    <View
+                      style={[
+                        styles.remCountBadge,
+                        reminderCategory === 'vaccination' && { backgroundColor: 'rgba(255,255,255,0.3)' },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.remCountBadgeText,
+                          reminderCategory === 'vaccination' && { color: '#FFF' },
+                        ]}
+                      >
+                        {pendingVaxCount}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* Card 2: SUPPLEMENT & VITAMIN REMINDER */}
+              {(reminderCategory === 'all' || reminderCategory === 'supplements') && (
+                <View style={[styles.card, Shadows.card, { marginTop: 14 }, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
+                  <Text style={[styles.eyebrow, { color: '#C2577D' }]}>SUPPLEMENT &amp; VITAMIN REMINDER</Text>
+                  <Text style={[styles.cardTitle, isDarkMode && { color: '#F0EEF0' }]}>Today's Checklist</Text>
+
+                  {(!remindersData?.medications || remindersData.medications.length === 0) ? (
+                    <View style={styles.emptyWrap}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                        <Ionicons name="medical" size={34} color="#FFAFCC" style={{ transform: [{ rotate: '-25deg' }], marginRight: -6 }} />
+                        <Ionicons name="ellipse" size={26} color="#FFC8DD" style={{ transform: [{ rotate: '45deg' }] }} />
+                      </View>
+                      <Text style={styles.emptyText}>No supplements/vitamins added yet.</Text>
+                    </View>
+                  ) : (
+                    <View style={{ marginTop: 8 }}>
+                      {remindersData.medications.map((m: any) => {
+                        const isTaken = !!(m.taken_today || m.takenToday);
+                        return (
+                          <TouchableOpacity
+                            key={m.id}
+                            style={[
+                              styles.suppCheckRow,
+                              isTaken && styles.suppCheckRowTaken,
+                              isDarkMode && { backgroundColor: isTaken ? '#2B1A24' : '#131316', borderColor: isTaken ? '#C2577D' : '#2C2C31' },
+                            ]}
+                            onPress={() => toggleReminderMed(m.id)}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons
+                              name={isTaken ? 'checkmark-circle' : 'ellipse-outline'}
+                              size={22}
+                              color={isTaken ? '#C2577D' : Colors.textMuted}
+                            />
+                            <View style={{ flex: 1, marginLeft: 10 }}>
+                              <Text style={[styles.suppName, isTaken && styles.suppNameTaken, isDarkMode && { color: '#F0EEF0' }]}>
+                                {m.name}
+                              </Text>
+                              {(m.dosage || m.schedule_time || m.scheduleTime) ? (
+                                <Text style={[styles.suppMeta, isDarkMode && { color: '#A79AA0' }]}>
+                                  — {m.dosage}{m.dosage && (m.schedule_time || m.scheduleTime) ? ' · ' : ''}{m.schedule_time || m.scheduleTime}
+                                </Text>
+                              ) : null}
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  <View style={[styles.divider, isDarkMode && { backgroundColor: '#2C2C31' }]} />
+
+                  {/* + Add a supplement/vitamin -> navigate to Medications & Vitamins */}
+                  <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}
+                    onPress={() => {
+                      setActiveTab('meds');
+                      onTabChange?.('meds');
+                      onNavigate?.('meds');
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="chevron-forward" size={15} color="#C2577D" style={{ marginRight: 6 }} />
+                    <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#C2577D' }}>
+                      + Add a supplement/vitamin
+                    </Text>
+                  </TouchableOpacity>
+
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 10, alignItems: 'center' }}>
+                    <Text style={[styles.footerMutedText, isDarkMode && { color: '#A79AA0' }]}>
+                      Manage your full list (remove items, etc.) in{' '}
+                    </Text>
+                    <TouchableOpacity onPress={() => { setActiveTab('meds'); onTabChange?.('meds'); }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#C2577D' }}>
+                        Medications &amp; Vitamins
+                      </Text>
+                    </TouchableOpacity>
+                    <Text style={[styles.footerMutedText, isDarkMode && { color: '#A79AA0' }]}>.</Text>
                   </View>
-                ) : (
+                </View>
+              )}
+
+              {/* Card 3: PRENATAL LABORATORY REMINDER */}
+              {(reminderCategory === 'all' || reminderCategory === 'laboratories') && (
+                <View style={[styles.card, Shadows.card, { marginTop: 14 }, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={[styles.eyebrow, { color: '#C2577D' }]}>PRENATAL LABORATORY REMINDER</Text>
+                    <View style={[styles.progressCounterPill, isDarkMode && { backgroundColor: '#2C2C31' }]}>
+                      <Text style={[styles.progressCounterText, isDarkMode && { color: '#FF94B8' }]}>
+                        {completedLabCount}/{allLabs.length} Done
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.cardTitle, isDarkMode && { color: '#F0EEF0' }]}>Essential Diagnostic Screenings</Text>
+                  <Text style={[styles.remSubtitle, isDarkMode && { color: '#A79AA0' }]}>
+                    Track recommended prenatal laboratory screenings to safeguard maternal and fetal health.
+                  </Text>
+
+                  {/* Progress Bar */}
+                  <View style={[styles.progressBarTrack, isDarkMode && { backgroundColor: '#2A2A30' }]}>
+                    <View
+                      style={[
+                        styles.progressBarFill,
+                        { width: `${allLabs.length > 0 ? (completedLabCount / allLabs.length) * 100 : 0}%` },
+                      ]}
+                    />
+                  </View>
+
+                  {/* Trimester Filter Tabs */}
+                  <View style={styles.subFilterRow}>
+                    {(['all', '1st Tri', '2nd Tri', '3rd Tri'] as const).map((tri) => (
+                      <TouchableOpacity
+                        key={tri}
+                        style={[
+                          styles.subFilterChip,
+                          labTriFilter === tri && styles.subFilterChipActive,
+                          isDarkMode && labTriFilter !== tri && { backgroundColor: '#22232B', borderColor: '#2C2C31' },
+                        ]}
+                        onPress={() => setLabTriFilter(tri)}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.subFilterChipText,
+                            labTriFilter === tri && styles.subFilterChipTextActive,
+                            isDarkMode && labTriFilter !== tri && { color: '#A79AA0' },
+                          ]}
+                        >
+                          {tri === 'all' ? 'All Trimesters' : tri}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Lab Test Checklist */}
                   <View style={{ marginTop: 8 }}>
-                    {remindersData.medications.map((m: any) => {
-                      const isTaken = !!(m.taken_today || m.takenToday);
+                    {filteredLabs.map((lab) => {
+                      const isDone = !!labStatusMap[lab.id]?.completed;
+                      const doneDate = labStatusMap[lab.id]?.date;
                       return (
                         <TouchableOpacity
-                          key={m.id}
+                          key={lab.id}
                           style={[
-                            styles.suppCheckRow,
-                            isTaken && styles.suppCheckRowTaken,
-                            isDarkMode && { backgroundColor: isTaken ? '#2B1A24' : '#131316', borderColor: isTaken ? '#C2577D' : '#2C2C31' },
+                            styles.remCheckRow,
+                            isDone && styles.remCheckRowDone,
+                            isDarkMode && {
+                              backgroundColor: isDone ? '#1C2920' : '#131316',
+                              borderColor: isDone ? '#2E7D32' : '#2C2C31',
+                            },
                           ]}
-                          onPress={() => toggleReminderMed(m.id)}
+                          onPress={() => toggleLabReminder(lab.id)}
                           activeOpacity={0.7}
                         >
                           <Ionicons
-                            name={isTaken ? 'checkmark-circle' : 'ellipse-outline'}
+                            name={isDone ? 'checkmark-circle' : 'ellipse-outline'}
                             size={22}
-                            color={isTaken ? '#C2577D' : Colors.textMuted}
+                            color={isDone ? '#2E7D32' : (isDarkMode ? '#FF94B8' : '#C2577D')}
+                            style={{ marginTop: 2 }}
                           />
                           <View style={{ flex: 1, marginLeft: 10 }}>
-                            <Text style={[styles.suppName, isTaken && styles.suppNameTaken, isDarkMode && { color: '#F0EEF0' }]}>
-                              {m.name}
-                            </Text>
-                            {(m.dosage || m.schedule_time || m.scheduleTime) ? (
-                              <Text style={[styles.suppMeta, isDarkMode && { color: '#A79AA0' }]}>
-                                — {m.dosage}{m.dosage && (m.schedule_time || m.scheduleTime) ? ' · ' : ''}{m.schedule_time || m.scheduleTime}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <Text
+                                style={[
+                                  styles.remItemTitle,
+                                  isDone && styles.remItemTitleDone,
+                                  isDarkMode && { color: isDone ? '#A0B8A4' : '#F0EEF0' },
+                                ]}
+                              >
+                                {lab.name}
                               </Text>
-                            ) : null}
+                              {lab.isCustom && (
+                                <TouchableOpacity
+                                  onPress={() => handleDeleteCustomLab(lab.id, lab.name)}
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                  <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                                </TouchableOpacity>
+                              )}
+                            </View>
+
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 4, marginBottom: 4 }}>
+                              <View style={[styles.triBadge, isDarkMode && { backgroundColor: '#2C2C31' }]}>
+                                <Text style={[styles.triBadgeText, isDarkMode && { color: '#FF94B8' }]}>{lab.trimester}</Text>
+                              </View>
+                              <View style={[styles.timingBadge, isDarkMode && { backgroundColor: '#22232B' }]}>
+                                <Ionicons name="time-outline" size={11} color={isDarkMode ? '#A79AA0' : '#6B7280'} style={{ marginRight: 3 }} />
+                                <Text style={[styles.timingBadgeText, isDarkMode && { color: '#A79AA0' }]}>{lab.timing}</Text>
+                              </View>
+                              {isDone && (
+                                <View style={styles.donePill}>
+                                  <Text style={styles.donePillText}>Completed{doneDate ? ` · ${doneDate}` : ''}</Text>
+                                </View>
+                              )}
+                            </View>
+
+                            <Text style={[styles.remItemDesc, isDarkMode && { color: '#A79AA0' }]}>
+                              {lab.purpose}
+                            </Text>
                           </View>
                         </TouchableOpacity>
                       );
                     })}
                   </View>
-                )}
 
-                <View style={[styles.divider, isDarkMode && { backgroundColor: '#2C2C31' }]} />
+                  <View style={[styles.divider, isDarkMode && { backgroundColor: '#2C2C31' }]} />
 
-                {/* + Add a supplement/vitamin -> navigate to Medications & Vitamins */}
-                <TouchableOpacity
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}
-                  onPress={() => {
-                    setActiveTab('meds');
-                    onTabChange?.('meds');
-                    onNavigate?.('meds');
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="chevron-forward" size={15} color="#C2577D" style={{ marginRight: 6 }} />
-                  <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#C2577D' }}>
-                    + Add a supplement/vitamin
-                  </Text>
-                </TouchableOpacity>
+                  {/* Lab Footer Actions */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}
+                      onPress={() => setShowAddLabModal(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="add-circle-outline" size={17} color="#C2577D" style={{ marginRight: 6 }} />
+                      <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#C2577D' }}>
+                        + Add Custom Lab Reminder
+                      </Text>
+                    </TouchableOpacity>
 
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 10, alignItems: 'center' }}>
-                  <Text style={[styles.footerMutedText, isDarkMode && { color: '#A79AA0' }]}>
-                    Manage your full list (remove items, etc.) in{' '}
-                  </Text>
-                  <TouchableOpacity onPress={() => { setActiveTab('meds'); onTabChange?.('meds'); }}>
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#C2577D' }}>
-                      Medications &amp; Vitamins
-                    </Text>
-                  </TouchableOpacity>
-                  <Text style={[styles.footerMutedText, isDarkMode && { color: '#A79AA0' }]}>.</Text>
+                    {onNavigate && (
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}
+                        onPress={() => onNavigate('vitals')}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="folder-open-outline" size={15} color="#C2577D" style={{ marginRight: 5 }} />
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#C2577D' }}>
+                          View Lab Records in Vitals →
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
-              </View>
+              )}
+
+              {/* Card 4: MATERNAL VACCINATION REMINDER */}
+              {(reminderCategory === 'all' || reminderCategory === 'vaccination') && (
+                <View style={[styles.card, Shadows.card, { marginTop: 14 }, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={[styles.eyebrow, { color: '#C2577D' }]}>MATERNAL VACCINATION REMINDER</Text>
+                    <View style={[styles.progressCounterPill, isDarkMode && { backgroundColor: '#2C2C31' }]}>
+                      <Text style={[styles.progressCounterText, isDarkMode && { color: '#FF94B8' }]}>
+                        {completedVaxCount}/{allVaxes.length} Received
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.cardTitle, isDarkMode && { color: '#F0EEF0' }]}>Recommended Pregnancy Immunizations</Text>
+                  <Text style={[styles.remSubtitle, isDarkMode && { color: '#A79AA0' }]}>
+                    Safe and recommended vaccines to protect you and your newborn against serious preventable infections.
+                  </Text>
+
+                  {/* Progress Bar */}
+                  <View style={[styles.progressBarTrack, isDarkMode && { backgroundColor: '#2A2A30' }]}>
+                    <View
+                      style={[
+                        styles.progressBarFill,
+                        { width: `${allVaxes.length > 0 ? (completedVaxCount / allVaxes.length) * 100 : 0}%`, backgroundColor: '#10B981' },
+                      ]}
+                    />
+                  </View>
+
+                  {/* Vaccines Checklist */}
+                  <View style={{ marginTop: 8 }}>
+                    {allVaxes.map((vax) => {
+                      const isDone = !!vaxStatusMap[vax.id]?.completed;
+                      const doneDate = vaxStatusMap[vax.id]?.date;
+                      return (
+                        <TouchableOpacity
+                          key={vax.id}
+                          style={[
+                            styles.remCheckRow,
+                            isDone && styles.remCheckRowDone,
+                            isDarkMode && {
+                              backgroundColor: isDone ? '#1C2920' : '#131316',
+                              borderColor: isDone ? '#2E7D32' : '#2C2C31',
+                            },
+                          ]}
+                          onPress={() => toggleVaxReminder(vax.id)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons
+                            name={isDone ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={22}
+                            color={isDone ? '#2E7D32' : (isDarkMode ? '#FF94B8' : '#C2577D')}
+                            style={{ marginTop: 2 }}
+                          />
+                          <View style={{ flex: 1, marginLeft: 10 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <Text
+                                style={[
+                                  styles.remItemTitle,
+                                  isDone && styles.remItemTitleDone,
+                                  isDarkMode && { color: isDone ? '#A0B8A4' : '#F0EEF0' },
+                                ]}
+                              >
+                                {vax.name}
+                              </Text>
+                              {vax.isCustom && (
+                                <TouchableOpacity
+                                  onPress={() => handleDeleteCustomVax(vax.id, vax.name)}
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                  <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                                </TouchableOpacity>
+                              )}
+                            </View>
+
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 4, marginBottom: 4 }}>
+                              <View style={[styles.triBadge, isDarkMode && { backgroundColor: '#2C2C31' }]}>
+                                <Ionicons name="shield-outline" size={11} color={isDarkMode ? '#FF94B8' : '#C2577D'} style={{ marginRight: 3 }} />
+                                <Text style={[styles.triBadgeText, isDarkMode && { color: '#FF94B8' }]}>{vax.dosage}</Text>
+                              </View>
+                              <View style={[styles.timingBadge, isDarkMode && { backgroundColor: '#22232B' }]}>
+                                <Ionicons name="calendar-outline" size={11} color={isDarkMode ? '#A79AA0' : '#6B7280'} style={{ marginRight: 3 }} />
+                                <Text style={[styles.timingBadgeText, isDarkMode && { color: '#A79AA0' }]}>{vax.timing}</Text>
+                              </View>
+                              {isDone && (
+                                <View style={styles.donePill}>
+                                  <Text style={styles.donePillText}>Received{doneDate ? ` · ${doneDate}` : ''}</Text>
+                                </View>
+                              )}
+                            </View>
+
+                            <Text style={[styles.remItemDesc, isDarkMode && { color: '#A79AA0' }]}>
+                              {vax.purpose}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <View style={[styles.divider, isDarkMode && { backgroundColor: '#2C2C31' }]} />
+
+                  {/* Vaccine Footer Actions */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}
+                      onPress={() => setShowAddVaxModal(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="add-circle-outline" size={17} color="#C2577D" style={{ marginRight: 6 }} />
+                      <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#C2577D' }}>
+                        + Add Custom Vaccine Reminder
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}
+                      onPress={() => {
+                        setActiveTab('postpartum');
+                        onTabChange?.('postpartum');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="bandage-outline" size={15} color="#C2577D" style={{ marginRight: 5 }} />
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#C2577D' }}>
+                        Baby EPI Vaccines (Postpartum) →
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
             </View>
           )}
         </>
@@ -1678,7 +3107,15 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
                   ? 'Select Item'
                   : activePicker === 'dosage' || activePicker === 'rem_dosage'
                   ? 'Select Dosage'
-                  : 'Select Schedule'}
+                  : activePicker === 'schedule' || activePicker === 'rem_schedule'
+                  ? 'Select Schedule'
+                  : activePicker === 'plan_location'
+                  ? 'Select Delivery Location'
+                  : activePicker === 'plan_support'
+                  ? 'Select Labor Support People'
+                  : activePicker === 'plan_pain'
+                  ? 'Select Pain Management'
+                  : 'Select Special Request'}
               </Text>
               <TouchableOpacity onPress={() => setActivePicker(null)} style={styles.modalCloseBtn}>
                 <Ionicons name="close" size={20} color={Colors.textSoft} />
@@ -1689,7 +3126,15 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
                 ? MED_NAME_OPTIONS
                 : activePicker === 'dosage' || activePicker === 'rem_dosage'
                 ? MED_DOSAGE_OPTIONS
-                : MED_SCHEDULE_OPTIONS
+                : activePicker === 'schedule' || activePicker === 'rem_schedule'
+                ? MED_SCHEDULE_OPTIONS
+                : activePicker === 'plan_location'
+                ? PLAN_LOCATION_OPTIONS
+                : activePicker === 'plan_support'
+                ? PLAN_SUPPORT_OPTIONS
+                : activePicker === 'plan_pain'
+                ? PLAN_PAIN_OPTIONS
+                : PLAN_REQUESTS_OPTIONS
               ).map((opt, idx) => {
                 const isSelected =
                   (activePicker === 'name' && selectedMedName === opt) ||
@@ -1697,7 +3142,11 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
                   (activePicker === 'dosage' && selectedDosage === opt) ||
                   (activePicker === 'rem_dosage' && suppDosage === opt) ||
                   (activePicker === 'schedule' && selectedSchedule === opt) ||
-                  (activePicker === 'rem_schedule' && suppSchedule === opt);
+                  (activePicker === 'rem_schedule' && suppSchedule === opt) ||
+                  (activePicker === 'plan_location' && birthPlan.delivery_location === opt) ||
+                  (activePicker === 'plan_support' && birthPlan.support_people === opt) ||
+                  (activePicker === 'plan_pain' && birthPlan.pain_management === opt) ||
+                  (activePicker === 'plan_requests' && birthPlan.special_requests === opt);
                 return (
                   <TouchableOpacity
                     key={idx}
@@ -1709,6 +3158,15 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
                       else if (activePicker === 'rem_dosage') setSuppDosage(opt);
                       else if (activePicker === 'schedule') setSelectedSchedule(opt);
                       else if (activePicker === 'rem_schedule') setSuppSchedule(opt);
+                      else if (activePicker === 'plan_location') {
+                        setBirthPlan({ ...birthPlan, delivery_location: opt });
+                      } else if (activePicker === 'plan_support') {
+                        setBirthPlan({ ...birthPlan, support_people: opt });
+                      } else if (activePicker === 'plan_pain') {
+                        setBirthPlan({ ...birthPlan, pain_management: opt });
+                      } else if (activePicker === 'plan_requests') {
+                        setBirthPlan({ ...birthPlan, special_requests: opt });
+                      }
                       setActivePicker(null);
                     }}
                     activeOpacity={0.7}
@@ -1722,6 +3180,180 @@ export const WellnessScreen: React.FC<WellnessScreenProps> = ({
                   </TouchableOpacity>
                 );
               })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Add Custom Lab Reminder Modal */}
+      <Modal
+        visible={showAddLabModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowAddLabModal(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowAddLabModal(false)}>
+          <Pressable
+            style={[styles.modalCard, Shadows.large, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, isDarkMode && { color: '#F0EEF0' }]}>Add Custom Lab Reminder</Text>
+              <TouchableOpacity onPress={() => setShowAddLabModal(false)} style={styles.modalCloseBtn}>
+                <Ionicons name="close" size={20} color={isDarkMode ? '#FFF' : Colors.textSoft} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+              <Text style={[styles.fieldLabel, isDarkMode && { color: '#A79AA0' }]}>Test Name *</Text>
+              <TextInput
+                style={[styles.modalInput, isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31', color: '#FFF' }]}
+                placeholder="e.g. Thyroid TSH Panel, Rubella IgG, Quad Screen"
+                placeholderTextColor={isDarkMode ? '#666' : '#999'}
+                value={newLabName}
+                onChangeText={setNewLabName}
+              />
+
+              <Text style={[styles.fieldLabel, { marginTop: 12 }, isDarkMode && { color: '#A79AA0' }]}>Trimester</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                {(['1st Tri', '2nd Tri', '3rd Tri'] as const).map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[
+                      styles.modalOptionChip,
+                      newLabTrimester === t && styles.modalOptionChipActive,
+                      isDarkMode && newLabTrimester !== t && { backgroundColor: '#131316', borderColor: '#2C2C31' },
+                    ]}
+                    onPress={() => setNewLabTrimester(t)}
+                  >
+                    <Text
+                      style={[
+                        styles.modalOptionChipText,
+                        newLabTrimester === t && styles.modalOptionChipTextActive,
+                        isDarkMode && newLabTrimester !== t && { color: '#A79AA0' },
+                      ]}
+                    >
+                      {t}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.fieldLabel, { marginTop: 12 }, isDarkMode && { color: '#A79AA0' }]}>Recommended Timing</Text>
+              <TextInput
+                style={[styles.modalInput, isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31', color: '#FFF' }]}
+                placeholder="e.g. 10–12 Weeks, Week 28, or As Advised"
+                placeholderTextColor={isDarkMode ? '#666' : '#999'}
+                value={newLabTiming}
+                onChangeText={setNewLabTiming}
+              />
+
+              <Text style={[styles.fieldLabel, { marginTop: 12 }, isDarkMode && { color: '#A79AA0' }]}>Clinical Purpose / Note</Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  { height: 70, textAlignVertical: 'top' },
+                  isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31', color: '#FFF' },
+                ]}
+                placeholder="e.g. Advised by OB to monitor thyroid antibodies and TSH level."
+                placeholderTextColor={isDarkMode ? '#666' : '#999'}
+                value={newLabPurpose}
+                onChangeText={setNewLabPurpose}
+                multiline
+              />
+
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+                <TouchableOpacity
+                  style={[styles.btnCancelModal, isDarkMode && { backgroundColor: '#2C2C31' }]}
+                  onPress={() => setShowAddLabModal(false)}
+                >
+                  <Text style={[styles.btnCancelModalText, isDarkMode && { color: '#E0DEE0' }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.btnSubmitModal}
+                  onPress={handleAddCustomLab}
+                >
+                  <Text style={styles.btnSubmitModalText}>Add Reminder</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Add Custom Vaccine Reminder Modal */}
+      <Modal
+        visible={showAddVaxModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowAddVaxModal(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowAddVaxModal(false)}>
+          <Pressable
+            style={[styles.modalCard, Shadows.large, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, isDarkMode && { color: '#F0EEF0' }]}>Add Custom Vaccine Reminder</Text>
+              <TouchableOpacity onPress={() => setShowAddVaxModal(false)} style={styles.modalCloseBtn}>
+                <Ionicons name="close" size={20} color={isDarkMode ? '#FFF' : Colors.textSoft} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+              <Text style={[styles.fieldLabel, isDarkMode && { color: '#A79AA0' }]}>Vaccine Name *</Text>
+              <TextInput
+                style={[styles.modalInput, isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31', color: '#FFF' }]}
+                placeholder="e.g. Hepatitis B Vaccine, Meningococcal, RSV"
+                placeholderTextColor={isDarkMode ? '#666' : '#999'}
+                value={newVaxName}
+                onChangeText={setNewVaxName}
+              />
+
+              <Text style={[styles.fieldLabel, { marginTop: 12 }, isDarkMode && { color: '#A79AA0' }]}>Recommended Timing</Text>
+              <TextInput
+                style={[styles.modalInput, isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31', color: '#FFF' }]}
+                placeholder="e.g. 32–36 Weeks, or 2nd Trimester"
+                placeholderTextColor={isDarkMode ? '#666' : '#999'}
+                value={newVaxTiming}
+                onChangeText={setNewVaxTiming}
+              />
+
+              <Text style={[styles.fieldLabel, { marginTop: 12 }, isDarkMode && { color: '#A79AA0' }]}>Dosage / Route</Text>
+              <TextInput
+                style={[styles.modalInput, isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31', color: '#FFF' }]}
+                placeholder="e.g. 0.5 mL IM, Single Dose"
+                placeholderTextColor={isDarkMode ? '#666' : '#999'}
+                value={newVaxDosage}
+                onChangeText={setNewVaxDosage}
+              />
+
+              <Text style={[styles.fieldLabel, { marginTop: 12 }, isDarkMode && { color: '#A79AA0' }]}>Protection Notes</Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  { height: 70, textAlignVertical: 'top' },
+                  isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31', color: '#FFF' },
+                ]}
+                placeholder="e.g. Recommended due to occupational or travel exposure."
+                placeholderTextColor={isDarkMode ? '#666' : '#999'}
+                value={newVaxPurpose}
+                onChangeText={setNewVaxPurpose}
+                multiline
+              />
+
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+                <TouchableOpacity
+                  style={[styles.btnCancelModal, isDarkMode && { backgroundColor: '#2C2C31' }]}
+                  onPress={() => setShowAddVaxModal(false)}
+                >
+                  <Text style={[styles.btnCancelModalText, isDarkMode && { color: '#E0DEE0' }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.btnSubmitModal}
+                  onPress={handleAddCustomVax}
+                >
+                  <Text style={styles.btnSubmitModalText}>Add Reminder</Text>
+                </TouchableOpacity>
+              </View>
             </ScrollView>
           </Pressable>
         </Pressable>
@@ -2268,6 +3900,51 @@ const styles = StyleSheet.create({
     color: Colors.text,
     marginBottom: 6,
   },
+  comboboxField: {
+    backgroundColor: '#FAF5FF',
+    borderWidth: 1,
+    borderColor: '#EFE6F7',
+    borderRadius: 14,
+    paddingLeft: 14,
+    paddingRight: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 48,
+    marginBottom: 10,
+  },
+  comboboxInputField: {
+    flex: 1,
+    fontSize: 14,
+    color: Colors.text,
+    paddingVertical: 10,
+  },
+  comboboxChevronBtn: {
+    padding: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  comboboxBtn: {
+    backgroundColor: '#FAF5FF',
+    borderWidth: 1,
+    borderColor: '#EFE6F7',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 48,
+    marginBottom: 6,
+  },
+  comboboxBtnText: {
+    fontSize: 14,
+    color: Colors.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  comboboxPlaceholder: {
+    color: '#8E8294',
+  },
   btnSave: {
     backgroundColor: Colors.primaryDark,
     borderRadius: 12,
@@ -2423,6 +4100,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
     textAlign: 'center',
   },
+  cardSubtitle: {
+    fontSize: 12.5,
+    color: Colors.textMuted,
+    marginTop: 2,
+    marginBottom: 8,
+    lineHeight: 17,
+  },
   obDateBold: {
     fontSize: 16,
     fontWeight: '700',
@@ -2460,6 +4144,152 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+  },
+  heroVisitTitleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FDF2F6',
+    borderWidth: 1,
+    borderColor: '#F8D7E3',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 6,
+  },
+  heroVisitTitleText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#C2577D',
+  },
+  emptySubText: {
+    fontSize: 12.5,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginTop: 4,
+    paddingHorizontal: 20,
+  },
+  obSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  obSectionTitle: {
+    fontSize: 14.5,
+    fontWeight: '700',
+    color: '#2D2D3A',
+  },
+  obVisitCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FAFAFA',
+    borderWidth: 1,
+    borderColor: '#ECECEC',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 8,
+  },
+  obVisitCalendarBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#FDF2F6',
+    borderWidth: 1,
+    borderColor: '#F8D7E3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  obVisitBadgeMonth: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#C2577D',
+    letterSpacing: 0.5,
+  },
+  obVisitBadgeDay: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#C2577D',
+    lineHeight: 18,
+  },
+  obVisitTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#1F242E',
+  },
+  obVisitDateFormatted: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 1,
+  },
+  obVisitNotes: {
+    fontSize: 11.5,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  obVisitStatusPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  obVisitStatusPillText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
+  obVisitDeleteBtn: {
+    padding: 4,
+    marginTop: 4,
+  },
+  obAddVisitContainer: {
+    backgroundColor: '#FDF9FB',
+    borderWidth: 1,
+    borderColor: '#F8D7E3',
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 6,
+  },
+  obAddVisitHeader: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#C2577D',
+  },
+  obPurposeChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  obPurposeChip: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E8DCE2',
+  },
+  obPurposeChipActive: {
+    backgroundColor: '#C2577D',
+    borderColor: '#C2577D',
+  },
+  obPurposeChipText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#6B6673',
+  },
+  obPurposeChipTextActive: {
+    color: '#FFF',
+    fontWeight: '700',
+  },
+  obNotesInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 12.5,
+    color: '#1F242E',
+    marginTop: 4,
   },
   suppCheckRow: {
     flexDirection: 'row',
@@ -2676,9 +4506,47 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   calCellSelected: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#C2577D',
     borderWidth: 2,
-    borderColor: '#F59E0B',
+    borderColor: '#FF94B8',
+  },
+  calCellDisabled: {
+    opacity: 0.35,
+  },
+  calCellDisabledText: {
+    color: '#9CA3AF',
+  },
+  calCellToday: {
+    borderWidth: 1.5,
+    borderColor: '#C2577D',
+    borderRadius: 8,
+  },
+  calCellTodayText: {
+    color: '#C2577D',
+    fontWeight: '800',
+  },
+  todayIndicatorDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#C2577D',
+    position: 'absolute',
+    bottom: 3,
+  },
+  scheduledIndicatorDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#059669',
+    position: 'absolute',
+    bottom: 3,
+  },
+  calHintText: {
+    fontSize: 11,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 10,
+    fontStyle: 'italic',
   },
   calCellText: {
     fontSize: 14,
@@ -2705,6 +4573,287 @@ const styles = StyleSheet.create({
   calFooterActionText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#007AFF',
+    color: '#C2577D',
+  },
+  // --- Reminders Filter & Laboratories / Vaccination Styles ---
+  remFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 14,
+    marginBottom: 2,
+  },
+  remFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E8DCE2',
+  },
+  remFilterChipActive: {
+    backgroundColor: '#C2577D',
+    borderColor: '#C2577D',
+  },
+  remFilterChipText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: '#6B6673',
+  },
+  remFilterChipTextActive: {
+    color: '#FFF',
+    fontWeight: '700',
+  },
+  remCountBadge: {
+    marginLeft: 5,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 10,
+    backgroundColor: 'rgba(194,87,125,0.12)',
+  },
+  remCountBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#C2577D',
+  },
+  progressCounterPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    backgroundColor: '#FCE7F0',
+  },
+  progressCounterText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#C2577D',
+  },
+  remSubtitle: {
+    fontSize: 12.5,
+    color: '#6B6673',
+    marginTop: 2,
+    marginBottom: 10,
+    lineHeight: 17,
+  },
+  progressBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#F3E8EE',
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: '#C2577D',
+  },
+  subFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  subFilterChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: '#F9F5F7',
+    borderWidth: 1,
+    borderColor: '#EDE0E6',
+  },
+  subFilterChipActive: {
+    backgroundColor: '#C2577D',
+    borderColor: '#C2577D',
+  },
+  subFilterChipText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#7D7A89',
+  },
+  subFilterChipTextActive: {
+    color: '#FFF',
+    fontWeight: '700',
+  },
+  remCheckRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#EFE6EB',
+    backgroundColor: '#FFF',
+    marginBottom: 8,
+  },
+  remCheckRowDone: {
+    borderColor: '#C8E6C9',
+    backgroundColor: '#F1F8F2',
+  },
+  remItemTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#2D2D3A',
+    flex: 1,
+  },
+  remItemTitleDone: {
+    color: '#388E3C',
+    textDecorationLine: 'line-through',
+  },
+  triBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: '#FDF2F6',
+  },
+  triBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#C2577D',
+  },
+  timingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: '#F3F4F6',
+  },
+  timingBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  donePill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: '#E8F5E9',
+  },
+  donePillText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#2E7D32',
+  },
+  remItemDesc: {
+    fontSize: 11.5,
+    color: '#6B6673',
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  modalInput: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13.5,
+    color: '#1F242E',
+    marginTop: 4,
+  },
+  modalOptionChip: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+    alignItems: 'center',
+  },
+  modalOptionChipActive: {
+    backgroundColor: '#C2577D',
+    borderColor: '#C2577D',
+  },
+  modalOptionChipText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  modalOptionChipTextActive: {
+    color: '#FFF',
+    fontWeight: '700',
+  },
+  btnCancelModal: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+  },
+  btnCancelModalText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  btnSubmitModal: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#C2577D',
+  },
+  btnSubmitModalText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  filterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  filterPillActive: {
+    backgroundColor: Colors.primaryDark,
+    borderColor: Colors.primaryDark,
+  },
+  filterPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  filterPillTextActive: {
+    color: '#FFFFFF',
+  },
+  encCardRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#EFE6F7',
+    backgroundColor: '#FFFFFF',
+    marginBottom: 8,
+  },
+  encTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  encTitleDone: {
+    textDecorationLine: 'line-through',
+    color: Colors.textMuted,
+  },
+  encBadge: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  encBadgeText: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  encDesc: {
+    fontSize: 12.5,
+    color: Colors.textSoft,
+    lineHeight: 17,
   },
 });

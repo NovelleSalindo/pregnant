@@ -52,6 +52,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   const [obVisitInput, setObVisitInput] = useState('');
   const [savingObVisit, setSavingObVisit] = useState(false);
+  const [showRecommendationsResult, setShowRecommendationsResult] = useState(false);
+  const [localObVisit, setLocalObVisit] = useState<any>(null);
 
   // Red / Themed Bubble Flash State
   const [bubbleFlash, setBubbleFlash] = useState<{
@@ -62,6 +64,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     icon?: string;
     buttonText?: string;
   } | null>(null);
+
+  const formatAssessmentDateTime = (dStr?: string) => {
+    if (!dStr) return 'Current';
+    try {
+      const d = new Date(dStr);
+      if (!isNaN(d.getTime())) {
+        const datePart = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const timePart = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        return `${datePart} • ${timePart}`;
+      }
+    } catch {}
+    return dStr || 'Current';
+  };
 
   const showBubbleFlash = (
     title: string,
@@ -116,6 +131,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         setLocalResolved(JSON.parse(resVisit));
       } else {
         setLocalResolved(null);
+      }
+      const storedVisitsStr = await AsyncStorage.getItem(api.getUserStorageKey('ob_visits_list'));
+      if (storedVisitsStr) {
+        const list = JSON.parse(storedVisitsStr);
+        if (Array.isArray(list) && list.length > 0) {
+          const todayStr = new Date().toISOString().split('T')[0];
+          const upcoming = list.find((v: any) => v.visit_date >= todayStr);
+          setLocalObVisit(upcoming || null);
+        } else {
+          setLocalObVisit(null);
+        }
+      } else {
+        setLocalObVisit(null);
       }
     } catch {}
 
@@ -382,22 +410,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </View>
         )}
 
-        {/* Hero Gradient Banner (.hero-gradient in style.css) */}
-        <LinearGradient
-          colors={Gradients.hero}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.heroCard, Shadows.card]}
-        >
-          <View style={styles.heroDecorCircle} />
-          <Text style={styles.heroEyebrow}>WELCOME BACK</Text>
-          <Text style={styles.heroName}>{user.name || 'Novelle B. Salindo'}</Text>
-          <Text style={styles.heroText}>
-            You're about <Text style={styles.heroBold}>{displayWeeks} weeks</Text> along — Trimester {displayTrimester}.
-            {'\n'}Expected due date: {displayEdd}.
-          </Text>
-        </LinearGradient>
-
         {/* Daily Check-in Reminder Banner (#dailyReminderBanner in dashboard.php) */}
         {(!checkin.vitalsLoggedToday || !checkin.symptomsLoggedToday) && (
           <View
@@ -450,6 +462,139 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </View>
           </View>
         )}
+
+        {/* Reminders Card (at the top before BabySizeCard) */}
+        <View style={[styles.card, Shadows.card, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
+          <View style={styles.cardHeader}>
+            <Text style={[styles.eyebrow, { color: isDarkMode ? '#FF94B8' : '#C2577D' }]}>REMINDERS</Text>
+            <TouchableOpacity onPress={() => onNavigate('reminders')} style={styles.linkRow} activeOpacity={0.7}>
+              <Text style={[styles.linkText, { color: isDarkMode ? '#FF94B8' : '#C2577D', fontWeight: '700' }]}>Manage</Text>
+              <Ionicons name="chevron-forward" size={13} color={isDarkMode ? '#FF94B8' : '#C2577D'} />
+            </TouchableOpacity>
+          </View>
+
+          {(() => {
+            const visitDate = preg.nextObVisit || localObVisit?.visit_date;
+            const visitTitle = preg.nextObVisitTitle || localObVisit?.title || 'Next OB-GYN Visit';
+            const visitNotes = preg.nextObVisitNotes || localObVisit?.notes || '';
+            const hasVisit = Boolean(visitDate);
+
+            const calculateDaysUntil = (dStr: string) => {
+              if (!dStr) return null;
+              const parts = dStr.split('-');
+              if (parts.length === 3) {
+                const target = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+                target.setHours(0, 0, 0, 0);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                return Math.round((target.getTime() - today.getTime()) / 86400000);
+              }
+              return null;
+            };
+
+            const days = (preg.daysToVisit !== null && preg.daysToVisit !== undefined && preg.nextObVisit === visitDate)
+              ? preg.daysToVisit
+              : calculateDaysUntil(visitDate);
+
+            return (
+              <>
+                {hasVisit ? (
+                  <View style={[styles.dashVisitPill, isDarkMode && { backgroundColor: '#251820', borderColor: '#3E202C' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}>
+                      <View style={[styles.dashVisitIconBox, isDarkMode && { backgroundColor: '#3A1F2B' }]}>
+                        <Ionicons name="calendar" size={18} color="#C2577D" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.dashVisitTitle, isDarkMode && { color: '#F0EEF0' }]}>
+                          {visitTitle}
+                        </Text>
+                        <Text style={[styles.dashVisitDate, isDarkMode && { color: '#A79AA0' }]}>
+                          {formatEddDate(visitDate)}
+                        </Text>
+                        {Boolean(visitNotes) && (
+                          <Text style={{ fontSize: 11, color: isDarkMode ? '#85818A' : Colors.textMuted, marginTop: 2 }} numberOfLines={1}>
+                            {visitNotes}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    <View style={styles.dashVisitBadge}>
+                      <Text style={styles.dashVisitBadgeText}>
+                        {days === 0 ? 'Today!' : (days === 1 ? 'Tomorrow' : (days !== null && days > 0 ? `${days}d left` : 'Passed'))}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+
+                {/* Today's Supplements Checklist (shown once added) */}
+                {Boolean(data?.medications && data.medications.length > 0) ? (
+                  <View style={{ marginTop: 4, marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <Text style={[{ fontSize: 13, fontWeight: '700', color: isDarkMode ? '#F0EEF0' : Colors.text }]}>
+                        Today's Checklist
+                      </Text>
+                      <Text style={{ fontSize: 11.5, color: Colors.textMuted, fontWeight: '600' }}>
+                        {data.medications.filter((m: any) => m.taken_today || m.takenToday).length} / {data.medications.length} taken
+                      </Text>
+                    </View>
+                    {data.medications.map((m: any) => {
+                      const isTaken = !!(m.taken_today || m.takenToday);
+                      return (
+                        <TouchableOpacity
+                          key={m.id}
+                          style={[
+                            styles.dashMedRow,
+                            isTaken && styles.dashMedRowTaken,
+                            isDarkMode && { backgroundColor: isTaken ? '#2B1A24' : '#131316', borderColor: isTaken ? '#C2577D' : '#2C2C31' },
+                          ]}
+                          onPress={() => handleToggleHomeMed(m.id)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons
+                            name={isTaken ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={18}
+                            color={isTaken ? '#C2577D' : Colors.textMuted}
+                            style={{ marginRight: 8 }}
+                          />
+                          <Text
+                            style={[
+                              { fontSize: 13, fontWeight: isTaken ? '700' : '600', color: isTaken ? '#9B2C52' : (isDarkMode ? '#F0EEF0' : Colors.text), flex: 1 },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {m.name}
+                            {m.dosage ? <Text style={{ color: Colors.textMuted, fontWeight: '400' }}> — {m.dosage}</Text> : null}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : !hasVisit ? (
+                  <Text style={[styles.dashReminderSubtext, isDarkMode && { color: '#A79AA0' }]}>
+                    Track your next OB-GYN visit and mark off today's supplements/vitamins.
+                  </Text>
+                ) : null}
+              </>
+            );
+          })()}
+
+          {/* Open Reminders Button */}
+          <TouchableOpacity
+            onPress={() => onNavigate('reminders')}
+            activeOpacity={0.8}
+            style={{ marginTop: 4 }}
+          >
+            <LinearGradient
+              colors={['#E8729A', '#C2577D']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.dashOpenRemindersBtn}
+            >
+              <Ionicons name="notifications" size={16} color="#FFF" style={{ marginRight: 8 }} />
+              <Text style={styles.dashOpenRemindersBtnText}>Open Reminders</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
 
         {/* Baby Milestone & Due Date Countdown Card */}
         <BabySizeCard
@@ -628,7 +773,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     cooplandScore={coopScore}
                   />
                   <Text style={[styles.compareDate, isDarkMode && { color: '#B8B4BA' }]}>
-                    {latestCoopland?.date ? latestCoopland.date.split('T')[0] : (risk?.assessmentDate ? risk.assessmentDate.split(' ')[0] : 'Current')}
+                    {formatAssessmentDateTime(latestCoopland?.date || risk?.assessmentDate)}
                   </Text>
                   <Text style={[styles.compareScoreText, { color: riskPrimaryColor, fontWeight: '800' }]}>
                     Score: {coopScore}
@@ -749,236 +894,26 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </View>
           ) : recs.length > 0 ? (
             <View style={[styles.recsSection, isDarkMode && { borderTopColor: '#2C2C31' }]}>
-              <Text style={[styles.recsEyebrow, isDarkMode && { color: '#85818A' }]}>TOP CLINICAL RECOMMENDATIONS</Text>
-              {recs.slice(0, 3).map((rec: any, idx: number) => {
-                const recText = typeof rec === 'string' ? rec : (rec.text || '');
-                const isUrgent = typeof rec === 'object' ? Boolean(rec.urgent || rec.category === 'Urgent Action') : false;
-                return (
-                  <View
-                    key={idx}
-                    style={[
-                      styles.recItem,
-                      isDarkMode && { backgroundColor: '#131316' },
-                      isUrgent && (isDarkMode ? { backgroundColor: '#3A1F26', borderColor: '#F06E84', borderWidth: 1 } : styles.recItemUrgent),
-                    ]}
-                  >
-                    <Ionicons
-                      name={isUrgent ? 'alert-circle' : 'checkmark-circle'}
-                      size={18}
-                      color={isUrgent ? Colors.riskHigh : (isDarkMode ? '#FF94B8' : Colors.primaryDark)}
-                    />
-                    <View style={{ flex: 1 }}>
-                      {rec.category && (
-                        <Text style={[styles.recCategory, isDarkMode && { color: isUrgent ? '#F06E84' : '#FF94B8' }]}>
-                          {rec.category}
-                        </Text>
-                      )}
-                      <Text
-                        style={[
-                          styles.recText,
-                          isDarkMode && { color: '#F0EEF0' },
-                          isUrgent && (isDarkMode ? { color: '#F06E84' } : styles.recTextUrgent),
-                        ]}
-                      >
-                        {recText}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })}
               <TouchableOpacity
-                style={[styles.btnBlockOutline, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}
-                onPress={() => onNavigate('analyze')}
+                style={[
+                  styles.btnBlockOutline,
+                  {
+                    backgroundColor: isDarkMode ? '#24141C' : '#FFF5F8',
+                    borderColor: isDarkMode ? '#FF94B8' : Colors.primaryDark,
+                    paddingVertical: 12,
+                    marginTop: 2,
+                  },
+                ]}
+                onPress={() => setShowRecommendationsResult(true)}
                 activeOpacity={0.7}
               >
-                <Ionicons name="analytics-outline" size={16} color={isDarkMode ? '#FF94B8' : Colors.primaryDark} />
-                <Text style={[styles.btnBlockOutlineText, { color: isDarkMode ? '#FF94B8' : Colors.primaryDark }]}>
-                  View Factor Analysis &amp; Guidance
+                <Ionicons name="clipboard-outline" size={17} color={isDarkMode ? '#FF94B8' : Colors.primaryDark} />
+                <Text style={[styles.btnBlockOutlineText, { color: isDarkMode ? '#FF94B8' : Colors.primaryDark, fontWeight: '800' }]}>
+                  View Result &amp; Recommendations
                 </Text>
               </TouchableOpacity>
             </View>
           ) : null}
-        </View>
-
-        {/* Reminders Card (matching dashboard.php exactly) */}
-        <View style={[styles.card, Shadows.card, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
-          <View style={styles.cardHeader}>
-            <Text style={[styles.eyebrow, { color: isDarkMode ? '#FF94B8' : '#C2577D' }]}>REMINDERS</Text>
-            <TouchableOpacity onPress={() => onNavigate('reminders')} style={styles.linkRow} activeOpacity={0.7}>
-              <Text style={[styles.linkText, { color: isDarkMode ? '#FF94B8' : '#C2577D', fontWeight: '700' }]}>Manage</Text>
-              <Ionicons name="chevron-forward" size={13} color={isDarkMode ? '#FF94B8' : '#C2577D'} />
-            </TouchableOpacity>
-          </View>
-
-          {Boolean(preg.nextObVisit) && (() => {
-            const calculateDaysUntil = (dStr: string) => {
-              if (!dStr) return null;
-              const parts = dStr.split('-');
-              if (parts.length === 3) {
-                const target = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-                target.setHours(0, 0, 0, 0);
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                return Math.round((target.getTime() - today.getTime()) / 86400000);
-              }
-              return null;
-            };
-
-            const days = (preg.daysToVisit !== null && preg.daysToVisit !== undefined)
-              ? preg.daysToVisit
-              : calculateDaysUntil(preg.nextObVisit);
-
-            return (
-              <View style={[styles.dashVisitPill, isDarkMode && { backgroundColor: '#251820', borderColor: '#3E202C' }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}>
-                  <View style={[styles.dashVisitIconBox, isDarkMode && { backgroundColor: '#3A1F2B' }]}>
-                    <Ionicons name="calendar" size={18} color="#C2577D" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.dashVisitTitle, isDarkMode && { color: '#F0EEF0' }]}>
-                      Next OB-GYN Visit
-                    </Text>
-                    <Text style={[styles.dashVisitDate, isDarkMode && { color: '#A79AA0' }]}>
-                      {formatEddDate(preg.nextObVisit)}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.dashVisitBadge}>
-                  <Text style={styles.dashVisitBadgeText}>
-                    {days === 0 ? 'Today!' : (days !== null && days > 0 ? `${days}d left` : 'Passed')}
-                  </Text>
-                </View>
-              </View>
-            );
-          })()}
-
-          {/* Today's Supplements Checklist (shown once added) */}
-          {Boolean(data?.medications && data.medications.length > 0) ? (
-            <View style={{ marginTop: 4, marginBottom: 10 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <Text style={[{ fontSize: 13, fontWeight: '700', color: isDarkMode ? '#F0EEF0' : Colors.text }]}>
-                  Today's Checklist
-                </Text>
-                <Text style={{ fontSize: 11.5, color: Colors.textMuted, fontWeight: '600' }}>
-                  {data.medications.filter((m: any) => m.taken_today || m.takenToday).length} / {data.medications.length} taken
-                </Text>
-              </View>
-              {data.medications.map((m: any) => {
-                const isTaken = !!(m.taken_today || m.takenToday);
-                return (
-                  <TouchableOpacity
-                    key={m.id}
-                    style={[
-                      styles.dashMedRow,
-                      isTaken && styles.dashMedRowTaken,
-                      isDarkMode && { backgroundColor: isTaken ? '#2B1A24' : '#131316', borderColor: isTaken ? '#C2577D' : '#2C2C31' },
-                    ]}
-                    onPress={() => handleToggleHomeMed(m.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name={isTaken ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={18}
-                      color={isTaken ? '#C2577D' : Colors.textMuted}
-                      style={{ marginRight: 8 }}
-                    />
-                    <Text
-                      style={[
-                        { fontSize: 13, fontWeight: isTaken ? '700' : '600', color: isTaken ? '#9B2C52' : (isDarkMode ? '#F0EEF0' : Colors.text), flex: 1 },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {m.name}
-                      {m.dosage ? <Text style={{ color: Colors.textMuted, fontWeight: '400' }}> — {m.dosage}</Text> : null}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ) : (
-            <Text style={[styles.dashReminderSubtext, isDarkMode && { color: '#A79AA0' }]}>
-              Track your next OB-GYN visit and mark off today's supplements/vitamins.
-            </Text>
-          )}
-
-          {/* Open Reminders Button */}
-          <TouchableOpacity
-            onPress={() => onNavigate('reminders')}
-            activeOpacity={0.8}
-            style={{ marginTop: 4 }}
-          >
-            <LinearGradient
-              colors={['#E8729A', '#C2577D']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.dashOpenRemindersBtn}
-            >
-              <Ionicons name="notifications" size={16} color="#FFF" style={{ marginRight: 8 }} />
-              <Text style={styles.dashOpenRemindersBtnText}>Open Reminders</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        {/* Latest Vitals Card (.kv layout from dashboard.php) */}
-        <View style={[styles.card, Shadows.card, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
-          <View style={styles.cardHeader}>
-            <Text style={[styles.eyebrow, isDarkMode && { color: '#FF94B8' }]}>LATEST VITALS</Text>
-            <TouchableOpacity onPress={() => onNavigate('vitals')} style={styles.linkRow}>
-              <Text style={[styles.linkText, isDarkMode && { color: '#FF94B8' }]}>View History</Text>
-              <Ionicons name="chevron-forward" size={14} color={isDarkMode ? '#FF94B8' : Colors.primaryDark} />
-            </TouchableOpacity>
-          </View>
-
-          {vitals.bp_sys ? (
-            <View style={styles.kvList}>
-              <View style={[styles.kvRow, isDarkMode && { borderBottomColor: '#2C2C31' }]}>
-                <Text style={[styles.kvKey, isDarkMode && { color: '#85818A' }]}>Blood Pressure</Text>
-                <Text style={[styles.kvVal, isDarkMode && { color: '#F0EEF0' }]}>{vitals.bp_sys}/{vitals.bp_dia} mmHg</Text>
-              </View>
-              <View style={[styles.kvRow, isDarkMode && { borderBottomColor: '#2C2C31' }]}>
-                <Text style={[styles.kvKey, isDarkMode && { color: '#85818A' }]}>Hemoglobin</Text>
-                <Text style={[styles.kvVal, isDarkMode && { color: '#F0EEF0' }]}>{vitals.hemoglobin || '—'} g/dL</Text>
-              </View>
-              <View style={[styles.kvRow, isDarkMode && { borderBottomColor: '#2C2C31' }]}>
-                <Text style={[styles.kvKey, isDarkMode && { color: '#85818A' }]}>Blood Sugar</Text>
-                <Text style={[styles.kvVal, isDarkMode && { color: '#F0EEF0' }]}>{vitals.blood_sugar || '—'} mg/dL</Text>
-              </View>
-              <View style={[styles.kvRow, isDarkMode && { borderBottomColor: '#2C2C31' }]}>
-                <Text style={[styles.kvKey, isDarkMode && { color: '#85818A' }]}>Weight</Text>
-                <Text style={[styles.kvVal, isDarkMode && { color: '#F0EEF0' }]}>{vitals.weight_kg || '—'} kg</Text>
-              </View>
-              {vitals.heart_rate ? (
-                <View style={[styles.kvRow, isDarkMode && { borderBottomColor: '#2C2C31' }]}>
-                  <Text style={[styles.kvKey, isDarkMode && { color: '#85818A' }]}>Heart Rate</Text>
-                  <Text style={[styles.kvVal, isDarkMode && { color: '#F0EEF0' }]}>{vitals.heart_rate} bpm</Text>
-                </View>
-              ) : null}
-              {vitals.fetal_movement !== null && vitals.fetal_movement !== undefined && vitals.fetal_movement !== '' ? (
-                <View style={[styles.kvRow, isDarkMode && { borderBottomColor: '#2C2C31' }]}>
-                  <Text style={[styles.kvKey, isDarkMode && { color: '#85818A' }]}>Fetal Movement</Text>
-                  <Text style={[styles.kvVal, isDarkMode && { color: '#F0EEF0' }]}>{vitals.fetal_movement} kicks/hr</Text>
-                </View>
-              ) : null}
-              <View style={[styles.kvRow, { borderBottomWidth: 0 }]}>
-                <Text style={[styles.kvKey, isDarkMode && { color: '#85818A' }]}>Logged</Text>
-                <Text style={[styles.kvVal, { color: isDarkMode ? '#85818A' : Colors.textSoft }]}>{vitals.date || 'Today'}</Text>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.emptyBox}>
-              <Ionicons name="pulse-outline" size={28} color={isDarkMode ? '#3A2530' : Colors.primaryLight} />
-              <Text style={[styles.emptyText, isDarkMode && { color: '#85818A' }]}>No vitals logged yet.</Text>
-            </View>
-          )}
-
-          <TouchableOpacity
-            style={[styles.btnBlockOutline, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}
-            onPress={() => onNavigate('vitals')}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="add" size={18} color={isDarkMode ? '#F0EEF0' : Colors.text} />
-            <Text style={[styles.btnBlockOutlineText, isDarkMode && { color: '#F0EEF0' }]}>Log Vitals</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Quick Action Navigation Grid */}
@@ -1109,6 +1044,110 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Clinical Recommendations Pop-up Form / Modal */}
+      <Modal
+        visible={showRecommendationsResult}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRecommendationsResult(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <View style={[styles.modalIconCircle, isDarkMode && { backgroundColor: '#3A1820' }]}>
+                  <Ionicons name="clipboard-outline" size={20} color={isDarkMode ? '#FF94B8' : Colors.primaryDark} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.modalTitle, isDarkMode && { color: '#F0EEF0' }]} numberOfLines={1}>
+                    Clinical Recommendations
+                  </Text>
+                  <Text style={[styles.modalSub, isDarkMode && { color: '#85818A' }]} numberOfLines={1}>
+                    Personalized guidance &amp; care plan
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setShowRecommendationsResult(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={24} color={isDarkMode ? '#85818A' : Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ marginTop: 12, maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.recsEyebrow, isDarkMode && { color: '#85818A' }, { marginBottom: 10 }]}>
+                TOP CLINICAL RECOMMENDATIONS
+              </Text>
+
+              {recs.map((rec: any, idx: number) => {
+                const recText = typeof rec === 'string' ? rec : (rec.text || '');
+                const isUrgent = typeof rec === 'object' ? Boolean(rec.urgent || rec.category === 'Urgent Action') : false;
+                return (
+                  <View
+                    key={idx}
+                    style={[
+                      styles.recItem,
+                      isDarkMode && { backgroundColor: '#131316' },
+                      isUrgent && (isDarkMode ? { backgroundColor: '#3A1F26', borderColor: '#F06E84', borderWidth: 1 } : styles.recItemUrgent),
+                      { marginBottom: 8 }
+                    ]}
+                  >
+                    <Ionicons
+                      name={isUrgent ? 'alert-circle' : 'checkmark-circle'}
+                      size={18}
+                      color={isUrgent ? Colors.riskHigh : (isDarkMode ? '#FF94B8' : Colors.primaryDark)}
+                    />
+                    <View style={{ flex: 1 }}>
+                      {rec.category && (
+                        <Text style={[styles.recCategory, isDarkMode && { color: isUrgent ? '#F06E84' : '#FF94B8' }]}>
+                          {rec.category}
+                        </Text>
+                      )}
+                      <Text
+                        style={[
+                          styles.recText,
+                          isDarkMode && { color: '#F0EEF0' },
+                          isUrgent && (isDarkMode ? { color: '#F06E84' } : styles.recTextUrgent),
+                        ]}
+                      >
+                        {recText}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+
+              <TouchableOpacity
+                style={[styles.btnBlockOutline, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }, { marginTop: 8, marginBottom: 8 }]}
+                onPress={() => {
+                  setShowRecommendationsResult(false);
+                  onNavigate('analyze');
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="analytics-outline" size={16} color={isDarkMode ? '#FF94B8' : Colors.primaryDark} />
+                <Text style={[styles.btnBlockOutlineText, { color: isDarkMode ? '#FF94B8' : Colors.primaryDark }]}>
+                  View Factor Analysis &amp; Guidance
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  marginTop: 6,
+                  backgroundColor: isDarkMode ? '#FF94B8' : Colors.primaryDark,
+                  borderRadius: 12,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                onPress={() => setShowRecommendationsResult(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>Close</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>

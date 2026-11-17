@@ -6,9 +6,9 @@ import {
   Animated,
   Image,
   TouchableOpacity,
-  StatusBar,
   Dimensions,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width } = Dimensions.get('window');
@@ -110,7 +110,7 @@ export const HeartSplash: React.FC<HeartSplashProps> = ({
       onPress={handleFinish}
       style={styles.container}
     >
-      <StatusBar barStyle="dark-content" backgroundColor="#FAF7FC" translucent={false} />
+      <StatusBar style="dark" />
 
       <LinearGradient
         colors={['#FFF5F8', '#F5EBFB', '#EAF2FF']}

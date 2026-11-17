@@ -4,6 +4,7 @@ require_once __DIR__ . '/base.php';
 if (current_user()) redirect(role_home(current_user()['role']));
 
 $error = null;
+$success = !empty($_GET['registered']) ? 'Account created successfully! Please log in.' : null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     $login = trim($_POST['email'] ?? $_POST['username'] ?? '');
@@ -51,6 +52,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
       <button type="button" class="active">Log In</button>
       <button type="button" onclick="location.href='register.php'">Register</button>
     </div>
+
+    <?php if ($success): ?>
+      <div class="badge badge-low" style="width:100%;justify-content:flex-start;margin-bottom:14px;padding:10px 12px;"><i class="fa-solid fa-circle-check"></i> <?php echo e($success); ?></div>
+    <?php endif; ?>
 
     <?php if ($error): ?>
       <div class="badge badge-high" style="width:100%;justify-content:flex-start;margin-bottom:14px;padding:10px 12px;"><i class="fa-solid fa-circle-exclamation"></i> <?php echo e($error); ?></div>

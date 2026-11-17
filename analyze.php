@@ -1,9 +1,15 @@
 <?php
 require_once __DIR__ . '/base.php';
 $u = require_role('patient');
+$actPregId = get_active_pregnancy_id($pdo, $u['id']);
 
-$stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 20");
-$stmt->execute([$u['id']]);
+if ($actPregId) {
+    $stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC LIMIT 20");
+    $stmt->execute([$u['id'], $actPregId]);
+} else {
+    $stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 20");
+    $stmt->execute([$u['id']]);
+}
 $all = $stmt->fetchAll();
 
 $idA = $_GET['a'] ?? ($all[0]['id'] ?? null);
@@ -22,8 +28,13 @@ if ($cId) {
     $stmt->execute([$cId]);
     $cooplandAssm = $stmt->fetch();
 } else {
-    $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
-    $stmt->execute([$u['id']]);
+    if ($actPregId) {
+        $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC, id DESC LIMIT 1");
+        $stmt->execute([$u['id'], $actPregId]);
+    } else {
+        $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
+        $stmt->execute([$u['id']]);
+    }
     $cooplandAssm = $stmt->fetch();
 }
 if ($cooplandAssm) {
@@ -487,14 +498,14 @@ render_header('Fuzzy Risk Analysis', 'analyze');
   <h3 style="margin-top:6px;font-size:18px;">Current vs. Previous Check-in</h3>
   <div class="grid grid-2" style="margin-top:14px;align-items:start;">
     <div style="background:var(--bg-soft);padding:14px;border-radius:12px;border:1px solid var(--border);text-align:center;">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Current (<?php echo e(fmt_date($a['date'])); ?>)</div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Current (<?php echo e(fmt_datetime($a['date'])); ?>)</div>
       <div style="font-size:24px;font-weight:800;color:var(<?php echo risk_color_var($a['level']); ?>);margin-top:4px;">
         <?php echo (int)$a['score']; ?>
       </div>
       <span class="badge <?php echo risk_badge_class($a['level']); ?>" style="margin-top:4px;"><?php echo e($a['level']); ?></span>
     </div>
     <div style="background:var(--bg-soft);padding:14px;border-radius:12px;border:1px solid var(--border);text-align:center;">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Previous (<?php echo e(fmt_date($b['date'])); ?>)</div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Previous (<?php echo e(fmt_datetime($b['date'])); ?>)</div>
       <div style="font-size:24px;font-weight:800;color:var(<?php echo risk_color_var($b['level']); ?>);margin-top:4px;">
         <?php echo (int)$b['score']; ?>
       </div>

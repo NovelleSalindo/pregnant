@@ -19,18 +19,16 @@ $method = $_SERVER['REQUEST_METHOD'];
 $input = get_json_input();
 
 // ------------------------------------------------------------------
-// 1. HOSPITAL BAG CHECKLIST
+// 1. HOSPITAL BAG CHECKLIST (Scoped to Active Pregnancy)
 // ------------------------------------------------------------------
 if ($section === 'hospital_bag') {
+    $actPregId = get_active_pregnancy_id($pdo, $u['id']);
     if ($method === 'GET') {
-        // Ensure default items exist
-        seed_default_hospital_bag($pdo, $u['id']);
+        // Ensure default items exist for active pregnancy
+        seed_default_hospital_bag($pdo, $u['id'], $actPregId);
 
-        // Auto-update legacy item label if present
-        $pdo->prepare("UPDATE hospital_bag_items SET label = 'Phil Health/ MDR/Marriage Contract and PSA Birth Certificate' WHERE category = 'For Mom' AND (label = 'ID and hospital documents' OR label LIKE '%ID and hospital%')")->execute();
-
-        $stmt = $pdo->prepare("SELECT * FROM hospital_bag_items WHERE user_id = ? ORDER BY category, sort_order, id");
-        $stmt->execute([$u['id']]);
+        $stmt = $pdo->prepare("SELECT * FROM hospital_bag_items WHERE user_id = ? AND pregnancy_id = ? ORDER BY sort_order ASC, id ASC");
+        $stmt->execute([$u['id'], $actPregId]);
         $items = $stmt->fetchAll();
 
         $grouped = [];
@@ -38,9 +36,6 @@ if ($section === 'hospital_bag') {
         foreach ($items as $item) {
             $cat = $item['category'] ?: 'General';
             $label = $item['label'];
-            if ($cat === 'For Mom' && (stripos($label, 'ID and hospital') !== false || $label === 'ID and hospital documents')) {
-                $label = 'Phil Health/ MDR/Marriage Contract and PSA Birth Certificate';
-            }
             $grouped[$cat][] = [
                 'id' => $item['id'],
                 'label' => $label,
@@ -67,6 +62,15 @@ if ($section === 'hospital_bag') {
 
             $stmt = $pdo->prepare("UPDATE hospital_bag_items SET is_checked = NOT is_checked WHERE id = ? AND user_id = ?");
             $stmt->execute([$id, $u['id']]);
+
+            // If all items are now checked, mark any unread hospital_bag notification as read
+            $stmtCount = $pdo->prepare("SELECT COUNT(*) as total, COALESCE(SUM(is_checked), 0) as checked FROM hospital_bag_items WHERE user_id = ? AND pregnancy_id = ?");
+            $stmtCount->execute([$u['id'], $actPregId]);
+            $r = $stmtCount->fetch();
+            if ($r && (int)$r['total'] > 0 && (int)$r['checked'] >= (int)$r['total']) {
+                $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND kind = 'hospital_bag'")->execute([$u['id']]);
+            }
+
             json_success([], 'Item toggled');
         } elseif ($action === 'add') {
             $label = trim($input['label'] ?? '');
@@ -74,8 +78,8 @@ if ($section === 'hospital_bag') {
             if (empty($label)) json_error('Item label required', 422);
 
             $id = uid('bag');
-            $stmt = $pdo->prepare("INSERT INTO hospital_bag_items (id, user_id, label, category, is_checked, is_custom, sort_order) VALUES (?, ?, ?, ?, 0, 1, 99)");
-            $stmt->execute([$id, $u['id'], $label, $cat]);
+            $stmt = $pdo->prepare("INSERT INTO hospital_bag_items (id, user_id, pregnancy_id, label, category, is_checked, is_custom, sort_order) VALUES (?, ?, ?, ?, ?, 0, 1, 99)");
+            $stmt->execute([$id, $u['id'], $actPregId, $label, $cat]);
             json_success(['id' => $id, 'label' => $label, 'category' => $cat], 'Item added', 201);
         } elseif ($action === 'delete') {
             $id = $input['id'] ?? ($_GET['id'] ?? null);
@@ -163,12 +167,13 @@ if ($section === 'medications') {
 }
 
 // ------------------------------------------------------------------
-// 3. BIRTH PLAN
+// 3. BIRTH PLAN (Scoped to Active Pregnancy)
 // ------------------------------------------------------------------
 if ($section === 'birth_plan') {
+    $actPregId = get_active_pregnancy_id($pdo, $u['id']);
     if ($method === 'GET') {
-        $stmt = $pdo->prepare("SELECT * FROM birth_plans WHERE user_id = ?");
-        $stmt->execute([$u['id']]);
+        $stmt = $pdo->prepare("SELECT * FROM birth_plans WHERE user_id = ? AND pregnancy_id = ?");
+        $stmt->execute([$u['id'], $actPregId]);
         $plan = $stmt->fetch() ?: [
             'delivery_location' => '',
             'support_people' => '',
@@ -182,8 +187,12 @@ if ($section === 'birth_plan') {
     }
 
     if ($method === 'POST') {
-        $stmt = $pdo->prepare("INSERT INTO birth_plans (user_id, delivery_location, support_people, pain_management, feeding_preference, who_cuts_cord, skin_to_skin, special_requests, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        $stmtEx = $pdo->prepare("SELECT id FROM birth_plans WHERE user_id = ? AND pregnancy_id = ?");
+        $stmtEx->execute([$u['id'], $actPregId]);
+        $bpId = $stmtEx->fetchColumn() ?: uid('bp');
+
+        $stmt = $pdo->prepare("INSERT INTO birth_plans (id, user_id, pregnancy_id, delivery_location, support_people, pain_management, feeding_preference, who_cuts_cord, skin_to_skin, special_requests, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE 
                 delivery_location = VALUES(delivery_location),
                 support_people = VALUES(support_people),
@@ -194,7 +203,9 @@ if ($section === 'birth_plan') {
                 special_requests = VALUES(special_requests),
                 updated_at = VALUES(updated_at)");
         $stmt->execute([
+            $bpId,
             $u['id'],
+            $actPregId,
             $input['delivery_location'] ?? null,
             $input['support_people'] ?? null,
             $input['pain_management'] ?? null,
@@ -257,9 +268,10 @@ if ($section === 'weight_gain') {
 // 5. PREGNANCY JOURNAL
 // ------------------------------------------------------------------
 if ($section === 'journal') {
+    $actPregId = get_active_pregnancy_id($pdo, $u['id']);
     if ($method === 'GET') {
-        $stmt = $pdo->prepare("SELECT * FROM journal_entries WHERE user_id = ? ORDER BY date DESC");
-        $stmt->execute([$u['id']]);
+        $stmt = $pdo->prepare("SELECT * FROM journal_entries WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC");
+        $stmt->execute([$u['id'], $actPregId]);
         $entries = $stmt->fetchAll();
         json_success(['entries' => $entries]);
     }
@@ -274,8 +286,8 @@ if ($section === 'journal') {
 
             $id = uid('jrn');
             $date = now_iso();
-            $stmt = $pdo->prepare("INSERT INTO journal_entries (id, user_id, date, mood, content) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$id, $u['id'], $date, $mood, $content]);
+            $stmt = $pdo->prepare("INSERT INTO journal_entries (id, user_id, pregnancy_id, date, mood, content) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$id, $u['id'], $actPregId, $date, $mood, $content]);
             json_success(['id' => $id, 'date' => $date, 'mood' => $mood, 'content' => $content], 'Journal entry saved', 201);
         } elseif ($action === 'delete') {
             $id = $input['id'] ?? ($_GET['id'] ?? null);
@@ -289,12 +301,13 @@ if ($section === 'journal') {
 }
 
 // ------------------------------------------------------------------
-// 6. BUMP PHOTO TIMELINE
+// 6. BUMP PHOTO TIMELINE (Scoped to Active Pregnancy)
 // ------------------------------------------------------------------
 if ($section === 'bump_photos') {
+    $actPregId = get_active_pregnancy_id($pdo, $u['id']);
     if ($method === 'GET') {
-        $stmt = $pdo->prepare("SELECT * FROM bump_photos WHERE user_id = ? ORDER BY week_number ASC");
-        $stmt->execute([$u['id']]);
+        $stmt = $pdo->prepare("SELECT * FROM bump_photos WHERE user_id = ? AND pregnancy_id = ? ORDER BY week_number ASC");
+        $stmt->execute([$u['id'], $actPregId]);
         $photos = $stmt->fetchAll();
         json_success(['photos' => $photos]);
     }
@@ -324,8 +337,8 @@ if ($section === 'bump_photos') {
 
             $id = uid('bmp');
             $date = today_iso();
-            $stmt = $pdo->prepare("INSERT INTO bump_photos (id, user_id, week_number, date, filename, note) VALUES (?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$id, $u['id'], $weekNumber, $date, $filename, $note]);
+            $stmt = $pdo->prepare("INSERT INTO bump_photos (id, user_id, pregnancy_id, week_number, date, filename, note) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$id, $u['id'], $actPregId, $weekNumber, $date, $filename, $note]);
             json_success(['id' => $id, 'week_number' => $weekNumber, 'date' => $date, 'note' => $note, 'filename' => $filename], 'Bump photo logged', 201);
         } elseif ($action === 'delete') {
             $id = $input['id'] ?? ($_GET['id'] ?? null);
@@ -342,6 +355,8 @@ if ($section === 'bump_photos') {
 // 7. POSTPARTUM RECOVERY & BABY VACCINATIONS
 // ------------------------------------------------------------------
 if ($section === 'postpartum') {
+    $actPregId = get_active_pregnancy_id($pdo, $u['id']);
+
     if ($method === 'GET') {
         $stmt = $pdo->prepare("SELECT * FROM postpartum_status WHERE user_id = ?");
         $stmt->execute([$u['id']]);
@@ -355,16 +370,46 @@ if ($section === 'postpartum') {
 
         $vaccines = [];
         if ($isPostpartum) {
-            $stmt = $pdo->prepare("SELECT * FROM baby_vaccinations WHERE user_id = ? ORDER BY sort_order ASC");
+            $stmt = $pdo->prepare("SELECT * FROM baby_vaccinations WHERE user_id = ? ORDER BY sort_order ASC, id ASC");
             $stmt->execute([$u['id']]);
             $vaccines = $stmt->fetchAll();
         }
+
+        $defaultPreview = [];
+        $sortIdx = 1;
+        foreach (DEFAULT_VACCINES as $dv) {
+            $defaultPreview[] = [
+                'id' => 'prev-' . $sortIdx,
+                'vaccine_name' => $dv['name'],
+                'due_age_label' => $dv['age'],
+                'due_date' => null,
+                'given' => 0,
+                'sort_order' => $sortIdx++
+            ];
+        }
+
+        $newbornCare = get_user_newborn_care_items($pdo, $u['id'], $actPregId);
+        $totalItems = count($newbornCare);
+        $completedItems = 0;
+        foreach ($newbornCare as $nc) {
+            if (!empty($nc['is_completed'])) $completedItems++;
+        }
+        $pendingItems = $totalItems - $completedItems;
+        $percentItems = $totalItems > 0 ? (int)round(($completedItems / $totalItems) * 100) : 0;
 
         json_success([
             'isPostpartum' => $isPostpartum,
             'daysSinceDelivery' => $daysSinceDelivery,
             'status' => $status,
             'vaccines' => $vaccines,
+            'previewChecklist' => $defaultPreview,
+            'newbornCareChecklist' => $newbornCare,
+            'newbornCareStats' => [
+                'total' => $totalItems,
+                'completed' => $completedItems,
+                'pending' => $pendingItems,
+                'percent' => $percentItems,
+            ],
         ]);
     }
 
@@ -383,21 +428,48 @@ if ($section === 'postpartum') {
             // Seed Philippine EPI baby vaccinations
             seed_default_vaccinations($pdo, $u['id'], $deliveryDate);
 
-            json_success([], 'Delivery marked and baby vaccination schedule initialized');
+            // Also ensure newborn care checklist is seeded
+            seed_default_newborn_care($pdo, $u['id'], $actPregId);
+
+            json_success([], 'Delivery marked, baby vaccination and newborn care checklists initialized');
         } elseif ($action === 'update_notes') {
             $notes = trim($input['recovery_notes'] ?? '');
             $stmt = $pdo->prepare("UPDATE postpartum_status SET recovery_notes = ? WHERE user_id = ?");
             $stmt->execute([$notes, $u['id']]);
             json_success([], 'Recovery notes saved');
+        } elseif ($action === 'toggle_newborn_care') {
+            $itemId = $input['item_id'] ?? null;
+            if (!$itemId) json_error('Item ID required', 422);
+
+            $completed = isset($input['is_completed']) ? (int)$input['is_completed'] : 1;
+            toggle_newborn_care_item($pdo, $u['id'], $itemId, $completed, $actPregId);
+
+            $newbornCare = get_user_newborn_care_items($pdo, $u['id'], $actPregId);
+            $totalItems = count($newbornCare);
+            $completedItems = 0;
+            foreach ($newbornCare as $nc) {
+                if (!empty($nc['is_completed'])) $completedItems++;
+            }
+            $pendingItems = $totalItems - $completedItems;
+            $percentItems = $totalItems > 0 ? (int)round(($completedItems / $totalItems) * 100) : 0;
+
+            json_success([
+                'newbornCareChecklist' => $newbornCare,
+                'newbornCareStats' => [
+                    'total' => $totalItems,
+                    'completed' => $completedItems,
+                    'pending' => $pendingItems,
+                    'percent' => $percentItems,
+                ]
+            ], 'Newborn care item updated');
         } elseif ($action === 'toggle_vaccine') {
             $vaxId = $input['vax_id'] ?? null;
             if (!$vaxId) json_error('Vaccine ID required', 422);
 
             $given = isset($input['given']) ? (int)$input['given'] : 1;
+            toggle_baby_vaccine_item($pdo, $u['id'], $vaxId, $given);
             $givenDate = $given ? today_iso() : null;
 
-            $stmt = $pdo->prepare("UPDATE baby_vaccinations SET given = ?, given_date = ? WHERE id = ? AND user_id = ?");
-            $stmt->execute([$given, $givenDate, $vaxId, $u['id']]);
             json_success(['given' => $given, 'given_date' => $givenDate], 'Vaccine updated');
         }
     }
@@ -564,10 +636,42 @@ if ($section === 'meal_planner') {
 // 10. REMINDERS & OB VISIT
 // ------------------------------------------------------------------
 if ($section === 'reminders') {
+    $actPregId = get_active_pregnancy_id($pdo, $u['id']);
+
     if ($method === 'GET') {
-        $stmt = $pdo->prepare("SELECT next_ob_visit FROM patient_profiles WHERE user_id = ?");
-        $stmt->execute([$u['id']]);
-        $nextVisit = $stmt->fetchColumn();
+        if ($actPregId) {
+            $stmtVisits = $pdo->prepare("SELECT * FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? ORDER BY visit_date ASC");
+            $stmtVisits->execute([$u['id'], $actPregId]);
+            $obVisits = $stmtVisits->fetchAll(PDO::FETCH_ASSOC);
+
+            $stmtNext = $pdo->prepare("SELECT * FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
+            $stmtNext->execute([$u['id'], $actPregId]);
+            $upcoming = $stmtNext->fetch(PDO::FETCH_ASSOC);
+        } else {
+            $stmtVisits = $pdo->prepare("SELECT * FROM ob_visits WHERE user_id = ? ORDER BY visit_date ASC");
+            $stmtVisits->execute([$u['id']]);
+            $obVisits = $stmtVisits->fetchAll(PDO::FETCH_ASSOC);
+
+            $stmtNext = $pdo->prepare("SELECT * FROM ob_visits WHERE user_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
+            $stmtNext->execute([$u['id']]);
+            $upcoming = $stmtNext->fetch(PDO::FETCH_ASSOC);
+        }
+
+        $stmtProf = $pdo->prepare("SELECT next_ob_visit FROM patient_profiles WHERE user_id = ?");
+        $stmtProf->execute([$u['id']]);
+        $profileVisit = $stmtProf->fetchColumn();
+
+        if ($actPregId) {
+            $nextVisit = $upcoming ? $upcoming['visit_date'] : null;
+            if ($profileVisit !== $nextVisit) {
+                $pdo->prepare("UPDATE patient_profiles SET next_ob_visit = ? WHERE user_id = ?")->execute([$nextVisit, $u['id']]);
+            }
+        } else {
+            $nextVisit = $upcoming ? $upcoming['visit_date'] : ($profileVisit ?: null);
+            if ($nextVisit && $profileVisit !== $nextVisit) {
+                $pdo->prepare("UPDATE patient_profiles SET next_ob_visit = ? WHERE user_id = ?")->execute([$nextVisit, $u['id']]);
+            }
+        }
 
         $daysToVisit = $nextVisit ? (int)round((strtotime($nextVisit) - strtotime(today_iso())) / 86400) : null;
 
@@ -577,12 +681,15 @@ if ($section === 'reminders') {
                                WHERE m.user_id = ? AND m.active = 1 
                                ORDER BY m.name");
         $stmt->execute([today_iso(), $u['id']]);
-        $meds = $stmt->fetchAll();
+        $meds = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         json_success([
             'nextObVisit' => $nextVisit,
+            'nextObVisitTitle' => $upcoming['title'] ?? 'Routine Prenatal Checkup',
+            'nextObVisitNotes' => $upcoming['notes'] ?? '',
             'formattedVisit' => $nextVisit ? fmt_date($nextVisit) : null,
             'daysToVisit' => $daysToVisit,
+            'obVisits' => $obVisits,
             'medications' => $meds,
         ]);
     }
@@ -590,29 +697,89 @@ if ($section === 'reminders') {
     if ($method === 'POST') {
         $action = $_GET['action'] ?? ($input['action'] ?? ($_POST['action'] ?? ''));
 
-        if ($action === 'set_ob_visit') {
-            $nextVisit = $input['next_ob_visit'] ?? ($_POST['next_ob_visit'] ?? null);
-            $stmt = $pdo->prepare("UPDATE patient_profiles SET next_ob_visit = ? WHERE user_id = ?");
-            $stmt->execute([$nextVisit ?: null, $u['id']]);
-            $daysToVisit = $nextVisit ? (int)round((strtotime($nextVisit) - strtotime(today_iso())) / 86400) : null;
+        if ($action === 'set_ob_visit' || $action === 'add_ob_visit') {
+            $visitDate = $input['visit_date'] ?? ($input['next_ob_visit'] ?? ($_POST['visit_date'] ?? ($_POST['next_ob_visit'] ?? null)));
+            $visitTitle = trim($input['title'] ?? ($_POST['title'] ?? 'Routine Prenatal Checkup'));
+            $visitNotes = trim($input['notes'] ?? ($_POST['notes'] ?? ''));
 
-            if ($nextVisit && $daysToVisit !== null) {
-                $visitLabel = fmt_date($nextVisit);
+            if (!empty($visitDate)) {
+                $visitId = uid('obv');
+                $stmtIns = $pdo->prepare("INSERT INTO ob_visits (id, user_id, pregnancy_id, visit_date, title, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
+                $stmtIns->execute([$visitId, $u['id'], $actPregId, $visitDate, $visitTitle ?: 'Routine Prenatal Checkup', $visitNotes]);
+
+                if ($actPregId) {
+                    $stmtNext = $pdo->prepare("SELECT visit_date FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
+                    $stmtNext->execute([$u['id'], $actPregId]);
+                } else {
+                    $stmtNext = $pdo->prepare("SELECT visit_date FROM ob_visits WHERE user_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
+                    $stmtNext->execute([$u['id']]);
+                }
+                $earliest = $stmtNext->fetchColumn() ?: $visitDate;
+
+                $pdo->prepare("UPDATE patient_profiles SET next_ob_visit = ? WHERE user_id = ?")->execute([$earliest, $u['id']]);
+
+                $daysToVisit = (int)round((strtotime($earliest) - strtotime(today_iso())) / 86400);
+                $visitLabel = fmt_date($earliest);
                 $body = $daysToVisit === 0
-                    ? "Your prenatal checkup is today ({$visitLabel})."
+                    ? "Your {$visitTitle} is today ({$visitLabel})."
                     : ($daysToVisit > 0
-                        ? "Your prenatal checkup is scheduled in {$daysToVisit} day(s), on {$visitLabel}."
-                        : "Your scheduled prenatal checkup on {$visitLabel} has passed.");
+                        ? "Your {$visitTitle} is scheduled in {$daysToVisit} day(s), on {$visitLabel}."
+                        : "Your scheduled {$visitTitle} on {$visitLabel} has passed.");
 
-                $stmtNtf = $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)");
-                $stmtNtf->execute([uid('ntf'), $u['id'], 'OB-GYN Visit Reminder', $body, now_iso(), 'ob_visit']);
+                $stmtNtf = $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)");
+                $stmtNtf->execute([uid('ntf'), $u['id'], $actPregId, 'OB-GYN Visit Reminder', $body, now_iso(), 'ob_visit']);
+
+                if ($actPregId) {
+                    $stmtAll = $pdo->prepare("SELECT * FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? ORDER BY visit_date ASC");
+                    $stmtAll->execute([$u['id'], $actPregId]);
+                } else {
+                    $stmtAll = $pdo->prepare("SELECT * FROM ob_visits WHERE user_id = ? ORDER BY visit_date ASC");
+                    $stmtAll->execute([$u['id']]);
+                }
+                $allVisits = $stmtAll->fetchAll(PDO::FETCH_ASSOC);
+
+                json_success([
+                    'nextObVisit' => $earliest,
+                    'daysToVisit' => $daysToVisit,
+                    'formattedVisit' => fmt_date($earliest),
+                    'obVisits' => $allVisits,
+                ], 'Checkup date saved');
+            } else {
+                json_error('Visit date is required', 422);
             }
+        } elseif ($action === 'delete_ob_visit') {
+            $visitId = $input['visit_id'] ?? ($_POST['visit_id'] ?? '');
+            if ($visitId) {
+                $stmt = $pdo->prepare("DELETE FROM ob_visits WHERE id = ? AND user_id = ?");
+                $stmt->execute([$visitId, $u['id']]);
 
-            json_success([
-                'next_ob_visit' => $nextVisit,
-                'daysToVisit' => $daysToVisit,
-                'formattedDate' => $nextVisit ? fmt_date($nextVisit) : null,
-            ], 'OB-GYN checkup date saved');
+                if ($actPregId) {
+                    $stmtNext = $pdo->prepare("SELECT visit_date FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
+                    $stmtNext->execute([$u['id'], $actPregId]);
+                } else {
+                    $stmtNext = $pdo->prepare("SELECT visit_date FROM ob_visits WHERE user_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
+                    $stmtNext->execute([$u['id']]);
+                }
+                $nextDate = $stmtNext->fetchColumn() ?: null;
+
+                $pdo->prepare("UPDATE patient_profiles SET next_ob_visit = ? WHERE user_id = ?")->execute([$nextDate, $u['id']]);
+
+                if ($actPregId) {
+                    $stmtAll = $pdo->prepare("SELECT * FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? ORDER BY visit_date ASC");
+                    $stmtAll->execute([$u['id'], $actPregId]);
+                } else {
+                    $stmtAll = $pdo->prepare("SELECT * FROM ob_visits WHERE user_id = ? ORDER BY visit_date ASC");
+                    $stmtAll->execute([$u['id']]);
+                }
+                $allVisits = $stmtAll->fetchAll(PDO::FETCH_ASSOC);
+
+                json_success([
+                    'nextObVisit' => $nextDate,
+                    'obVisits' => $allVisits,
+                ], 'Checkup removed');
+            } else {
+                json_error('Visit ID required', 422);
+            }
         } elseif ($action === 'add_supplement') {
             $name = trim($input['name'] ?? ($_POST['name'] ?? ''));
             $dosage = trim($input['dosage'] ?? ($_POST['dosage'] ?? ''));

@@ -18,7 +18,8 @@
     },
     "android": {
       "package": "com.pregnacare.app",
-      "versionCode": 2,
+      "versionCode": 3,
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#F8A8CA",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -44,6 +45,10 @@
       "eas": {
         "projectId": "61ef5d6f-cdf4-4b01-82a8-3ebadee1167d"
       }
-    }
+    },
+    "plugins": [
+      "expo-status-bar",
+      "./plugins/withCleartextTraffic.js"
+    ]
   }
 }

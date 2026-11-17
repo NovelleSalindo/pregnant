@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
     $dob = $_POST['dob'] ?? '';
-    $lmp = $_POST['lmp'] ?? '';
+    $lmp = null;
 
     if ($username === '' || $firstName === '' || $lastName === '' || $email === '' || strlen($password) < 6){
         $error = 'Please fill in username, first name, last name, email, and a password of at least 6 characters.';
@@ -51,10 +51,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
                 ->execute([uid('ntf'), $id, 'Welcome to PregnaCare', 'Complete your profile and log your first symptom check-in to see your risk assessment.', now_iso(), 'info']);
             $pdo->commit();
 
-            $_SESSION['user_id'] = $id;
-            $_SESSION['user_email'] = $email;
             log_action('register');
-            redirect('dashboard.php');
+            redirect('login.php?registered=1');
         }
     }
 }
@@ -113,9 +111,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
         <label>Password</label>
         <input type="password" name="password" required minlength="6" placeholder="At least 6 characters">
       </div>
-      <div class="grid grid-2">
-        <div class="field"><label>Date of Birth</label><input type="date" name="dob" value="<?php echo e($_POST['dob'] ?? ''); ?>"></div>
-        <div class="field"><label>Last Menstrual Period</label><input type="date" name="lmp" value="<?php echo e($_POST['lmp'] ?? ''); ?>"></div>
+      <div class="field">
+        <label>Date of Birth</label>
+        <input type="date" name="dob" value="<?php echo e($_POST['dob'] ?? ''); ?>">
       </div>
       <button class="btn btn-primary btn-block" type="submit"><i class="fa-solid fa-user-plus"></i> Create Account</button>
     </form>

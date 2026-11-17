@@ -44,6 +44,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotMsg, setForgotMsg] = useState<{ text: string; isError: boolean } | null>(null);
 
+  // Server configuration state
+  const [serverUrl, setServerUrl] = useState(api.getBaseUrl());
+  const [showServerModal, setShowServerModal] = useState(false);
+
   React.useEffect(() => {
     if (initialTab) {
       setTab(initialTab);
@@ -58,7 +62,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [dob, setDob] = useState('');
-  const [lmp, setLmp] = useState('');
 
   const handleResetPassword = async () => {
     setForgotMsg(null);
@@ -119,16 +122,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
     const fullName = `${firstName.trim()} ${middleName.trim() ? middleName.trim() + ' ' : ''}${lastName.trim()}`;
 
-    // Auto-compute EDD from LMP (+280 days) matching register.php
-    let edd: string | undefined = undefined;
-    if (lmp.trim()) {
-      const lmpDate = new Date(lmp.trim());
-      if (!isNaN(lmpDate.getTime())) {
-        lmpDate.setDate(lmpDate.getDate() + 280);
-        edd = lmpDate.toISOString().split('T')[0];
-      }
-    }
-
     // Auto-compute Age from DOB matching register.php
     let age: number | undefined = undefined;
     if (dob.trim()) {
@@ -150,8 +143,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         email: email.trim(),
         password,
         dob: dob.trim() || undefined,
-        lmp: lmp.trim() || undefined,
-        edd,
         age,
       });
       import('react-native').then(({ Alert }) => {
@@ -180,17 +171,31 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Back Button */}
-        {onBack && (
+        {/* Top Navigation Row */}
+        <View style={styles.topRow}>
+          {onBack ? (
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={onBack}
+              activeOpacity={0.7}
+              accessibilityLabel="Back to Front page"
+            >
+              <Ionicons name="arrow-back" size={22} color={Colors.text} />
+            </TouchableOpacity>
+          ) : <View style={{ width: 40 }} />}
+
           <TouchableOpacity
-            style={styles.backBtn}
-            onPress={onBack}
+            style={styles.serverIconBtn}
+            onPress={() => {
+              setServerUrl(api.getBaseUrl());
+              setShowServerModal(true);
+            }}
             activeOpacity={0.7}
-            accessibilityLabel="Back to Front page"
+            accessibilityLabel="Server connection settings"
           >
-            <Ionicons name="arrow-back" size={22} color={Colors.text} />
+            <Ionicons name="globe-outline" size={20} color={Colors.textMuted} />
           </TouchableOpacity>
-        )}
+        </View>
 
         {/* Brand Header (.brand from style.css) */}
         <View style={styles.brandContainer}>
@@ -323,28 +328,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 />
               </View>
 
-              <View style={styles.grid2}>
-                <View style={[styles.field, { flex: 1 }]}>
-                  <Text style={styles.fieldLabel}>Date of Birth</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={Colors.textMuted}
-                    value={dob}
-                    onChangeText={setDob}
-                  />
-                </View>
-
-                <View style={[styles.field, { flex: 1 }]}>
-                  <Text style={styles.fieldLabel}>Last Menstrual Period</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={Colors.textMuted}
-                    value={lmp}
-                    onChangeText={setLmp}
-                  />
-                </View>
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Date of Birth</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={Colors.textMuted}
+                  value={dob}
+                  onChangeText={setDob}
+                />
               </View>
             </>
           )}
@@ -421,7 +413,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               )}
             </LinearGradient>
           </TouchableOpacity>
+
+
         </View>
+
+
       </ScrollView>
 
       {/* Reset Password Modal */}
@@ -505,6 +501,67 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 ) : (
                   <Text style={styles.actionBtnText}>Update Password</Text>
                 )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Server Config Modal */}
+      <Modal
+        visible={showServerModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowServerModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, Shadows.card]}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="server-outline" size={20} color={Colors.primary} />
+                <Text style={styles.modalTitle}>Server Connection</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowServerModal(false)}
+                style={styles.modalCloseBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={20} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtitle}>
+              Backend API URL (Cloudflare Tunnel, Railway, or LAN IP):
+            </Text>
+
+            <View style={styles.field}>
+              <TextInput
+                style={styles.input}
+                placeholder="https://.../api"
+                placeholderTextColor={Colors.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={serverUrl}
+                onChangeText={setServerUrl}
+              />
+            </View>
+
+            <TouchableOpacity
+              onPress={async () => {
+                await api.setBaseUrl(serverUrl.trim());
+                setShowServerModal(false);
+                setSuccessMessage('Server connection updated!');
+              }}
+              activeOpacity={0.85}
+              style={{ marginTop: 8 }}
+            >
+              <LinearGradient
+                colors={Gradients.primaryBtn}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.actionBtn}
+              >
+                <Text style={styles.actionBtnText}>Save Server URL</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -673,6 +730,28 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.2,
   },
+  topRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  serverIconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: '#2B2229',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 1,
+  },
   backBtn: {
     width: 38,
     height: 38,
@@ -726,5 +805,77 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginBottom: 14,
     lineHeight: 18,
+  },
+  demoBox: {
+    marginTop: 18,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderSoft,
+    alignItems: 'center',
+  },
+  demoBoxTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  demoBtnRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+  },
+  demoPill: {
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  demoPillText: {
+    fontSize: 12,
+    color: Colors.primaryDark,
+    fontWeight: '700',
+  },
+  serverSettingsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    gap: 6,
+  },
+  serverSettingsText: {
+    fontSize: 11.5,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  serverConfigBox: {
+    width: '100%',
+    maxWidth: 440,
+    backgroundColor: Colors.surface,
+    padding: 16,
+    borderRadius: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  serverConfigTitle: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    marginBottom: 8,
+    color: Colors.text,
+  },
+  saveServerBtn: {
+    backgroundColor: Colors.secondaryDark,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  saveServerBtnText: {
+    color: Colors.white,
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

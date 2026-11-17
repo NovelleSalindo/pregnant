@@ -5,6 +5,8 @@
    Every page starts with: require_once __DIR__ . '/base.php';
    ============================================================ */
 
+date_default_timezone_set('Asia/Manila');
+
 // ---------- 1. DB CONNECTION ----------
 // Automatically supports Railway MySQL environment variables, falling back to local XAMPP.
 $dbHost = getenv('MYSQLHOST') ?: (getenv('DB_HOST') ?: 'localhost');
@@ -30,6 +32,7 @@ try {
             PDO::ATTR_EMULATE_PREPARES   => false,
         ]
     );
+    try { $pdo->exec("SET time_zone = '+08:00'"); } catch (Throwable $tzEx) {}
 } catch (PDOException $e) {
     die("Database connection failed. Import sql/schema.sql first and check the DB_* constants at the top of base.php.<br>Error: " . htmlspecialchars($e->getMessage()));
 }
@@ -166,6 +169,24 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS baby_vaccinations (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB");
 
+// Essential Newborn Care Checklist (WHO / Philippine DOH EINC & Unang Yakap Protocol)
+$pdo->exec("CREATE TABLE IF NOT EXISTS newborn_care_checklist (
+  id VARCHAR(30) PRIMARY KEY,
+  user_id VARCHAR(20) NOT NULL,
+  pregnancy_id VARCHAR(20) NULL,
+  title VARCHAR(160) NOT NULL,
+  timing_label VARCHAR(60) NOT NULL,
+  category VARCHAR(40) DEFAULT 'At Birth',
+  description TEXT NULL,
+  is_completed TINYINT(1) DEFAULT 0,
+  completed_at DATETIME NULL,
+  sort_order INT DEFAULT 0,
+  created_at DATETIME NOT NULL,
+  INDEX idx_ncc_user (user_id),
+  INDEX idx_ncc_user_preg (user_id, pregnancy_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB");
+
 // Birth plan — one row per patient, free-form preference fields
 $pdo->exec("CREATE TABLE IF NOT EXISTS birth_plans (
   user_id VARCHAR(20) PRIMARY KEY,
@@ -235,58 +256,1031 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS prenatal_laboratories (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB");
 
+$pdo->exec("CREATE TABLE IF NOT EXISTS pregnancies (
+  id VARCHAR(20) PRIMARY KEY,
+  user_id VARCHAR(20) NOT NULL,
+  pregnancy_number INT NOT NULL DEFAULT 1,
+  title VARCHAR(100) NOT NULL,
+  edd DATE NULL,
+  status ENUM('active', 'completed', 'archived') NOT NULL DEFAULT 'active',
+  delivery_date DATE NULL,
+  notes TEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB");
+
+try {
+    $pdo->exec("ALTER TABLE patient_profiles ADD COLUMN active_pregnancy_id VARCHAR(20) NULL");
+} catch (Throwable $ignored) {}
+
+// Safe migrations to add pregnancy_id to tracking & clinical tables
+$migTables = [
+    'monitoring', 'prenatal_laboratories', 'coopland_assessments', 'assessments',
+    'symptom_logs', 'pregnancy_problems', 'hospital_bag_items', 'newborn_care_checklist', 'trackers',
+    'clinical_visits', 'journal_entries', 'bump_photos', 'ob_visits', 'notifications'
+];
+foreach ($migTables as $mt) {
+    try {
+        $pdo->exec("ALTER TABLE $mt ADD COLUMN pregnancy_id VARCHAR(20) NULL AFTER user_id, ADD INDEX idx_{$mt}_user_preg (user_id, pregnancy_id)");
+    } catch (Throwable $ignored) {}
+}
+try {
+    $pdo->exec("ALTER TABLE birth_plans DROP PRIMARY KEY, ADD COLUMN id VARCHAR(30) NOT NULL FIRST, ADD COLUMN pregnancy_id VARCHAR(20) NULL AFTER user_id, ADD PRIMARY KEY (id), ADD UNIQUE KEY uq_bp_user_preg (user_id, pregnancy_id)");
+} catch (Throwable $ignored) {}
+
+function get_active_pregnancy_id($pdo, $userId) {
+    if (empty($userId)) return null;
+
+    try {
+        $stmt = $pdo->prepare("SELECT active_pregnancy_id FROM patient_profiles WHERE user_id = ?");
+        $stmt->execute([$userId]);
+        $actId = $stmt->fetchColumn();
+        if (!empty($actId)) {
+            $chk = $pdo->prepare("SELECT id FROM pregnancies WHERE id = ? AND user_id = ?");
+            $chk->execute([$actId, $userId]);
+            if ($chk->fetchColumn()) {
+                return $actId;
+            }
+        }
+    } catch (Throwable $e) {}
+
+    try {
+        $stmt = $pdo->prepare("SELECT id FROM pregnancies WHERE user_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1");
+        $stmt->execute([$userId]);
+        $actId = $stmt->fetchColumn();
+        if (!empty($actId)) {
+            $pdo->prepare("UPDATE patient_profiles SET active_pregnancy_id = ? WHERE user_id = ?")->execute([$actId, $userId]);
+            return $actId;
+        }
+    } catch (Throwable $e) {}
+
+    $pregs = get_user_pregnancies($pdo, $userId);
+    return !empty($pregs[0]['id']) ? $pregs[0]['id'] : null;
+}
+
+function get_user_pregnancies($pdo, $userId) {
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM pregnancies WHERE user_id = ? ORDER BY pregnancy_number DESC, created_at DESC");
+        $stmt->execute([$userId]);
+        $rows = $stmt->fetchAll();
+
+        // Auto-seed first pregnancy if none exists yet
+        if (empty($rows)) {
+            $pStmt = $pdo->prepare("SELECT edd, lmp, gravida FROM patient_profiles WHERE user_id = ?");
+            $pStmt->execute([$userId]);
+            $prof = $pStmt->fetch();
+            $edd = $prof['edd'] ?? null;
+            $grav = max(1, (int)($prof['gravida'] ?? 1));
+
+            $pid = uid('preg');
+            $title = $grav > 1 ? "Pregnancy #{$grav}" : "Current Pregnancy";
+            $ins = $pdo->prepare("INSERT INTO pregnancies (id, user_id, pregnancy_number, title, edd, status, created_at) VALUES (?, ?, ?, ?, ?, 'active', ?)");
+            $ins->execute([$pid, $userId, $grav, $title, $edd, now_iso()]);
+
+            $pdo->prepare("UPDATE patient_profiles SET active_pregnancy_id = ? WHERE user_id = ?")->execute([$pid, $userId]);
+
+            $stmt->execute([$userId]);
+            $rows = $stmt->fetchAll();
+        }
+        return $rows;
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+function add_new_pregnancy($pdo, $userId, $title, $edd, $notes = '') {
+    // 1. Mark currently active pregnancies as 'completed'
+    $pdo->prepare("UPDATE pregnancies SET status = 'completed' WHERE user_id = ? AND status = 'active'")->execute([$userId]);
+
+    // 2. Determine pregnancy number
+    $stmt = $pdo->prepare("SELECT MAX(pregnancy_number) FROM pregnancies WHERE user_id = ?");
+    $stmt->execute([$userId]);
+    $nextNum = ((int)$stmt->fetchColumn()) + 1;
+    if ($nextNum < 1) $nextNum = 1;
+
+    if (empty($title)) {
+        $title = "Pregnancy #{$nextNum}";
+    }
+
+    // 3. Insert new pregnancy
+    $newId = uid('preg');
+    $ins = $pdo->prepare("INSERT INTO pregnancies (id, user_id, pregnancy_number, title, edd, status, notes, created_at) VALUES (?, ?, ?, ?, ?, 'active', ?, ?)");
+    $ins->execute([$newId, $userId, $nextNum, $title, $edd ?: null, $notes ?: null, now_iso()]);
+
+    // 4. Update patient_profiles active pregnancy, EDD, and gravida; CLEAR next_ob_visit so the new journey starts fresh with NO old reminders!
+    $upd = $pdo->prepare("UPDATE patient_profiles SET active_pregnancy_id = ?, edd = ?, next_ob_visit = NULL, gravida = GREATEST(COALESCE(gravida, 0) + 1, ?) WHERE user_id = ?");
+    $upd->execute([$newId, $edd ?: null, $nextNum, $userId]);
+
+    // 5. Clear old OB visit reminders notifications for this fresh pregnancy journey
+    try {
+        $pdo->prepare("DELETE FROM notifications WHERE user_id = ? AND kind = 'ob_visit'")->execute([$userId]);
+    } catch (Throwable $e) {}
+
+    // 5.1 Tag any unassigned past notifications with previous pregnancy so they never leak into the new one
+    try {
+        $stmtPrev = $pdo->prepare("SELECT id FROM pregnancies WHERE user_id = ? AND id != ? ORDER BY created_at DESC LIMIT 1");
+        $stmtPrev->execute([$userId, $newId]);
+        $prevPregId = $stmtPrev->fetchColumn();
+        if ($prevPregId) {
+            $pdo->prepare("UPDATE notifications SET pregnancy_id = ? WHERE user_id = ? AND (pregnancy_id IS NULL OR pregnancy_id = '')")
+                ->execute([$prevPregId, $userId]);
+        }
+    } catch (Throwable $e) {}
+
+    // 6. Seed a FRESH hospital bag checklist specifically for this new pregnancy!
+    ensure_hospital_bag_checklist($pdo, $userId, $newId);
+
+    return $newId;
+}
+
+function switch_active_pregnancy($pdo, $userId, $pregnancyId) {
+    $stmt = $pdo->prepare("SELECT * FROM pregnancies WHERE id = ? AND user_id = ?");
+    $stmt->execute([$pregnancyId, $userId]);
+    $target = $stmt->fetch();
+    if (!$target) return false;
+
+    // Mark previous active as completed
+    $pdo->prepare("UPDATE pregnancies SET status = 'completed' WHERE user_id = ? AND status = 'active'")->execute([$userId]);
+
+    // Activate target
+    $pdo->prepare("UPDATE pregnancies SET status = 'active' WHERE id = ?")->execute([$pregnancyId]);
+
+    // Determine upcoming visit for target pregnancy
+    $stmtNext = $pdo->prepare("SELECT visit_date FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
+    $stmtNext->execute([$userId, $pregnancyId]);
+    $nextDate = $stmtNext->fetchColumn() ?: null;
+
+    // Update profile
+    $pdo->prepare("UPDATE patient_profiles SET active_pregnancy_id = ?, edd = ?, next_ob_visit = ? WHERE user_id = ?")->execute([$pregnancyId, $target['edd'], $nextDate, $userId]);
+
+    // Ensure bag items exist for this pregnancy if needed
+    ensure_hospital_bag_checklist($pdo, $userId, $pregnancyId);
+
+    return true;
+}
+
 function e($s){ return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
 
 // Standard early-childhood vaccination schedule (Philippines EPI-based) used to
 // seed a new baby's checklist once the mother marks herself as postpartum.
 const DEFAULT_VACCINES = [
-    ['name' => 'BCG',                         'age' => 'At birth',  'days' => 0],
-    ['name' => 'Hepatitis B (1st dose)',      'age' => 'At birth',  'days' => 0],
-    ['name' => 'Pentavalent (DPT-HepB-Hib) 1', 'age' => '6 weeks',   'days' => 42],
-    ['name' => 'OPV 1st dose',                'age' => '6 weeks',   'days' => 42],
-    ['name' => 'PCV 1st dose',                'age' => '6 weeks',   'days' => 42],
-    ['name' => 'Pentavalent (DPT-HepB-Hib) 2', 'age' => '10 weeks',  'days' => 70],
-    ['name' => 'OPV 2nd dose',                'age' => '10 weeks',  'days' => 70],
-    ['name' => 'PCV 2nd dose',                'age' => '10 weeks',  'days' => 70],
-    ['name' => 'Pentavalent (DPT-HepB-Hib) 3', 'age' => '14 weeks',  'days' => 98],
-    ['name' => 'OPV 3rd dose',                'age' => '14 weeks',  'days' => 98],
-    ['name' => 'PCV 3rd dose',                'age' => '14 weeks',  'days' => 98],
-    ['name' => 'IPV',                         'age' => '14 weeks',  'days' => 98],
-    ['name' => 'MMR (Measles, Mumps, Rubella)', 'age' => '9 months', 'days' => 270],
+    ['name' => 'Newborn Screening (NBS / ENBS)', 'age' => '24–48 hours after birth', 'days' => 1],
+    ['name' => 'BCG Vaccine',                  'age' => 'At birth',                 'days' => 0],
+    ['name' => 'Hepatitis B (Birth dose)',       'age' => 'At birth',                 'days' => 0],
+    ['name' => 'Pentavalent (DPT-HepB-Hib) 1',   'age' => '6 weeks',                  'days' => 42],
+    ['name' => 'OPV 1st dose',                   'age' => '6 weeks',                  'days' => 42],
+    ['name' => 'PCV 1st dose',                   'age' => '6 weeks',                  'days' => 42],
+    ['name' => 'Pentavalent (DPT-HepB-Hib) 2',   'age' => '10 weeks',                 'days' => 70],
+    ['name' => 'OPV 2nd dose',                   'age' => '10 weeks',                 'days' => 70],
+    ['name' => 'PCV 2nd dose',                   'age' => '10 weeks',                 'days' => 70],
+    ['name' => 'Pentavalent (DPT-HepB-Hib) 3',   'age' => '14 weeks',                 'days' => 98],
+    ['name' => 'OPV 3rd dose',                   'age' => '14 weeks',                 'days' => 98],
+    ['name' => 'PCV 3rd dose',                   'age' => '14 weeks',                 'days' => 98],
+    ['name' => 'IPV',                            'age' => '14 weeks',                 'days' => 98],
+    ['name' => 'MMR (Measles, Mumps, Rubella)',  'age' => '9 months',                 'days' => 270],
 ];
 function seed_default_vaccinations($pdo, $userId, $deliveryDate){
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM baby_vaccinations WHERE user_id=?");
     $stmt->execute([$userId]);
-    if ((int)$stmt->fetchColumn() > 0) return; // already seeded, don't duplicate
+    $existingCount = (int)$stmt->fetchColumn();
 
-    $sort = 0;
-    foreach (DEFAULT_VACCINES as $v){
-        $dueDate = $deliveryDate ? date('Y-m-d', strtotime($deliveryDate . " + {$v['days']} days")) : null;
-        $pdo->prepare("INSERT INTO baby_vaccinations (id, user_id, vaccine_name, due_age_label, due_date, sort_order) VALUES (?,?,?,?,?,?)")
-            ->execute([uid('vax'), $userId, $v['name'], $v['age'], $dueDate, $sort++]);
+    if ($existingCount === 0) {
+        $sort = 0;
+        foreach (DEFAULT_VACCINES as $v){
+            $dueDate = $deliveryDate ? date('Y-m-d', strtotime($deliveryDate . " + {$v['days']} days")) : null;
+            $pdo->prepare("INSERT INTO baby_vaccinations (id, user_id, vaccine_name, due_age_label, due_date, sort_order) VALUES (?,?,?,?,?,?)")
+                ->execute([uid('vax'), $userId, $v['name'], $v['age'], $dueDate, $sort++]);
+        }
+    } else {
+        // Ensure Newborn Screening and BCG exist if already seeded
+        $stmtChk = $pdo->prepare("SELECT COUNT(*) FROM baby_vaccinations WHERE user_id=? AND vaccine_name LIKE '%Newborn Screening%'");
+        $stmtChk->execute([$userId]);
+        if ((int)$stmtChk->fetchColumn() === 0) {
+            $dueDate = $deliveryDate ? date('Y-m-d', strtotime($deliveryDate . " + 1 day")) : null;
+            $pdo->prepare("INSERT INTO baby_vaccinations (id, user_id, vaccine_name, due_age_label, due_date, sort_order) VALUES (?,?,'Newborn Screening (NBS / ENBS)','24–48 hours after birth',?,0)")
+                ->execute([uid('vax'), $userId, $dueDate]);
+        }
+        $stmtBcg = $pdo->prepare("SELECT COUNT(*) FROM baby_vaccinations WHERE user_id=? AND vaccine_name LIKE '%BCG%'");
+        $stmtBcg->execute([$userId]);
+        if ((int)$stmtBcg->fetchColumn() === 0) {
+            $dueDate = $deliveryDate ? date('Y-m-d', strtotime($deliveryDate)) : null;
+            $pdo->prepare("INSERT INTO baby_vaccinations (id, user_id, vaccine_name, due_age_label, due_date, sort_order) VALUES (?,?,'BCG Vaccine','At birth',?,1)")
+                ->execute([uid('vax'), $userId, $dueDate]);
+        }
     }
+}
+
+// Essential Newborn Care Protocol (WHO & Philippine DOH EINC / Unang Yakap Protocol)
+const DEFAULT_NEWBORN_CARE = [
+    [
+        'title' => 'Immediate & Thorough Drying',
+        'timing' => 'Within first 30 seconds of birth',
+        'category' => 'Immediate (Delivery)',
+        'description' => 'Use a clean, dry, warm towel to dry baby thoroughly. Stimulates breathing and prevents hypothermia without washing off protective vernix.',
+    ],
+    [
+        'title' => 'Early Skin-to-Skin Contact (Unang Yakap)',
+        'timing' => 'Immediate (at least 60–90 minutes)',
+        'category' => 'Immediate (Delivery)',
+        'description' => 'Place naked baby prone directly on mother’s bare chest. Regulates temperature, stabilizes breathing and heart rate, and promotes maternal bonding.',
+    ],
+    [
+        'title' => 'Properly-Timed Cord Clamping',
+        'timing' => '1 to 3 minutes after birth',
+        'category' => 'Immediate (Delivery)',
+        'description' => 'Wait until umbilical cord pulsations stop (1–3 minutes) before clamping and cutting. Boosts baby’s iron reserves and prevents neonatal anemia.',
+    ],
+    [
+        'title' => 'Early Breastfeeding Initiation',
+        'timing' => 'Within the first hour of birth',
+        'category' => 'First Hour',
+        'description' => 'Ensure uninterrupted skin-to-skin contact until the first successful latch. Delivers colostrum rich in vital antibodies and growth factors.',
+    ],
+    [
+        'title' => 'Eye Prophylaxis (Ophthalmic Ointment)',
+        'timing' => 'Within 1 to 2 hours of birth',
+        'category' => 'At Birth / Day 1',
+        'description' => 'Apply erythromycin or tetracycline eye ointment to both eyes from inner to outer canthus to prevent ophthalmia neonatorum (eye infections).',
+    ],
+    [
+        'title' => 'Vitamin K Prophylaxis (Phytomenadione)',
+        'timing' => 'Within 1 to 2 hours of birth',
+        'category' => 'At Birth / Day 1',
+        'description' => 'Single intramuscular injection of Vitamin K1 (0.5–1.0 mg) in the anterolateral thigh to prevent Vitamin K Deficiency Bleeding (VKDB).',
+    ],
+    [
+        'title' => 'Hepatitis B Vaccination (Birth Dose)',
+        'timing' => 'Within 24 hours of birth',
+        'category' => 'At Birth / Day 1',
+        'description' => 'Administer the initial Hepatitis B vaccine intramuscularly on the other thigh within 24 hours to prevent mother-to-child transmission.',
+    ],
+    [
+        'title' => 'BCG Vaccine (Tuberculosis)',
+        'timing' => 'At birth or before hospital discharge',
+        'category' => 'At Birth / Day 1',
+        'description' => 'Intradermal vaccine on the right deltoid providing life-saving protection against severe disseminated tuberculosis and TB meningitis.',
+    ],
+    [
+        'title' => 'Newborn Screening (NBS / ENBS)',
+        'timing' => '24 to 48 hours after birth',
+        'category' => '24–48 Hours',
+        'description' => 'Heel-prick dried blood spot test (Expanded NBS, RA 9288) screening for 29+ metabolic, endocrine, and genetic conditions before symptoms appear.',
+    ],
+    [
+        'title' => 'Newborn Hearing Screening (NHS)',
+        'timing' => 'Before discharge / within 1st month',
+        'category' => 'Before Discharge',
+        'description' => 'Universal Newborn Hearing Screening (OAE or ABR, RA 9709) to detect congenital hearing impairments early for timely speech development.',
+    ],
+    [
+        'title' => 'Clean & Dry Umbilical Cord Care',
+        'timing' => 'Daily throughout first 1–2 weeks',
+        'category' => 'First Weeks',
+        'description' => 'Keep the cord stump clean, exposed to air, and dry. Do not apply alcohol, betadine, or powders. Fold diapers below the stump.',
+    ],
+    [
+        'title' => 'Thermal Protection & Delayed Bathing',
+        'timing' => 'Delay first bath at least 24 hours',
+        'category' => 'First Days',
+        'description' => 'Postpone the baby’s first full bath for at least 24 hours (or minimum 6 hours) to prevent hypothermia and preserve natural skin flora.',
+    ],
+];
+
+function seed_default_newborn_care($pdo, $userId, $pregnancyId = null) {
+    if (empty($userId)) return;
+    if (!$pregnancyId) {
+        $pregnancyId = get_active_pregnancy_id($pdo, $userId);
+    }
+
+    if ($pregnancyId) {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM newborn_care_checklist WHERE user_id=? AND pregnancy_id=?");
+        $stmt->execute([$userId, $pregnancyId]);
+    } else {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM newborn_care_checklist WHERE user_id=?");
+        $stmt->execute([$userId]);
+    }
+    $count = (int)$stmt->fetchColumn();
+
+    if ($count === 0) {
+        $sort = 0;
+        $ins = $pdo->prepare("INSERT INTO newborn_care_checklist (id, user_id, pregnancy_id, title, timing_label, category, description, is_completed, sort_order, created_at) VALUES (?,?,?,?,?,?,?,0,?,?)");
+        foreach (DEFAULT_NEWBORN_CARE as $item) {
+            $ins->execute([
+                uid('enc'),
+                $userId,
+                $pregnancyId,
+                $item['title'],
+                $item['timing'],
+                $item['category'],
+                $item['description'],
+                $sort++,
+                now_iso(),
+            ]);
+        }
+    }
+}
+
+function get_user_newborn_care_items($pdo, $userId, $pregnancyId = null) {
+    if (empty($userId)) return [];
+    if (!$pregnancyId) {
+        $pregnancyId = get_active_pregnancy_id($pdo, $userId);
+    }
+
+    seed_default_newborn_care($pdo, $userId, $pregnancyId);
+
+    if ($pregnancyId) {
+        $stmt = $pdo->prepare("SELECT * FROM newborn_care_checklist WHERE user_id=? AND pregnancy_id=? ORDER BY sort_order ASC, id ASC");
+        $stmt->execute([$userId, $pregnancyId]);
+    } else {
+        $stmt = $pdo->prepare("SELECT * FROM newborn_care_checklist WHERE user_id=? ORDER BY sort_order ASC, id ASC");
+        $stmt->execute([$userId]);
+    }
+    return $stmt->fetchAll() ?: [];
+}
+
+function toggle_newborn_care_item($pdo, $userId, $itemId, $completed, $pregnancyId = null) {
+    if (empty($userId) || empty($itemId)) return false;
+    $completedInt = $completed ? 1 : 0;
+    $completedAt = $completedInt ? now_iso() : null;
+
+    $stmt = $pdo->prepare("UPDATE newborn_care_checklist SET is_completed = ?, completed_at = ? WHERE id = ? AND user_id = ?");
+    $stmt->execute([$completedInt, $completedAt, $itemId, $userId]);
+
+    // Check item title to sync with baby_vaccinations if applicable
+    $tStmt = $pdo->prepare("SELECT title FROM newborn_care_checklist WHERE id = ?");
+    $tStmt->execute([$itemId]);
+    $title = $tStmt->fetchColumn() ?: '';
+
+    if (!empty($title)) {
+        $today = date('Y-m-d');
+        if (stripos($title, 'BCG') !== false) {
+            $pdo->prepare("UPDATE baby_vaccinations SET given = ?, given_date = ? WHERE user_id = ? AND vaccine_name LIKE '%BCG%'")
+                ->execute([$completedInt, $completedInt ? $today : null, $userId]);
+        } elseif (stripos($title, 'Newborn Screening') !== false) {
+            $pdo->prepare("UPDATE baby_vaccinations SET given = ?, given_date = ? WHERE user_id = ? AND vaccine_name LIKE '%Newborn Screening%'")
+                ->execute([$completedInt, $completedInt ? $today : null, $userId]);
+        } elseif (stripos($title, 'Hepatitis B') !== false) {
+            $pdo->prepare("UPDATE baby_vaccinations SET given = ?, given_date = ? WHERE user_id = ? AND vaccine_name LIKE '%Hepatitis B%'")
+                ->execute([$completedInt, $completedInt ? $today : null, $userId]);
+        }
+    }
+
+    return true;
+}
+
+function toggle_baby_vaccine_item($pdo, $userId, $vaxId, $given) {
+    if (empty($userId) || empty($vaxId)) return false;
+    $givenInt = $given ? 1 : 0;
+    $givenDate = $givenInt ? date('Y-m-d') : null;
+
+    $stmt = $pdo->prepare("UPDATE baby_vaccinations SET given = ?, given_date = ? WHERE id = ? AND user_id = ?");
+    $stmt->execute([$givenInt, $givenDate, $vaxId, $userId]);
+
+    $tStmt = $pdo->prepare("SELECT vaccine_name FROM baby_vaccinations WHERE id = ?");
+    $tStmt->execute([$vaxId]);
+    $vaxName = $tStmt->fetchColumn() ?: '';
+
+    if (!empty($vaxName)) {
+        if (stripos($vaxName, 'BCG') !== false) {
+            $pdo->prepare("UPDATE newborn_care_checklist SET is_completed = ?, completed_at = ? WHERE user_id = ? AND title LIKE '%BCG%'")
+                ->execute([$givenInt, $givenInt ? now_iso() : null, $userId]);
+        } elseif (stripos($vaxName, 'Newborn Screening') !== false) {
+            $pdo->prepare("UPDATE newborn_care_checklist SET is_completed = ?, completed_at = ? WHERE user_id = ? AND title LIKE '%Newborn Screening%'")
+                ->execute([$givenInt, $givenInt ? now_iso() : null, $userId]);
+        } elseif (stripos($vaxName, 'Hepatitis B') !== false) {
+            $pdo->prepare("UPDATE newborn_care_checklist SET is_completed = ?, completed_at = ? WHERE user_id = ? AND title LIKE '%Hepatitis B%'")
+                ->execute([$givenInt, $givenInt ? now_iso() : null, $userId]);
+        }
+    }
+
+    return true;
+}
+
+// Trends on readings (Weight, BP, Heart Rate) for Daily, Weekly, and Monthly basis
+function compute_vitals_trends($pdo, $userId, $pregnancyId = null) {
+    if (empty($userId)) return ['daily' => [], 'weekly' => [], 'monthly' => [], 'summary' => []];
+    if (!$pregnancyId) {
+        $pregnancyId = get_active_pregnancy_id($pdo, $userId);
+    }
+
+    if ($pregnancyId) {
+        $stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? AND pregnancy_id = ? ORDER BY date ASC");
+        $stmt->execute([$userId, $pregnancyId]);
+    } else {
+        $stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? ORDER BY date ASC");
+        $stmt->execute([$userId]);
+    }
+    $allLogs = $stmt->fetchAll() ?: [];
+
+    // 1. Daily Readings (each vital check-in in chronological order, up to last 20 readings)
+    $vitalsLogs = [];
+    foreach ($allLogs as $row) {
+        if (!empty($row['bp_sys']) || !empty($row['weight_kg'])) {
+            $vitalsLogs[] = $row;
+        }
+    }
+    $recentLogs = array_slice($vitalsLogs, -20);
+
+    // Count entries per calendar day to show time if multiple on same day
+    $dateCounts = [];
+    foreach ($recentLogs as $row) {
+        $d = substr($row['date'], 0, 10);
+        $dateCounts[$d] = ($dateCounts[$d] ?? 0) + 1;
+    }
+
+    $dailyTrends = [];
+    foreach ($recentLogs as $row) {
+        $t = strtotime($row['date']);
+        $dKey = substr($row['date'], 0, 10);
+        $hasTime = ($dateCounts[$dKey] ?? 0) > 1;
+
+        $label = $hasTime ? date('M j, Y g:i A', $t) : date('M j, Y', $t);
+        $shortLabel = $hasTime ? date('M j, g:ia', $t) : date('M j', $t);
+
+        $sys = !empty($row['bp_sys']) ? (int)$row['bp_sys'] : null;
+        $dia = !empty($row['bp_dia']) ? (int)$row['bp_dia'] : null;
+        $wt = !empty($row['weight_kg']) ? round((float)$row['weight_kg'], 1) : null;
+
+        $bpCat = 'Normal';
+        $bpColor = '#64748B';
+        if ($sys && $dia) {
+            if ($sys >= 140 || $dia >= 90) {
+                $bpCat = 'High (Stage 2)';
+                $bpColor = '#DC2626';
+            } elseif ($sys >= 130 || $dia >= 80) {
+                $bpCat = 'Stage 1';
+                $bpColor = '#64748B';
+            } elseif ($sys >= 120 && $dia < 80) {
+                $bpCat = 'Elevated';
+                $bpColor = '#64748B';
+            }
+        }
+
+        $dailyTrends[] = [
+            'id' => $row['id'],
+            'period' => $row['date'],
+            'label' => $label,
+            'short_label' => $shortLabel,
+            'count' => 1,
+            'avg_sys' => $sys,
+            'avg_dia' => $dia,
+            'min_sys' => $sys,
+            'max_sys' => $sys,
+            'bp_display' => ($sys && $dia) ? "{$sys}/{$dia}" : '—',
+            'bp_category' => $bpCat,
+            'bp_color' => $bpColor,
+            'avg_weight' => $wt,
+            'min_weight' => $wt,
+            'max_weight' => $wt,
+            'weight_display' => $wt ? "{$wt} kg" : '—',
+        ];
+    }
+
+    // 2. Weekly trends (group by Year + Week number: YYYY-Www)
+    $weeklyMap = [];
+    foreach ($allLogs as $row) {
+        $time = strtotime($row['date']);
+        if (!$time) continue;
+        $weekKey = date('o-\WW', $time);
+        if (!isset($weeklyMap[$weekKey])) {
+            $startOfWeek = date('M j', strtotime(date('Y-\WW-1', $time)));
+            $endOfWeek = date('M j', strtotime(date('Y-\WW-7', $time)));
+            $weeklyMap[$weekKey] = [
+                'period' => $weekKey,
+                'label' => "Week " . (int)date('W', $time) . " ({$startOfWeek}–{$endOfWeek})",
+                'short_label' => "Wk " . (int)date('W', $time),
+                'sys_list' => [],
+                'dia_list' => [],
+                'weight_list' => [],
+                'count' => 0,
+            ];
+        }
+        $weeklyMap[$weekKey]['count']++;
+        if (!empty($row['bp_sys'])) $weeklyMap[$weekKey]['sys_list'][] = (int)$row['bp_sys'];
+        if (!empty($row['bp_dia'])) $weeklyMap[$weekKey]['dia_list'][] = (int)$row['bp_dia'];
+        if (!empty($row['weight_kg'])) $weeklyMap[$weekKey]['weight_list'][] = (float)$row['weight_kg'];
+    }
+
+    $weeklyTrends = [];
+    $prevWeekWeight = null;
+    foreach ($weeklyMap as $wKey => $w) {
+        $avgSys = count($w['sys_list']) ? (int)round(array_sum($w['sys_list']) / count($w['sys_list'])) : null;
+        $avgDia = count($w['dia_list']) ? (int)round(array_sum($w['dia_list']) / count($w['dia_list'])) : null;
+        $avgWeight = count($w['weight_list']) ? round(array_sum($w['weight_list']) / count($w['weight_list']), 1) : null;
+        $weightDelta = ($avgWeight !== null && $prevWeekWeight !== null) ? round($avgWeight - $prevWeekWeight, 2) : 0;
+        if ($avgWeight !== null) $prevWeekWeight = $avgWeight;
+
+        $bpCat = 'Normal';
+        $bpColor = '#64748B';
+        if ($avgSys && $avgDia) {
+            if ($avgSys >= 140 || $avgDia >= 90) {
+                $bpCat = 'High (Stage 2)';
+                $bpColor = '#DC2626';
+            } elseif ($avgSys >= 130 || $avgDia >= 80) {
+                $bpCat = 'Stage 1';
+                $bpColor = '#64748B';
+            } elseif ($avgSys >= 120 && $avgDia < 80) {
+                $bpCat = 'Elevated';
+                $bpColor = '#64748B';
+            }
+        }
+
+        $weeklyTrends[] = [
+            'period' => $wKey,
+            'label' => $w['label'],
+            'short_label' => $w['short_label'],
+            'count' => $w['count'],
+            'avg_sys' => $avgSys,
+            'avg_dia' => $avgDia,
+            'bp_display' => ($avgSys && $avgDia) ? "{$avgSys}/{$avgDia}" : '—',
+            'bp_category' => $bpCat,
+            'bp_color' => $bpColor,
+            'avg_weight' => $avgWeight,
+            'weight_delta' => $weightDelta,
+            'weight_display' => $avgWeight ? "{$avgWeight} kg" : '—',
+        ];
+    }
+    $weeklyTrends = array_slice($weeklyTrends, -12);
+
+    // 3. Monthly trends (group by YYYY-MM)
+    $monthlyMap = [];
+    foreach ($allLogs as $row) {
+        $mKey = substr($row['date'], 0, 7);
+        if (!$mKey || strlen($mKey) !== 7) continue;
+        if (!isset($monthlyMap[$mKey])) {
+            $time = strtotime($mKey . '-01');
+            $monthlyMap[$mKey] = [
+                'period' => $mKey,
+                'label' => date('F Y', $time),
+                'short_label' => date('M Y', $time),
+                'sys_list' => [],
+                'dia_list' => [],
+                'weight_list' => [],
+                'count' => 0,
+            ];
+        }
+        $monthlyMap[$mKey]['count']++;
+        if (!empty($row['bp_sys'])) $monthlyMap[$mKey]['sys_list'][] = (int)$row['bp_sys'];
+        if (!empty($row['bp_dia'])) $monthlyMap[$mKey]['dia_list'][] = (int)$row['bp_dia'];
+        if (!empty($row['weight_kg'])) $monthlyMap[$mKey]['weight_list'][] = (float)$row['weight_kg'];
+    }
+
+    $monthlyTrends = [];
+    $prevMonthWeight = null;
+    foreach ($monthlyMap as $mKey => $m) {
+        $avgSys = count($m['sys_list']) ? (int)round(array_sum($m['sys_list']) / count($m['sys_list'])) : null;
+        $avgDia = count($m['dia_list']) ? (int)round(array_sum($m['dia_list']) / count($m['dia_list'])) : null;
+        $avgWeight = count($m['weight_list']) ? round(array_sum($m['weight_list']) / count($m['weight_list']), 1) : null;
+        $weightDelta = ($avgWeight !== null && $prevMonthWeight !== null) ? round($avgWeight - $prevMonthWeight, 2) : 0;
+        if ($avgWeight !== null) $prevMonthWeight = $avgWeight;
+
+        $bpCat = 'Normal';
+        $bpColor = '#64748B';
+        if ($avgSys && $avgDia) {
+            if ($avgSys >= 140 || $avgDia >= 90) {
+                $bpCat = 'High (Stage 2)';
+                $bpColor = '#DC2626';
+            } elseif ($avgSys >= 130 || $avgDia >= 80) {
+                $bpCat = 'Stage 1';
+                $bpColor = '#64748B';
+            } elseif ($avgSys >= 120 && $avgDia < 80) {
+                $bpCat = 'Elevated';
+                $bpColor = '#64748B';
+            }
+        }
+
+        $monthlyTrends[] = [
+            'period' => $mKey,
+            'label' => $m['label'],
+            'short_label' => $m['short_label'],
+            'count' => $m['count'],
+            'avg_sys' => $avgSys,
+            'avg_dia' => $avgDia,
+            'bp_display' => ($avgSys && $avgDia) ? "{$avgSys}/{$avgDia}" : '—',
+            'bp_category' => $bpCat,
+            'bp_color' => $bpColor,
+            'avg_weight' => $avgWeight,
+            'weight_delta' => $weightDelta,
+            'weight_display' => $avgWeight ? "{$avgWeight} kg" : '—',
+        ];
+    }
+    $monthlyTrends = array_slice($monthlyTrends, -10);
+
+    // Summary Insights
+    $latestVital = end($allLogs) ?: null;
+    $firstWeight = null;
+    $latestWeight = null;
+    foreach ($allLogs as $row) {
+        if (!empty($row['weight_kg'])) {
+            if ($firstWeight === null) $firstWeight = (float)$row['weight_kg'];
+            $latestWeight = (float)$row['weight_kg'];
+        }
+    }
+    $totalWeightGain = ($firstWeight !== null && $latestWeight !== null) ? round($latestWeight - $firstWeight, 1) : 0;
+
+    return [
+        'daily' => $dailyTrends,
+        'weekly' => $weeklyTrends,
+        'monthly' => $monthlyTrends,
+        'summary' => [
+            'latest_bp' => ($latestVital && !empty($latestVital['bp_sys'])) ? "{$latestVital['bp_sys']}/{$latestVital['bp_dia']}" : '—',
+            'latest_weight' => $latestWeight ? "{$latestWeight} kg" : '—',
+            'total_weight_gain' => $totalWeightGain >= 0 ? "+{$totalWeightGain} kg" : "{$totalWeightGain} kg",
+            'total_readings' => count($allLogs),
+        ]
+    ];
+}
+
+// Symptom trends on readings for Daily, Weekly, and Monthly basis
+function compute_symptoms_trends($pdo, $userId, $pregnancyId = null) {
+    if (empty($userId)) return ['daily' => [], 'weekly' => [], 'monthly' => [], 'summary' => []];
+    if (!$pregnancyId) {
+        $pregnancyId = get_active_pregnancy_id($pdo, $userId);
+    }
+
+    if ($pregnancyId) {
+        $stmt = $pdo->prepare("
+            SELECT sl.id, sl.date, sl.pregnancy_id,
+                   COUNT(CASE WHEN sli.severity != 'None' THEN 1 END) AS symptom_count,
+                   SUM(CASE 
+                        WHEN sli.severity = 'Severe' THEN 3
+                        WHEN sli.severity = 'Moderate' THEN 2
+                        WHEN sli.severity = 'Mild' THEN 1
+                        ELSE 0 END) AS intensity_score,
+                   SUM(CASE WHEN sli.severity = 'Severe' THEN 1 ELSE 0 END) AS severe_count,
+                   SUM(CASE WHEN sli.severity = 'Moderate' THEN 1 ELSE 0 END) AS moderate_count,
+                   SUM(CASE WHEN sli.severity = 'Mild' THEN 1 ELSE 0 END) AS mild_count,
+                   GROUP_CONCAT(CASE WHEN sli.severity != 'None' THEN CONCAT(COALESCE(sc.name, sli.symptom_id), ' (', sli.severity, ')') END SEPARATOR ', ') AS symptoms_list
+            FROM symptom_logs sl
+            LEFT JOIN symptom_log_items sli ON sli.symptom_log_id = sl.id
+            LEFT JOIN symptom_catalog sc ON sc.id = sli.symptom_id
+            WHERE sl.user_id = ? AND sl.pregnancy_id = ?
+            GROUP BY sl.id
+            ORDER BY sl.date ASC
+        ");
+        $stmt->execute([$userId, $pregnancyId]);
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT sl.id, sl.date, sl.pregnancy_id,
+                   COUNT(CASE WHEN sli.severity != 'None' THEN 1 END) AS symptom_count,
+                   SUM(CASE 
+                        WHEN sli.severity = 'Severe' THEN 3
+                        WHEN sli.severity = 'Moderate' THEN 2
+                        WHEN sli.severity = 'Mild' THEN 1
+                        ELSE 0 END) AS intensity_score,
+                   SUM(CASE WHEN sli.severity = 'Severe' THEN 1 ELSE 0 END) AS severe_count,
+                   SUM(CASE WHEN sli.severity = 'Moderate' THEN 1 ELSE 0 END) AS moderate_count,
+                   SUM(CASE WHEN sli.severity = 'Mild' THEN 1 ELSE 0 END) AS mild_count,
+                   GROUP_CONCAT(CASE WHEN sli.severity != 'None' THEN CONCAT(COALESCE(sc.name, sli.symptom_id), ' (', sli.severity, ')') END SEPARATOR ', ') AS symptoms_list
+            FROM symptom_logs sl
+            LEFT JOIN symptom_log_items sli ON sli.symptom_log_id = sl.id
+            LEFT JOIN symptom_catalog sc ON sc.id = sli.symptom_id
+            WHERE sl.user_id = ?
+            GROUP BY sl.id
+            ORDER BY sl.date ASC
+        ");
+        $stmt->execute([$userId]);
+    }
+
+    $allLogs = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    // 1. Daily Readings (each check-in in chronological order, up to last 20 readings)
+    $recentLogs = array_slice($allLogs, -20);
+
+    $dateCounts = [];
+    foreach ($recentLogs as $row) {
+        $d = substr($row['date'], 0, 10);
+        $dateCounts[$d] = ($dateCounts[$d] ?? 0) + 1;
+    }
+
+    $dailyTrends = [];
+    foreach ($recentLogs as $row) {
+        $t = strtotime($row['date']);
+        $dKey = substr($row['date'], 0, 10);
+        $hasTime = ($dateCounts[$dKey] ?? 0) > 1;
+
+        $label = $hasTime ? date('M j, Y g:i A', $t) : date('M j, Y', $t);
+        $shortLabel = $hasTime ? date('M j, g:ia', $t) : date('M j', $t);
+
+        $sCount = (int)$row['symptom_count'];
+        $iScore = (int)($row['intensity_score'] ?? 0);
+        $sevCount = (int)$row['severe_count'];
+        $modCount = (int)$row['moderate_count'];
+
+        $alertLevel = 'green';
+        if ($sevCount > 0 || $sCount >= 5) {
+            $alertLevel = 'red';
+        } elseif ($modCount > 0 || $sCount >= 3) {
+            $alertLevel = 'yellow';
+        }
+
+        $dailyTrends[] = [
+            'id' => $row['id'],
+            'period' => $row['date'],
+            'label' => $label,
+            'short_label' => $shortLabel,
+            'count' => 1,
+            'symptom_count' => $sCount,
+            'intensity_score' => $iScore,
+            'severe_count' => $sevCount,
+            'moderate_count' => $modCount,
+            'mild_count' => (int)$row['mild_count'],
+            'symptoms_list' => $row['symptoms_list'] ?: 'No symptoms reported',
+            'alert_level' => $alertLevel,
+            'display_count' => $sCount . ' ' . ($sCount === 1 ? 'symptom' : 'symptoms'),
+        ];
+    }
+
+    // 2. Weekly trends (group by Year + Week number: YYYY-Www)
+    $weeklyMap = [];
+    foreach ($allLogs as $row) {
+        $t = strtotime($row['date']);
+        $wKey = date('o-\WW', $t);
+        if (!isset($weeklyMap[$wKey])) {
+            $weeklyMap[$wKey] = [
+                'period' => $wKey,
+                'min_date' => $row['date'],
+                'max_date' => $row['date'],
+                'counts' => [],
+                'intensities' => [],
+                'entries' => 0,
+            ];
+        }
+        $weeklyMap[$wKey]['counts'][] = (int)$row['symptom_count'];
+        $weeklyMap[$wKey]['intensities'][] = (int)($row['intensity_score'] ?? 0);
+        $weeklyMap[$wKey]['entries']++;
+        if ($row['date'] > $weeklyMap[$wKey]['max_date']) $weeklyMap[$wKey]['max_date'] = $row['date'];
+    }
+
+    $weeklyTrends = [];
+    foreach ($weeklyMap as $wKey => $data) {
+        $avgCount = count($data['counts']) ? round(array_sum($data['counts']) / count($data['counts']), 1) : 0;
+        $maxCount = count($data['counts']) ? max($data['counts']) : 0;
+        $avgIntensity = count($data['intensities']) ? round(array_sum($data['intensities']) / count($data['intensities']), 1) : 0;
+
+        $t = strtotime($data['max_date']);
+        $label = 'Week ' . date('W, Y', $t);
+        $shortLabel = 'W' . date('W', $t);
+
+        $weeklyTrends[] = [
+            'period' => $wKey,
+            'label' => $label,
+            'short_label' => $shortLabel,
+            'count' => $data['entries'],
+            'symptom_count' => $avgCount,
+            'avg_symptom_count' => $avgCount,
+            'max_symptom_count' => $maxCount,
+            'intensity_score' => $avgIntensity,
+            'avg_intensity' => $avgIntensity,
+            'display_count' => $avgCount . ' avg',
+        ];
+    }
+
+    // 3. Monthly trends (group by Year + Month: YYYY-MM)
+    $monthlyMap = [];
+    foreach ($allLogs as $row) {
+        $t = strtotime($row['date']);
+        $mKey = date('Y-m', $t);
+        if (!isset($monthlyMap[$mKey])) {
+            $monthlyMap[$mKey] = [
+                'period' => $mKey,
+                'min_date' => $row['date'],
+                'max_date' => $row['date'],
+                'counts' => [],
+                'intensities' => [],
+                'entries' => 0,
+            ];
+        }
+        $monthlyMap[$mKey]['counts'][] = (int)$row['symptom_count'];
+        $monthlyMap[$mKey]['intensities'][] = (int)($row['intensity_score'] ?? 0);
+        $monthlyMap[$mKey]['entries']++;
+        if ($row['date'] > $monthlyMap[$mKey]['max_date']) $monthlyMap[$mKey]['max_date'] = $row['date'];
+    }
+
+    $monthlyTrends = [];
+    foreach ($monthlyMap as $mKey => $data) {
+        $avgCount = count($data['counts']) ? round(array_sum($data['counts']) / count($data['counts']), 1) : 0;
+        $maxCount = count($data['counts']) ? max($data['counts']) : 0;
+        $avgIntensity = count($data['intensities']) ? round(array_sum($data['intensities']) / count($data['intensities']), 1) : 0;
+
+        $t = strtotime($data['max_date']);
+        $label = date('F Y', $t);
+        $shortLabel = date('M', $t);
+
+        $monthlyTrends[] = [
+            'period' => $mKey,
+            'label' => $label,
+            'short_label' => $shortLabel,
+            'count' => $data['entries'],
+            'symptom_count' => $avgCount,
+            'avg_symptom_count' => $avgCount,
+            'max_symptom_count' => $maxCount,
+            'intensity_score' => $avgIntensity,
+            'avg_intensity' => $avgIntensity,
+            'display_count' => $avgCount . ' avg',
+        ];
+    }
+
+    $lastDaily = !empty($dailyTrends) ? end($dailyTrends) : null;
+    $summary = [
+        'total_checkins' => count($allLogs),
+        'latest_count' => $lastDaily ? $lastDaily['symptom_count'] : 0,
+        'latest_intensity' => $lastDaily ? $lastDaily['intensity_score'] : 0,
+        'latest_date' => $lastDaily ? $lastDaily['period'] : null,
+        'peak_symptoms' => !empty($allLogs) ? max(array_column($allLogs, 'symptom_count')) : 0,
+    ];
+
+    return [
+        'daily' => $dailyTrends,
+        'weekly' => $weeklyTrends,
+        'monthly' => $monthlyTrends,
+        'summary' => $summary,
+    ];
+}
+
+function render_symptoms_trend_analysis_chart_svg($items) {
+    if (empty($items)) {
+        return '<div style="text-align:center;padding:36px 12px;color:#94a3b8;font-size:13px;background:#f8fafc;border-radius:14px;margin-bottom:14px;">
+          <i class="fa-regular fa-chart-line" style="font-size:28px;margin-bottom:6px;display:block;color:#cbd5e1;"></i>
+          No symptom check-ins recorded yet in this timeframe.
+        </div>';
+    }
+
+    $n = count($items);
+    $svgW = 540;
+    $svgH = 220;
+    $plotLeft = 46;
+    $plotRight = 410;
+    $plotTop = 22;
+    $plotBottom = 180;
+    $plotW = $plotRight - $plotLeft;
+    $plotH = $plotBottom - $plotTop;
+
+    $counts = array_map(fn($it) => (float)($it['symptom_count'] ?? 0), $items);
+    $intensities = array_map(fn($it) => (float)($it['intensity_score'] ?? 0), $items);
+
+    $maxVal = max(array_merge($counts, $intensities, [4]));
+    $yMin = 0;
+    $yMax = (int)ceil($maxVal + 1);
+    if ($yMax < 4) $yMax = 4;
+    $step = ($yMax > 10) ? 2 : 1;
+
+    $yTicks = [];
+    for ($v = $yMin; $v <= $yMax; $v += $step) {
+        $yTicks[] = $v;
+    }
+
+    $getY = function($val) use ($yMin, $yMax, $plotTop, $plotBottom, $plotH) {
+        if ($yMax == $yMin) return ($plotTop + $plotBottom) / 2;
+        $ratio = ($val - $yMin) / ($yMax - $yMin);
+        return $plotBottom - ($ratio * $plotH);
+    };
+
+    $getX = function($idx) use ($n, $plotLeft, $plotW) {
+        if ($n <= 1) return $plotLeft + ($plotW / 2);
+        return $plotLeft + (($idx / ($n - 1)) * $plotW);
+    };
+
+    $out = '<div style="width:100%;overflow-x:auto;padding-bottom:4px;margin-bottom:14px;">';
+    $out .= '<svg viewBox="0 0 540 220" style="width:100%;min-width:320px;height:auto;display:block;" xmlns="http://www.w3.org/2000/svg">';
+    
+    // 1. Horizontal grid lines & Y labels
+    foreach ($yTicks as $tick) {
+        $y = $getY($tick);
+        $out .= '<line x1="' . $plotLeft . '" y1="' . $y . '" x2="' . ($plotRight + 20) . '" y2="' . $y . '" stroke="#E2E8F0" stroke-width="1.2" />';
+        $out .= '<text x="' . ($plotLeft - 8) . '" y="' . ($y + 4) . '" text-anchor="end" font-size="11" font-weight="600" fill="#64748B">' . $tick . '</text>';
+    }
+
+    // 2. Base X axis line
+    $out .= '<line x1="' . $plotLeft . '" y1="' . $plotBottom . '" x2="' . ($plotRight + 20) . '" y2="' . $plotBottom . '" stroke="#94A3B8" stroke-width="1.8" />';
+
+    // 3. X labels
+    for ($i = 0; $i < $n; $i++) {
+        $x = $getX($i);
+        $lbl = $items[$i]['short_label'] ?? $items[$i]['period'] ?? '';
+        $out .= '<text x="' . $x . '" y="' . ($plotBottom + 18) . '" text-anchor="middle" font-size="11" font-weight="600" fill="#64748B">' . htmlspecialchars($lbl) . '</text>';
+    }
+
+    $countPoints = [];
+    $intensityPoints = [];
+    $lastCountPt = null;
+    $lastIntensityPt = null;
+
+    for ($i = 0; $i < $n; $i++) {
+        $x = $getX($i);
+        $cVal = (float)($items[$i]['symptom_count'] ?? 0);
+        $iVal = (float)($items[$i]['intensity_score'] ?? 0);
+
+        $yC = $getY($cVal);
+        $countPoints[] = [$x, $yC, $cVal];
+        $lastCountPt = [$x, $yC, $cVal];
+
+        $yI = $getY($iVal);
+        $intensityPoints[] = [$x, $yI, $iVal];
+        $lastIntensityPt = [$x, $yI, $iVal];
+    }
+
+    // Draw Intensity line & dots (#02848F Cyan/Teal)
+    if (count($intensityPoints) > 1) {
+        $ptsStr = implode(' ', array_map(fn($p) => round($p[0],1) . ',' . round($p[1],1), $intensityPoints));
+        $out .= '<polyline fill="none" stroke="#02848F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="' . $ptsStr . '" />';
+    } elseif (count($intensityPoints) === 1) {
+        $p = $intensityPoints[0];
+        $out .= '<line x1="' . $plotLeft . '" y1="' . round($p[1],1) . '" x2="' . ($plotRight + 10) . '" y2="' . round($p[1],1) . '" stroke="#02848F" stroke-width="2" stroke-dasharray="4,4" opacity="0.6" />';
+    }
+    foreach ($intensityPoints as $p) {
+        $out .= '<circle cx="' . round($p[0],1) . '" cy="' . round($p[1],1) . '" r="5" fill="#02848F" stroke="#FFFFFF" stroke-width="2" />';
+    }
+
+    // Draw Symptom Count line & dots (#246944 Forest Green)
+    if (count($countPoints) > 1) {
+        $ptsStr = implode(' ', array_map(fn($p) => round($p[0],1) . ',' . round($p[1],1), $countPoints));
+        $out .= '<polyline fill="none" stroke="#246944" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" points="' . $ptsStr . '" />';
+    } elseif (count($countPoints) === 1) {
+        $p = $countPoints[0];
+        $out .= '<line x1="' . $plotLeft . '" y1="' . round($p[1],1) . '" x2="' . ($plotRight + 10) . '" y2="' . round($p[1],1) . '" stroke="#246944" stroke-width="2" stroke-dasharray="4,4" opacity="0.6" />';
+    }
+    foreach ($countPoints as $p) {
+        $isHigh = ($p[2] >= 5);
+        $cColor = $isHigh ? '#DC2626' : '#246944';
+        $out .= '<circle cx="' . round($p[0],1) . '" cy="' . round($p[1],1) . '" r="5.5" fill="' . $cColor . '" stroke="#FFFFFF" stroke-width="2" />';
+    }
+
+    // Terminal Callouts
+    if ($lastCountPt) {
+        $cVal = $lastCountPt[2];
+        $isHigh = ($cVal >= 5);
+        $col = $isHigh ? '#DC2626' : '#246944';
+        $lbl = $cVal . ($cVal == 1 ? ' symptom' : ' symptoms');
+        $out .= '<text x="' . round($lastCountPt[0] + 8, 1) . '" y="' . round($lastCountPt[1] + 4, 1) . '" fill="' . $col . '" font-size="12.5" font-weight="800">' . $lbl . '</text>';
+    }
+    if ($lastIntensityPt) {
+        $iVal = $lastIntensityPt[2];
+        $out .= '<text x="' . round($lastIntensityPt[0] + 8, 1) . '" y="' . round($lastIntensityPt[1] + 4, 1) . '" fill="#02848F" font-size="12.5" font-weight="800">Score ' . $iVal . '</text>';
+    }
+
+    $out .= '</svg></div>';
+    return $out;
 }
 
 // Default hospital bag checklist — seeded once, then the user can check items
 // off and add their own; nothing here is a static/unsaved list.
 const DEFAULT_HOSPITAL_BAG = [
-    'For Mom' => ['Phil Health/ MDR/Marriage Contract and PSA Birth Certificate', 'Comfortable robe or nightgown', 'Nursing bra and pads', 'Toiletries', 'Going-home outfit', 'Phone charger'],
-    'For Baby' => ['Going-home outfit', 'Diapers (newborn size)', 'Baby blanket', 'Baby wipes', 'Mittens and socks'],
-    'For Partner/Support' => ['Snacks and water', 'Change of clothes', 'Camera or phone charger', 'Entertainment (book, tablet)'],
+    'The Grab-and-Go Folder' => [
+        "2 valid IDs (yours and your partner's)",
+        'PhilHealth MDR & HMO card / LOA',
+        'Prenatal record book & latest lab results',
+        "PSA Marriage Certificate (if using the father's surname)",
+    ],
+    '2. For Mom' => [
+        '2 front-opening nightgowns or button-down pajama sets.',
+        '1 going-home outfit.',
+        '2 comfortable, wire-free nursing bras.',
+        'Breast pump & bottles.',
+    ],
+    '3. For Baby' => [
+        '3 tie-side tops (barubaruan)',
+        '3 pajama pants (or 3 zip-up footed sleepers).',
+        '3 pairs of mittens and booties',
+        '1 soft cotton beanie.',
+        '1 pack (24–30 count) of newborn diapers.',
+        '1 pack of unscented water wipes.',
+        '4 cotton lampin (burp cloths).',
+    ],
 ];
-function seed_default_hospital_bag($pdo, $userId){
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM hospital_bag_items WHERE user_id=?");
-    $stmt->execute([$userId]);
-    if ((int)$stmt->fetchColumn() > 0) return;
 
-    $sort = 0;
-    foreach (DEFAULT_HOSPITAL_BAG as $cat => $items){
-        foreach ($items as $label){
-            $pdo->prepare("INSERT INTO hospital_bag_items (id, user_id, label, category, sort_order) VALUES (?,?,?,?,?)")
-                ->execute([uid('bag'), $userId, $label, $cat, $sort++]);
+function ensure_hospital_bag_checklist($pdo, $userId, $pregnancyId = null) {
+    if (empty($userId)) return;
+    if ($pregnancyId === null) {
+        $pregnancyId = get_active_pregnancy_id($pdo, $userId);
+    }
+
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM hospital_bag_items WHERE user_id = ? AND pregnancy_id = ?");
+    $stmt->execute([$userId, $pregnancyId]);
+    $total = (int)$stmt->fetchColumn();
+
+    if ($total === 0) {
+        $ins = $pdo->prepare("INSERT INTO hospital_bag_items (id, user_id, pregnancy_id, label, category, is_checked, is_custom, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $s = 0;
+        foreach (DEFAULT_HOSPITAL_BAG as $cat => $items) {
+            foreach ($items as $label) {
+                $ins->execute([uid('bag'), $userId, $pregnancyId, $label, $cat, 0, 0, $s++]);
+            }
         }
     }
 }
+
+function seed_default_hospital_bag($pdo, $userId, $pregnancyId = null) {
+    ensure_hospital_bag_checklist($pdo, $userId, $pregnancyId);
+}
+
+// Run for all active patient accounts on startup/request
+try {
+    $allPatients = $pdo->query("SELECT id FROM users WHERE role='patient' UNION SELECT DISTINCT user_id FROM hospital_bag_items")->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($allPatients as $pId) {
+        ensure_hospital_bag_checklist($pdo, $pId);
+    }
+} catch (Throwable $e) {}
 
 // ---------- Language toggle (English / Bisaya) ----------
 // Only the shared chrome (nav, topbar, bottom nav) and a few key labels are
@@ -337,6 +1331,7 @@ function today_iso(){ return date('Y-m-d'); }
 // on every page load. Runs on every patient page load since this app has
 // no background/cron job runner.
 function check_ob_visit_reminder($pdo, $u){
+    $actPregId = get_active_pregnancy_id($pdo, $u['id']);
     $stmt = $pdo->prepare("SELECT next_ob_visit, edd FROM patient_profiles WHERE user_id=?");
     $stmt->execute([$u['id']]);
     $profile = $stmt->fetch();
@@ -354,11 +1349,11 @@ function check_ob_visit_reminder($pdo, $u){
             // Dedupe on the exact body text so each day (3, 2, 1, 0 days away) still
             // gets its own fresh reminder as the date gets closer, instead of only
             // ever firing once for the whole countdown.
-            $stmt = $pdo->prepare("SELECT id FROM notifications WHERE user_id=? AND title=? AND body=?");
-            $stmt->execute([$u['id'], 'OB-GYN Visit Reminder', $body]);
+            $stmt = $pdo->prepare("SELECT id FROM notifications WHERE user_id=? AND pregnancy_id=? AND title=? AND body=?");
+            $stmt->execute([$u['id'], $actPregId, 'OB-GYN Visit Reminder', $body]);
             if (!$stmt->fetch()){
-                $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
-                    ->execute([uid('ntf'), $u['id'], 'OB-GYN Visit Reminder', $body, now_iso(), 'ob_visit']);
+                $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+                    ->execute([uid('ntf'), $u['id'], $actPregId, 'OB-GYN Visit Reminder', $body, now_iso(), 'ob_visit']);
             }
         }
     }
@@ -373,14 +1368,91 @@ function check_ob_visit_reminder($pdo, $u){
                 ? "Today is your expected due date ({$eddLabel})! Contact your OB-GYN if labor signs begin."
                 : "Your expected due date is in {$daysToEdd} day(s), on {$eddLabel}.";
 
-            $stmt = $pdo->prepare("SELECT id FROM notifications WHERE user_id=? AND title=? AND body=?");
-            $stmt->execute([$u['id'], 'Due Date Reminder', $body]);
+            $stmt = $pdo->prepare("SELECT id FROM notifications WHERE user_id=? AND pregnancy_id=? AND title=? AND body=?");
+            $stmt->execute([$u['id'], $actPregId, 'Due Date Reminder', $body]);
             if (!$stmt->fetch()){
-                $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
-                    ->execute([uid('ntf'), $u['id'], 'Due Date Reminder', $body, now_iso(), 'due_date']);
+                $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+                    ->execute([uid('ntf'), $u['id'], $actPregId, 'Due Date Reminder', $body, now_iso(), 'due_date']);
             }
         }
     }
+}
+
+/**
+ * Checks if pregnancy has reached 6 months onward (Month 6-9, or 22+ weeks)
+ * and the hospital bag checklist is not checked (or incomplete). If so, sends a notification.
+ */
+function check_hospital_bag_reminder($pdo, $u){
+    if (empty($u['id'])) return;
+
+    $actPregId = get_active_pregnancy_id($pdo, $u['id']);
+    if (!$actPregId) return;
+
+    $stmt = $pdo->prepare("SELECT lmp, edd FROM patient_profiles WHERE user_id=?");
+    $stmt->execute([$u['id']]);
+    $profile = $stmt->fetch();
+    if (!$profile) return;
+
+    // Check if active pregnancy has custom EDD
+    $pStmt = $pdo->prepare("SELECT edd FROM pregnancies WHERE id = ? AND user_id = ?");
+    $pStmt->execute([$actPregId, $u['id']]);
+    $pregEdd = $pStmt->fetchColumn();
+    $eddToUse = $pregEdd ?: ($profile['edd'] ?? null);
+
+    $weeksPregnant = null;
+    if (!empty($profile['lmp'])) {
+        $diffSecs = time() - strtotime($profile['lmp']);
+        if ($diffSecs >= 0) {
+            $weeksPregnant = (int)floor($diffSecs / (7 * 86400));
+        }
+    } elseif (!empty($eddToUse)) {
+        $daysToEdd = (int)ceil((strtotime($eddToUse) - time()) / 86400);
+        $daysPregnant = max(0, 280 - $daysToEdd);
+        $weeksPregnant = (int)floor($daysPregnant / 7);
+    }
+
+    if ($weeksPregnant === null) return;
+    $month = get_pregnancy_month($weeksPregnant);
+
+    // Only trigger if pregnancy reaches 6 months onward (Month 6 to Month 9, or 22+ weeks)
+    if ($month < 6 && $weeksPregnant < 24) {
+        return;
+    }
+
+    // Ensure default hospital bag checklist items are seeded for this pregnancy
+    ensure_hospital_bag_checklist($pdo, $u['id'], $actPregId);
+
+    // Check count of items and checked status for active pregnancy
+    $stmtBag = $pdo->prepare("SELECT COUNT(*) AS total_count, COALESCE(SUM(is_checked), 0) AS checked_count FROM hospital_bag_items WHERE user_id = ? AND pregnancy_id = ?");
+    $stmtBag->execute([$u['id'], $actPregId]);
+    $stats = $stmtBag->fetch();
+    $totalCount = (int)($stats['total_count'] ?? 0);
+    $checkedCount = (int)($stats['checked_count'] ?? 0);
+
+    if ($totalCount === 0) return;
+
+    // If completely checked, no reminder needed
+    if ($checkedCount >= $totalCount) return;
+
+    // Deduplication 1: If there is already an unread hospital_bag notification, do not duplicate
+    $stmtUnread = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND pregnancy_id = ? AND kind = 'hospital_bag' AND is_read = 0");
+    $stmtUnread->execute([$u['id'], $actPregId]);
+    if ($stmtUnread->fetch()) return;
+
+    // Deduplication 2: Don't spam; only notify once every 5 days
+    $stmtRecent = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND pregnancy_id = ? AND kind = 'hospital_bag' AND date >= DATE_SUB(NOW(), INTERVAL 5 DAY)");
+    $stmtRecent->execute([$u['id'], $actPregId]);
+    if ($stmtRecent->fetch()) return;
+
+    $title = '👜 Prepare Your Hospital Bag';
+    if ($checkedCount === 0) {
+        $body = "You have reached Month {$month} of pregnancy (Week {$weeksPregnant})! Your hospital bag checklist has not been checked yet. Please start preparing your Grab-and-Go folder, clothes, and baby essentials so you are ready for delivery.";
+    } else {
+        $body = "You are in Month {$month} of pregnancy (Week {$weeksPregnant}). Your hospital bag is partially prepared ({$checkedCount} of {$totalCount} items checked). Please complete packing your remaining essentials before your due date!";
+    }
+
+    $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+        ->execute([uid('ntf'), $u['id'], $actPregId, $title, $body, now_iso(), 'hospital_bag']);
 }
 function redirect($path){ header("Location: $path"); exit; }
 
@@ -397,13 +1469,17 @@ function fmt_date($iso){
 }
 function fmt_datetime($iso){
     if (!$iso) return '—';
-    return date('M j, g:i A', strtotime($iso));
+    return date('M j, Y • g:i A', strtotime($iso));
 }
 function initials($name){
     $parts = preg_split('/\s+/', trim($name ?? '?'));
-    $init = '';
-    foreach (array_slice($parts, 0, 2) as $p) if ($p !== '') $init .= mb_strtoupper(mb_substr($p, 0, 1));
-    return $init ?: '?';
+    $parts = array_values(array_filter($parts, fn($p) => $p !== ''));
+    if (count($parts) >= 2) {
+        $first = mb_substr($parts[0], 0, 1);
+        $last = mb_substr(end($parts), 0, 1);
+        return mb_strtoupper($first . $last);
+    }
+    return mb_strtoupper(mb_substr($parts[0] ?? '?', 0, 2));
 }
 
 // ---------- 4. AUTH HELPERS ----------
@@ -585,6 +1661,18 @@ function baby_size_for_week($weeks){
     $weeks = max(4, min(40, (int)$weeks));
     return BABY_SIZE_BY_WEEK[$weeks] ?? ['Growing Baby','👶'];
 }
+function get_pregnancy_month($week){
+    $w = (int)$week;
+    if ($w <= 4) return 1;
+    if ($w <= 8) return 2;
+    if ($w <= 13) return 3;
+    if ($w <= 17) return 4;
+    if ($w <= 21) return 5;
+    if ($w <= 26) return 6;
+    if ($w <= 30) return 7;
+    if ($w <= 35) return 8;
+    return 9;
+}
 // Simple abstract "curled up" silhouette -- illustrative only, not a real/medical image.
 function baby_silhouette_svg($sizePx = 90, $colorVar = '--teal'){
     return "<svg width=\"$sizePx\" height=\"$sizePx\" viewBox=\"0 0 100 100\">
@@ -696,14 +1784,14 @@ function render_header($title, $active = ''){
   };
 </script>
 </head>
-<body>
+<body class="role-<?php echo e($u['role'] ?? 'guest'); ?>">
 <div class="toast-root" id="toast-root">
 <?php foreach ($flashes as $f): ?>
   <div class="toast"><i class="fa-solid <?php echo $f['kind']==='error'?'fa-circle-exclamation':($f['kind']==='success'?'fa-circle-check':'fa-circle-info'); ?>" style="margin-right:8px;"></i><?php echo e($f['msg']); ?></div>
 <?php endforeach; ?>
 </div>
 <?php if ($u): ?>
-<div class="shell">
+<div class="shell shell-<?php echo e($u['role']); ?>">
   <aside class="sidebar">
     <div class="brand">
       <div class="mark"><i class="fa-solid fa-heart-pulse"></i></div>
@@ -738,35 +1826,50 @@ function render_header($title, $active = ''){
   </aside>
   <div class="main">
     <div class="topbar">
-      <h2 style="margin:0;font-size:18px;"><?php echo e($title); ?></h2>
-      <?php if ($u['role'] === 'patient'): ?>
-      <div class="topbar-brand-row">
-        <span class="wt-brand-mobile">PregnaCare</span>
-      </div>
-      <?php endif; ?>
-      <div class="topbar-user-row">
-        <?php if ($u['role'] === 'patient'):
-            check_ob_visit_reminder($pdo, $u);
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id=? AND is_read=0");
-            $stmt->execute([$u['id']]);
-            $unreadCount = (int)$stmt->fetchColumn();
-        ?>
-        <a class="icon-btn wt-hamburger-btn" href="javascript:void(0)" onclick="pcToggleWellnessDrawer()" title="Wellness Tools">
-          <i class="fa-solid fa-bars"></i>
-        </a>
-        <a class="icon-btn" href="notifications.php" title="Notifications" style="position:relative;">
-          <i class="fa-solid fa-bell"></i>
-          <?php if ($unreadCount > 0): ?>
-            <span style="position:absolute;top:-4px;right:-4px;background:var(--risk-high);color:#fff;font-size:10px;font-weight:800;min-width:16px;height:16px;border-radius:999px;display:flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;"><?php echo $unreadCount > 9 ? '9+' : $unreadCount; ?></span>
-          <?php endif; ?>
-        </a>
-        <?php endif; ?>
-        <div class="avatar"><?php echo e(initials($u['name'])); ?></div>
-        <div style="min-width:0;">
-          <div style="font-weight:700;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38vw;"><?php echo e($u['name']); ?></div>
-          <div class="muted" style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38vw;"><?php echo e($u['email']); ?></div>
+      <?php if ($u['role'] === 'patient'):
+          check_ob_visit_reminder($pdo, $u);
+          check_hospital_bag_reminder($pdo, $u);
+          $hdrActPregId = get_active_pregnancy_id($pdo, $u['id']);
+          if ($hdrActPregId) {
+              $stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id=? AND pregnancy_id=? AND is_read=0");
+              $stmt->execute([$u['id'], $hdrActPregId]);
+          } else {
+              $stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id=? AND is_read=0");
+              $stmt->execute([$u['id']]);
+          }
+          $unreadCount = (int)$stmt->fetchColumn();
+      ?>
+      <div class="topbar-inner-app">
+        <div class="topbar-brand-app">PregnaCare</div>
+        <div class="topbar-action-row">
+          <button type="button" class="app-square-btn" onclick="pcToggleWellnessDrawer()" title="Menu">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <div class="app-user-pill">
+            <div class="app-avatar-gradient"><?php echo e(initials($u['name'])); ?></div>
+            <div class="app-user-text">
+              <div class="app-user-name"><?php echo e($u['name']); ?></div>
+              <div class="app-user-email"><?php echo e($u['email']); ?></div>
+            </div>
+          </div>
+          <a class="app-square-btn" href="notifications.php" title="Notifications">
+            <i class="fa-solid fa-bell"></i>
+            <?php if ($unreadCount > 0): ?>
+              <span class="app-bell-dot"></span>
+            <?php endif; ?>
+          </a>
         </div>
       </div>
+      <?php else: ?>
+        <h2 style="margin:0;font-size:18px;"><?php echo e($title); ?></h2>
+        <div class="topbar-user-row">
+          <div class="avatar"><?php echo e(initials($u['name'])); ?></div>
+          <div style="min-width:0;">
+            <div style="font-weight:700;font-size:13.5px;"><?php echo e($u['name']); ?></div>
+            <div class="muted" style="font-size:11.5px;"><?php echo e($u['email']); ?></div>
+          </div>
+        </div>
+      <?php endif; ?>
     </div>
     <div class="content">
 <?php endif;
@@ -776,24 +1879,26 @@ function render_bottom_nav($active, $role){
     if ($role !== 'patient') return;
 ?>
 <nav class="bottom-nav">
-  <a href="dashboard.php" class="<?php echo $active==='dashboard'?'active':''; ?>"><i class="fa-solid fa-house"></i><?php echo t('Home'); ?></a>
-  <a href="monitoring.php" class="<?php echo $active==='monitoring'?'active':''; ?>"><i class="fa-solid fa-heart-pulse"></i><?php echo t('Vitals'); ?></a>
-  <a href="symptoms.php" class="<?php echo $active==='symptoms'?'active':''; ?>"><i class="fa-solid fa-notes-medical"></i><?php echo t('Check-in'); ?></a>
-  <a href="analyze.php" class="<?php echo $active==='analyze'?'active':''; ?>"><i class="fa-solid fa-diagram-project"></i><?php echo t('Risk'); ?></a>
-  <a href="recommendations.php" class="<?php echo $active==='recommendations'?'active':''; ?>"><i class="fa-solid fa-lightbulb"></i><?php echo t('Advice'); ?></a>
-  <a href="profile.php" class="<?php echo $active==='profile'?'active':''; ?>"><i class="fa-solid fa-user"></i><?php echo t('Profile'); ?></a>
+  <a href="dashboard.php" class="<?php echo $active==='dashboard'?'active':''; ?>"><i class="fa-solid fa-house"></i><span><?php echo t('Home'); ?></span></a>
+  <a href="monitoring.php" class="<?php echo $active==='monitoring'?'active':''; ?>"><i class="fa-regular fa-heart"></i><span><?php echo t('Vitals'); ?></span></a>
+  <a href="symptoms.php" class="<?php echo $active==='symptoms'?'active':''; ?>"><i class="fa-solid fa-kit-medical"></i><span><?php echo t('Check-in'); ?></span></a>
+  <a href="analyze.php" class="<?php echo $active==='analyze'?'active':''; ?>"><i class="fa-solid fa-share-nodes"></i><span><?php echo t('Risk'); ?></span></a>
+  <a href="recommendations.php" class="<?php echo $active==='recommendations'?'active':''; ?>"><i class="fa-regular fa-lightbulb"></i><span><?php echo t('Advice'); ?></span></a>
+  <a href="profile.php" class="<?php echo $active==='profile'?'active':''; ?>"><i class="fa-regular fa-user"></i><span><?php echo t('Profile'); ?></span></a>
 </nav>
 <?php
 }
 
 function render_footer(){
     $u = current_user();
-    global $active_page; // set by each page before calling render_header, reused here for bottom nav
+    global $active_page, $pdo; // set by each page before calling render_header, reused here for bottom nav
     if ($u):
 ?>
     </div>
   </div>
 </div>
+
+<?php render_bottom_nav($active_page, $u['role']); ?>
 <?php if ($u['role'] === 'patient'): ?>
 <div class="wt-drawer-backdrop" id="wtDrawerBackdrop" onclick="pcToggleWellnessDrawer()"></div>
 <aside class="wt-drawer" id="wtDrawer">
@@ -835,19 +1940,84 @@ function render_footer(){
   </div>
 </div>
 <?php
-$fabHref = 'recommendations.php';
-if ($u && ($u['role'] ?? '') === 'patient') {
+if ($u && ($u['role'] ?? '') === 'patient'):
+    $emergContact = null;
     try {
-        $stmtFab = $pdo->prepare("SELECT emergency_phone FROM patient_profiles WHERE user_id = ?");
+        $stmtFab = $pdo->prepare("SELECT emergency_name, emergency_relation, emergency_phone FROM patient_profiles WHERE user_id = ?");
         $stmtFab->execute([$u['id']]);
-        $fabProf = $stmtFab->fetch();
-        if (!empty($fabProf['emergency_phone'])) {
-            $fabHref = 'tel:' . preg_replace('/[^0-9+]/', '', $fabProf['emergency_phone']);
-        }
+        $emergContact = $stmtFab->fetch();
     } catch (Exception $e) {}
-}
 ?>
-<a class="emergency-fab" href="<?php echo htmlspecialchars($fabHref); ?>"><i class="fa-solid fa-phone-volume"></i> Emergency</a>
+<button type="button" class="emergency-fab" onclick="pcOpenEmergencyModal()" title="Emergency Help" aria-label="Emergency Call">
+  <i class="fa-solid fa-phone"></i>
+</button>
+
+<div class="ed-modal-backdrop" id="emergencyModalBackdrop" style="display:none;" onclick="if(event.target===this) pcCloseEmergencyModal()">
+  <div class="ed-modal" style="max-width:380px;border-radius:24px;padding:22px;text-align:center;">
+    <div style="width:58px;height:58px;border-radius:50%;background:#fee2e2;color:#dc2626;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:26px;">
+      <i class="fa-solid fa-phone-volume"></i>
+    </div>
+    <div style="font-family:var(--font-display,'Fraunces',serif);font-size:20px;font-weight:700;color:#1e293b;margin-bottom:4px;">Emergency Assistance</div>
+    <p style="font-size:13px;color:#64748b;margin:0 0 16px;">Directly contact emergency services or your personal emergency contact.</p>
+
+    <div style="display:flex;flex-direction:column;gap:10px;text-align:left;">
+      <?php if (!empty($emergContact['emergency_phone'])): ?>
+        <a href="tel:<?php echo htmlspecialchars(preg_replace('/[^0-9+]/', '', $emergContact['emergency_phone'])); ?>" class="btn" style="background:#fee2e2;color:#991b1b;border:1.5px solid #fca5a5;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:12px;text-decoration:none;">
+          <div style="width:36px;height:36px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fa-solid fa-user-shield" style="font-size:16px;color:#dc2626;"></i>
+          </div>
+          <div style="min-width:0;flex:1;">
+            <div style="font-weight:700;font-size:13.5px;color:#991b1b;"><?php echo e($emergContact['emergency_name'] ?: 'Personal Emergency Contact'); ?></div>
+            <div style="font-size:12px;color:#b91c1c;"><?php echo e($emergContact['emergency_phone']); ?> &bull; <?php echo e($emergContact['emergency_relation'] ?: 'Contact'); ?></div>
+          </div>
+          <i class="fa-solid fa-phone" style="color:#dc2626;font-size:14px;"></i>
+        </a>
+      <?php else: ?>
+        <a href="profile.php" class="btn btn-outline" style="border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;text-decoration:none;">
+          <i class="fa-solid fa-user-plus" style="color:#b04a6e;font-size:18px;"></i>
+          <div>
+            <div style="font-weight:700;font-size:13px;">Add Personal Emergency Contact</div>
+            <div style="font-size:11.5px;color:#64748b;">Set your contact in Profile</div>
+          </div>
+        </a>
+      <?php endif; ?>
+
+      <a href="tel:911" class="btn" style="background:#dc2626;color:#ffffff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:12px;text-decoration:none;box-shadow:0 4px 12px rgba(220,38,38,0.25);">
+        <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fa-solid fa-truck-medical" style="font-size:17px;color:#fff;"></i>
+        </div>
+        <div>
+          <div style="font-weight:700;font-size:14px;color:#fff;">Call 911 (National Emergency)</div>
+          <div style="font-size:11.5px;color:rgba(255,255,255,0.85);">Immediate Medical Dispatch</div>
+        </div>
+      </a>
+
+      <a href="tel:1555" class="btn" style="background:#f8fafc;color:#1e293b;border:1px solid #e2e8f0;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:12px;text-decoration:none;">
+        <div style="width:36px;height:36px;border-radius:50%;background:#e0f2fe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fa-solid fa-hospital" style="font-size:16px;color:#0284c7;"></i>
+        </div>
+        <div>
+          <div style="font-weight:700;font-size:14px;color:#1e293b;">DOH Health Emergency Hotline</div>
+          <div style="font-size:11.5px;color:#64748b;">Dial 1555</div>
+        </div>
+      </a>
+    </div>
+
+    <button type="button" class="btn btn-outline btn-block" style="margin-top:14px;border-radius:12px;" onclick="pcCloseEmergencyModal()">Close</button>
+  </div>
+</div>
+<?php endif; ?>
+
+<script>
+function pcOpenEmergencyModal(){
+  var m = document.getElementById('emergencyModalBackdrop');
+  if(m) m.style.display = 'flex';
+}
+function pcCloseEmergencyModal(){
+  var m = document.getElementById('emergencyModalBackdrop');
+  if(m) m.style.display = 'none';
+}
+</script>
 <script>
 function updateThemeToggleUI(isDark){
   var icon = document.getElementById('themeToggleIcon');
@@ -1569,8 +2739,9 @@ function detect_severity_progression($pdo, $userId, $currentSeverity, $currentRi
 
     if ($detected){
         // Save notification for the patient
-        $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
-            ->execute([uid('ntf'), $userId, 'Monitoring Alert: Severity Increased', $message, now_iso(), 'severity_increase']);
+        $actPregId = get_active_pregnancy_id($pdo, $userId);
+        $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+            ->execute([uid('ntf'), $userId, $actPregId, 'Monitoring Alert: Severity Increased', $message, now_iso(), 'severity_increase']);
     }
 
     return [
@@ -2222,8 +3393,9 @@ function record_clinical_visit($pdo, $userId, $assessmentId, array $data) {
     $facilityText = $facility ? " at {$facility}" : "";
     $title = "Clinical Visit Logged";
     $body = "Your medical consultation{$facilityText} has been recorded and your severe alert has been archived in your clinical history.";
-    $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
-        ->execute([uid('ntf'), $userId, $title, $body, now_iso(), 'visit_resolved']);
+    $actPregId = get_active_pregnancy_id($pdo, $userId);
+    $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+        ->execute([uid('ntf'), $userId, $actPregId, $title, $body, now_iso(), 'visit_resolved']);
 
     // 5. Audit log
     log_action('clinical_visit_recorded');

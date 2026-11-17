@@ -2,9 +2,17 @@
 require_once __DIR__ . '/base.php';
 $u = require_role('patient');
 
-$stmt = $pdo->prepare("SELECT next_ob_visit FROM patient_profiles WHERE user_id=?");
-$stmt->execute([$u['id']]);
-$nextVisit = $stmt->fetchColumn();
+$actPregId = get_active_pregnancy_id($pdo, $u['id']);
+$nextVisit = null;
+if ($actPregId) {
+    $stmtUp = $pdo->prepare("SELECT visit_date FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
+    $stmtUp->execute([$u['id'], $actPregId]);
+    $nextVisit = $stmtUp->fetchColumn() ?: null;
+} else {
+    $stmt = $pdo->prepare("SELECT next_ob_visit FROM patient_profiles WHERE user_id = ?");
+    $stmt->execute([$u['id']]);
+    $nextVisit = $stmt->fetchColumn() ?: null;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     $action = $_POST['action'] ?? '';
@@ -16,6 +24,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
 
         // Automatically trigger / update notification for this OB visit reminder
         if ($nextDate) {
+            // Also sync into ob_visits table
+            try {
+                if ($actPregId) {
+                    $stmtEx = $pdo->prepare("SELECT id FROM ob_visits WHERE user_id=? AND pregnancy_id=? AND visit_date=?");
+                    $stmtEx->execute([$u['id'], $actPregId, $nextDate]);
+                    if (!$stmtEx->fetch()) {
+                        $pdo->prepare("INSERT INTO ob_visits (id, user_id, pregnancy_id, visit_date, title, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())")
+                            ->execute([uid('obv'), $u['id'], $actPregId, $nextDate, 'Routine Prenatal Checkup', 'Scheduled via Reminders']);
+                    }
+                } else {
+                    $stmtEx = $pdo->prepare("SELECT id FROM ob_visits WHERE user_id=? AND visit_date=?");
+                    $stmtEx->execute([$u['id'], $nextDate]);
+                    if (!$stmtEx->fetch()) {
+                        $pdo->prepare("INSERT INTO ob_visits (id, user_id, visit_date, title, notes, created_at) VALUES (?, ?, ?, ?, ?, NOW())")
+                            ->execute([uid('obv'), $u['id'], $nextDate, 'Routine Prenatal Checkup', 'Scheduled via Reminders']);
+                    }
+                }
+            } catch (Exception $e) {}
+
             $daysToVisit = (int)ceil((strtotime($nextDate) - time()) / 86400);
             $visitLabel = date('M j, Y', strtotime($nextDate));
             if ($daysToVisit === 0) {
@@ -27,11 +54,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
             }
 
             // Refresh notification for this OB visit
-            $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND kind='ob_visit'")->execute([$u['id']]);
-            $stmtNtf = $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)");
-            $stmtNtf->execute([uid('ntf'), $u['id'], 'OB-GYN Visit Reminder', $body, now_iso(), 'ob_visit']);
+            if ($actPregId) {
+                $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND pregnancy_id=? AND kind='ob_visit'")->execute([$u['id'], $actPregId]);
+                $stmtNtf = $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)");
+                $stmtNtf->execute([uid('ntf'), $u['id'], $actPregId, 'OB-GYN Visit Reminder', $body, now_iso(), 'ob_visit']);
+            } else {
+                $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND kind='ob_visit'")->execute([$u['id']]);
+                $stmtNtf = $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)");
+                $stmtNtf->execute([uid('ntf'), $u['id'], 'OB-GYN Visit Reminder', $body, now_iso(), 'ob_visit']);
+            }
         } else {
-            $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND kind='ob_visit'")->execute([$u['id']]);
+            if ($actPregId) {
+                $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND pregnancy_id=? AND kind='ob_visit'")->execute([$u['id'], $actPregId]);
+            } else {
+                $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND kind='ob_visit'")->execute([$u['id']]);
+            }
         }
 
         flash('OB visit reminder saved. A notification has been scheduled.', 'success');

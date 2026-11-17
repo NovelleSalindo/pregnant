@@ -24,24 +24,25 @@ if ($method === 'DELETE' || ($method === 'POST' && ($_GET['action'] ?? '') === '
     json_success([], 'Tracker entry deleted');
 }
 
-// Handle GET
+// Handle GET (Scoped to Active Pregnancy)
 if ($method === 'GET') {
+    $actPregId = get_active_pregnancy_id($pdo, $u['id']);
     $kind = $_GET['kind'] ?? 'kick';
     $today = today_iso();
 
     if ($kind === 'kick') {
         // Today's kicks
-        $stmt = $pdo->prepare("SELECT id, at FROM trackers WHERE user_id = ? AND kind = 'kick' AND at >= ? ORDER BY at DESC");
-        $stmt->execute([$u['id'], $today . ' 00:00:00']);
+        $stmt = $pdo->prepare("SELECT id, at FROM trackers WHERE user_id = ? AND pregnancy_id = ? AND kind = 'kick' AND at >= ? ORDER BY at DESC");
+        $stmt->execute([$u['id'], $actPregId, $today . ' 00:00:00']);
         $todayKicks = $stmt->fetchAll();
 
         // Kicks grouped by day for the last 7 days
         $stmt = $pdo->prepare("SELECT DATE(at) as kick_date, COUNT(*) as count 
                                FROM trackers 
-                               WHERE user_id = ? AND kind = 'kick' AND at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                               WHERE user_id = ? AND pregnancy_id = ? AND kind = 'kick' AND at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
                                GROUP BY DATE(at) 
                                ORDER BY kick_date DESC");
-        $stmt->execute([$u['id']]);
+        $stmt->execute([$u['id'], $actPregId]);
         $weeklySummary = $stmt->fetchAll();
 
         json_success([
@@ -50,8 +51,8 @@ if ($method === 'GET') {
             'weeklySummary' => $weeklySummary,
         ]);
     } elseif ($kind === 'contraction') {
-        $stmt = $pdo->prepare("SELECT id, at, duration_seconds FROM trackers WHERE user_id = ? AND kind = 'contraction' ORDER BY at DESC LIMIT 30");
-        $stmt->execute([$u['id']]);
+        $stmt = $pdo->prepare("SELECT id, at, duration_seconds FROM trackers WHERE user_id = ? AND pregnancy_id = ? AND kind = 'contraction' ORDER BY at DESC LIMIT 30");
+        $stmt->execute([$u['id'], $actPregId]);
         $contractions = $stmt->fetchAll();
 
         // Calculate intervals between consecutive contractions
@@ -101,17 +102,23 @@ if ($method === 'GET') {
 if ($method === 'POST') {
     $input = get_json_input();
     $action = $_GET['action'] ?? ($input['action'] ?? 'kick');
+    $actPregId = get_active_pregnancy_id($pdo, $u['id']);
 
     if ($action === 'kick') {
         $id = uid('kck');
         $at = !empty($input['at']) ? $input['at'] : now_iso();
-        $stmt = $pdo->prepare("INSERT INTO trackers (id, user_id, kind, at) VALUES (?, ?, 'kick', ?)");
-        $stmt->execute([$id, $u['id'], $at]);
+        $stmt = $pdo->prepare("INSERT INTO trackers (id, user_id, pregnancy_id, kind, at) VALUES (?, ?, ?, 'kick', ?)");
+        $stmt->execute([$id, $u['id'], $actPregId, $at]);
 
-        // Count today's kicks
+        // Count today's kicks for active pregnancy
         $today = today_iso();
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM trackers WHERE user_id = ? AND kind = 'kick' AND at >= ?");
-        $stmt->execute([$u['id'], $today . ' 00:00:00']);
+        if ($actPregId) {
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM trackers WHERE user_id = ? AND pregnancy_id = ? AND kind = 'kick' AND at >= ?");
+            $stmt->execute([$u['id'], $actPregId, $today . ' 00:00:00']);
+        } else {
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM trackers WHERE user_id = ? AND kind = 'kick' AND at >= ?");
+            $stmt->execute([$u['id'], $today . ' 00:00:00']);
+        }
         $totalToday = (int)$stmt->fetchColumn();
 
         json_success([
@@ -124,8 +131,8 @@ if ($method === 'POST') {
         $at = !empty($input['at']) ? $input['at'] : now_iso();
         $duration = !empty($input['duration_seconds']) ? (int)$input['duration_seconds'] : null;
 
-        $stmt = $pdo->prepare("INSERT INTO trackers (id, user_id, kind, at, duration_seconds) VALUES (?, ?, 'contraction', ?, ?)");
-        $stmt->execute([$id, $u['id'], $at, $duration]);
+        $stmt = $pdo->prepare("INSERT INTO trackers (id, user_id, pregnancy_id, kind, at, duration_seconds) VALUES (?, ?, ?, 'contraction', ?, ?)");
+        $stmt->execute([$id, $u['id'], $actPregId, $at, $duration]);
 
         json_success([
             'id' => $id,

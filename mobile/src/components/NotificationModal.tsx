@@ -56,6 +56,8 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
         return { name: 'calendar' as const, color: Colors.primaryDark };
       case 'due_date':
         return { name: 'heart' as const, color: Colors.primary };
+      case 'hospital_bag':
+        return { name: 'briefcase' as const, color: '#DB2777' };
       case 'emergency':
         return { name: 'warning' as const, color: Colors.riskHigh };
       default:

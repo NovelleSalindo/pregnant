@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Line, Polyline, Circle, Text as SvgText, G } from 'react-native-svg';
 import { Colors, Shadows, Gradients } from '../theme/colors';
 import { api } from '../services/api';
 import { buildRecommendations } from '../services/riskEngine';
@@ -45,6 +46,199 @@ export interface SavedAdviceEntry {
   notes?: string;
 }
 
+interface SymptomTrendAnalysisChartProps {
+  items: any[];
+  isDarkMode?: boolean;
+}
+
+const SymptomTrendAnalysisChart: React.FC<SymptomTrendAnalysisChartProps> = ({ items, isDarkMode }) => {
+  if (!items || items.length === 0) {
+    return (
+      <View style={[styles.trendEmptyBox, { backgroundColor: isDarkMode ? '#1E1924' : '#F8FAFC', borderRadius: 14, marginBottom: 14 }]}>
+        <Ionicons name="trending-up-outline" size={28} color={isDarkMode ? '#64748B' : '#CBD5E1'} />
+        <Text style={[styles.trendEmptyText, isDarkMode && { color: '#85818A' }]}>
+          No symptom check-ins recorded yet in this timeframe.
+        </Text>
+      </View>
+    );
+  }
+
+  const n = items.length;
+  const plotLeft = 46;
+  const plotRight = 410;
+  const plotTop = 22;
+  const plotBottom = 180;
+  const plotW = plotRight - plotLeft;
+  const plotH = plotBottom - plotTop;
+
+  const counts = items.map(it => Number(it.symptom_count ?? 0));
+  const intensities = items.map(it => Number(it.intensity_score ?? 0));
+  const maxVal = Math.max(...counts, ...intensities, 4);
+
+  const yMin = 0;
+  const yMax = Math.max(4, Math.ceil(maxVal + 1));
+  const step = yMax > 10 ? 2 : 1;
+
+  const yTicks: number[] = [];
+  for (let v = yMin; v <= yMax; v += step) {
+    yTicks.push(v);
+  }
+
+  const getY = (val: number) => {
+    if (yMax === yMin) return (plotTop + plotBottom) / 2;
+    const ratio = (val - yMin) / (yMax - yMin);
+    return plotBottom - (ratio * plotH);
+  };
+
+  const getX = (idx: number) => {
+    if (n <= 1) return plotLeft + (plotW / 2);
+    return plotLeft + ((idx / (n - 1)) * plotW);
+  };
+
+  const gridColor = isDarkMode ? '#2C2C31' : '#E2E8F0';
+  const axisColor = isDarkMode ? '#475569' : '#94A3B8';
+  const labelColor = isDarkMode ? '#85818A' : '#64748B';
+
+  const countPoints: [number, number, number][] = [];
+  const intensityPoints: [number, number, number][] = [];
+
+  for (let i = 0; i < n; i++) {
+    const x = getX(i);
+    const cVal = Number(items[i].symptom_count ?? 0);
+    const iVal = Number(items[i].intensity_score ?? 0);
+    countPoints.push([x, getY(cVal), cVal]);
+    intensityPoints.push([x, getY(iVal), iVal]);
+  }
+
+  const lastCountPt = countPoints[countPoints.length - 1];
+  const lastIntensityPt = intensityPoints[intensityPoints.length - 1];
+
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+      <Svg width={360} height={220} viewBox="0 0 540 220">
+        {yTicks.map((tick) => {
+          const y = getY(tick);
+          return (
+            <G key={`ytick-${tick}`}>
+              <Line x1={plotLeft} y1={y} x2={plotRight + 20} y2={y} stroke={gridColor} strokeWidth="1.2" />
+              <SvgText x={plotLeft - 8} y={y + 4} textAnchor="end" fontSize="11" fontWeight="600" fill={labelColor}>
+                {tick}
+              </SvgText>
+            </G>
+          );
+        })}
+
+        <Line x1={plotLeft} y1={plotBottom} x2={plotRight + 20} y2={plotBottom} stroke={axisColor} strokeWidth="1.8" />
+
+        {items.map((it, idx) => {
+          const x = getX(idx);
+          const lbl = it.short_label || it.period || '';
+          return (
+            <SvgText key={`xtick-${idx}`} x={x} y={plotBottom + 18} textAnchor="middle" fontSize="11" fontWeight="600" fill={labelColor}>
+              {lbl}
+            </SvgText>
+          );
+        })}
+
+        {/* Intensity Line & Nodes (#02848F Cyan/Teal) */}
+        {intensityPoints.length > 1 ? (
+          <Polyline
+            points={intensityPoints.map(p => `${Math.round(p[0])},${Math.round(p[1])}`).join(' ')}
+            fill="none"
+            stroke="#02848F"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : intensityPoints.length === 1 ? (
+          <Line
+            x1={plotLeft}
+            y1={intensityPoints[0][1]}
+            x2={plotRight + 10}
+            y2={intensityPoints[0][1]}
+            stroke="#02848F"
+            strokeWidth="2"
+            strokeDasharray="4,4"
+            opacity={0.6}
+          />
+        ) : null}
+        {intensityPoints.map((p, idx) => (
+          <Circle
+            key={`int-pt-${idx}`}
+            cx={p[0]}
+            cy={p[1]}
+            r={5}
+            fill="#02848F"
+            stroke="#FFFFFF"
+            strokeWidth="2"
+          />
+        ))}
+
+        {/* Symptom Count Line & Nodes (#246944 Forest Green) */}
+        {countPoints.length > 1 ? (
+          <Polyline
+            points={countPoints.map(p => `${Math.round(p[0])},${Math.round(p[1])}`).join(' ')}
+            fill="none"
+            stroke="#246944"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : countPoints.length === 1 ? (
+          <Line
+            x1={plotLeft}
+            y1={countPoints[0][1]}
+            x2={plotRight + 10}
+            y2={countPoints[0][1]}
+            stroke="#246944"
+            strokeWidth="2"
+            strokeDasharray="4,4"
+            opacity={0.6}
+          />
+        ) : null}
+        {countPoints.map((p, idx) => {
+          const isHigh = p[2] >= 5;
+          return (
+            <Circle
+              key={`cnt-pt-${idx}`}
+              cx={p[0]}
+              cy={p[1]}
+              r={5.5}
+              fill={isHigh ? '#DC2626' : '#246944'}
+              stroke="#FFFFFF"
+              strokeWidth="2"
+            />
+          );
+        })}
+
+        {/* Terminal Callouts */}
+        {lastCountPt && (
+          <SvgText
+            x={lastCountPt[0] + 8}
+            y={lastCountPt[1] + 4}
+            fill={lastCountPt[2] >= 5 ? '#DC2626' : '#246944'}
+            fontSize="12.5"
+            fontWeight="800"
+          >
+            {`${lastCountPt[2]} ${lastCountPt[2] === 1 ? 'symptom' : 'symptoms'}`}
+          </SvgText>
+        )}
+        {lastIntensityPt && (
+          <SvgText
+            x={lastIntensityPt[0] + 8}
+            y={lastIntensityPt[1] + 4}
+            fill="#02848F"
+            fontSize="12.5"
+            fontWeight="800"
+          >
+            {`Score ${lastIntensityPt[2]}`}
+          </SvgText>
+        )}
+      </Svg>
+    </ScrollView>
+  );
+};
+
 interface AdviceScreenProps {
   onNavigate?: (tab: string) => void;
   isDarkMode?: boolean;
@@ -52,6 +246,8 @@ interface AdviceScreenProps {
 
 export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate, isDarkMode = false }) => {
   const [activeSegment, setActiveSegment] = useState<'current' | 'history'>('current');
+  const [trendTimeframe, setTrendTimeframe] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [symptomTrends, setSymptomTrends] = useState<any>({ daily: [], weekly: [], monthly: [], summary: {} });
   const [savedAdvice, setSavedAdvice] = useState<SavedAdviceEntry | null>(null);
   const [savedHistory, setSavedHistory] = useState<SavedAdviceEntry[]>([]);
   const [data, setData] = useState<any>(null);
@@ -93,6 +289,16 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate, isDarkMo
       const res = await api.getDashboard().catch(() => null);
       if (res) {
         setData(res);
+        if (res.symptomTrends) {
+          setSymptomTrends(res.symptomTrends);
+        }
+      }
+
+      if (!res?.symptomTrends) {
+        const symRes = await api.getSymptoms().catch(() => null);
+        if (symRes?.trends) {
+          setSymptomTrends(symRes.trends);
+        }
       }
 
       // 4. Fallback if no explicitly saved advice yet
@@ -418,114 +624,69 @@ export const AdviceScreen: React.FC<AdviceScreenProps> = ({ onNavigate, isDarkMo
       >
         {activeSegment === 'current' && (
           <>
-            {/* 1. Hero Care Plan Guidance Banner */}
-            <LinearGradient
-              colors={Gradients.hero}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[styles.heroCard, Shadows.card]}
-            >
-              <View style={styles.heroTopRow}>
-                <View style={styles.heroEyebrowBadge}>
-                  <Ionicons name="bulb-outline" size={13} color="#FFF" />
-                  <Text style={styles.heroEyebrow}>
-                    CARE & CLINICAL RECOMMENDATIONS
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={handleShareAdvice}
-                  activeOpacity={0.8}
-                  style={styles.heroShareBtn}
-                >
-                  <Ionicons name="share-outline" size={16} color="#FFF" />
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.heroTitle}>Personalized Care Plan</Text>
-              <Text style={styles.heroSubtitle}>
-                Actionable maternal guidance and recommendations tailored to your reported symptoms and check-in.
-              </Text>
-
-              <Text style={styles.heroTimestamp}>
-                Logged {savedAdvice?.date ? new Date(savedAdvice.date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Recently'}
-              </Text>
-
-              <View style={styles.heroLinkRow}>
-                <TouchableOpacity
-                  onPress={() => onNavigate?.('symptoms')}
-                  activeOpacity={0.7}
-                  style={[styles.heroLinkBtn, { marginLeft: 'auto' }]}
-                >
-                  <Ionicons name="add-circle-outline" size={14} color="#FFFFFF" />
-                  <Text style={styles.heroLinkText}>New Check-in</Text>
-                </TouchableOpacity>
-              </View>
-            </LinearGradient>
-
-            {/* 2. Reported Symptoms Section (SEEN & STORED) */}
+            {/* 3. Symptoms Trend Analysis Card */}
             <View style={[styles.card, Shadows.card, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
-              <View style={styles.cardHeaderRow}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <View style={[styles.iconPill, { backgroundColor: isDarkMode ? '#2C2C31' : '#E6F4F1' }]}>
-                    <Ionicons name="medkit" size={16} color={Colors.primaryDark} />
+              {/* Centered Header */}
+              <View style={{ alignItems: 'center', marginBottom: 12 }}>
+                <Text style={[styles.trendMainTitle, isDarkMode && { color: '#F0EEF0' }]}>
+                  Trend Analysis
+                </Text>
+                
+                {/* Dynamic Legend */}
+                <View style={styles.trendLegendRow}>
+                  <View style={styles.trendLegendItem}>
+                    <View style={[styles.trendLegendSquare, { backgroundColor: '#246944' }]} />
+                    <Text style={[styles.trendLegendText, isDarkMode && { color: '#CBD5E1' }]}>
+                      Active Symptoms (Count)
+                    </Text>
                   </View>
-                  <Text style={[styles.sectionTitle, isDarkMode && { color: '#FFF' }]}>
-                    Reported Symptoms During Check-in
-                  </Text>
+                  <View style={styles.trendLegendItem}>
+                    <View style={[styles.trendLegendSquare, { backgroundColor: '#02848F' }]} />
+                    <Text style={[styles.trendLegendText, isDarkMode && { color: '#CBD5E1' }]}>
+                      Symptom Severity (Score)
+                    </Text>
+                  </View>
                 </View>
+              </View>
+
+              {/* Timeframe Switcher Tabs */}
+              <View style={[styles.timeframeTabsRow, isDarkMode && styles.timeframeTabsRowDark]}>
                 <TouchableOpacity
-                  onPress={() => onNavigate?.('symptoms')}
-                  style={styles.editBtn}
+                  style={[styles.timeframeTab, trendTimeframe === 'daily' && styles.timeframeTabActive, trendTimeframe === 'daily' && isDarkMode && styles.timeframeTabActiveDark]}
+                  onPress={() => setTrendTimeframe('daily')}
                 >
-                  <Text style={styles.editBtnText}>Update</Text>
+                  <Text style={[styles.timeframeTabText, trendTimeframe === 'daily' && styles.timeframeTabTextActive, isDarkMode && { color: '#85818A' }, trendTimeframe === 'daily' && isDarkMode && { color: '#FFF' }]}>
+                    Daily Readings
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.timeframeTab, trendTimeframe === 'weekly' && styles.timeframeTabActive, trendTimeframe === 'weekly' && isDarkMode && styles.timeframeTabActiveDark]}
+                  onPress={() => setTrendTimeframe('weekly')}
+                >
+                  <Text style={[styles.timeframeTabText, trendTimeframe === 'weekly' && styles.timeframeTabTextActive, isDarkMode && { color: '#85818A' }, trendTimeframe === 'weekly' && isDarkMode && { color: '#FFF' }]}>
+                    Weekly
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.timeframeTab, trendTimeframe === 'monthly' && styles.timeframeTabActive, trendTimeframe === 'monthly' && isDarkMode && styles.timeframeTabActiveDark]}
+                  onPress={() => setTrendTimeframe('monthly')}
+                >
+                  <Text style={[styles.timeframeTabText, trendTimeframe === 'monthly' && styles.timeframeTabTextActive, isDarkMode && { color: '#85818A' }, trendTimeframe === 'monthly' && isDarkMode && { color: '#FFF' }]}>
+                    Monthly
+                  </Text>
                 </TouchableOpacity>
               </View>
 
-              {savedAdvice?.symptomsReported && savedAdvice.symptomsReported.length > 0 ? (
-                <View style={styles.symptomsWrap}>
-                  {savedAdvice.symptomsReported.map((sym, idx) => {
-                    const sev = (sym.severity || 'Mild').toLowerCase();
-                    const isSymSevere = sev.includes('severe');
-                    const isSymMod = sev.includes('mod');
-
-                    const symBadgeBg = isSymSevere ? '#FEE2E2' : (isSymMod ? '#FEF3C7' : (isDarkMode ? '#2C2C31' : '#E6F4F1'));
-                    const symBadgeBorder = isSymSevere ? '#FCA5A5' : (isSymMod ? '#FCD34D' : (isDarkMode ? '#3A3A40' : '#B2DFDB'));
-                    const symTextColor = isSymSevere ? '#DC2626' : (isSymMod ? '#D97706' : Colors.primaryDark);
-
-                    return (
-                      <View
-                        key={idx}
-                        style={[
-                          styles.symptomChip,
-                          { backgroundColor: symBadgeBg, borderColor: symBadgeBorder },
-                        ]}
-                      >
-                        <Ionicons
-                          name={isSymSevere ? 'alert-circle' : (isSymMod ? 'warning' : 'checkmark-circle')}
-                          size={14}
-                          color={symTextColor}
-                        />
-                        <Text style={[styles.symptomChipName, isDarkMode && !isSymSevere && !isSymMod && { color: '#FFF' }]}>
-                          {sym.name}:{' '}
-                        </Text>
-                        <Text style={[styles.symptomChipSeverity, { color: symTextColor }]}>
-                          {sym.severity}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              ) : (
-                <View style={styles.emptySymptomsBox}>
-                  <Ionicons name="checkmark-done-circle-outline" size={24} color={Colors.primaryDark} />
-                  <Text style={[styles.emptySymptomsText, isDarkMode && { color: '#AAA' }]}>
-                    Routine Check-in: No acute maternal symptoms reported.
-                  </Text>
-                </View>
-              )}
+              {/* SVG Line Graph */}
+              <SymptomTrendAnalysisChart
+                items={symptomTrends?.[trendTimeframe] || []}
+                isDarkMode={isDarkMode}
+              />
             </View>
 
-            {/* 3. Action Checklist Management Bar (MANAGE) */}
+            {/* 4. Action Checklist Management Bar (MANAGE) */}
             <View style={[styles.card, Shadows.card, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
               <View style={styles.cardHeaderRow}>
                 <View>
@@ -1565,5 +1726,80 @@ const styles = StyleSheet.create({
   modalBtnText: {
     fontSize: 13.5,
     fontWeight: '700',
+  },
+  trendEmptyBox: {
+    padding: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trendEmptyText: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 6,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  trendMainTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F372A',
+    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: -0.3,
+  },
+  trendLegendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    flexWrap: 'wrap',
+    marginBottom: 4,
+  },
+  trendLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  trendLegendSquare: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+  },
+  trendLegendText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  timeframeTabsRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 3,
+    marginBottom: 10,
+  },
+  timeframeTabsRowDark: {
+    backgroundColor: '#24242A',
+  },
+  timeframeTab: {
+    flex: 1,
+    paddingVertical: 7,
+    alignItems: 'center',
+    borderRadius: 9,
+  },
+  timeframeTabActive: {
+    backgroundColor: '#FFFFFF',
+    ...Shadows.small,
+  },
+  timeframeTabActiveDark: {
+    backgroundColor: '#1E1924',
+  },
+  timeframeTabText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  timeframeTabTextActive: {
+    color: '#1E293B',
+    fontWeight: '800',
   },
 });

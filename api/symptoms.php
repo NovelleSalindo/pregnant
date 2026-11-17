@@ -13,10 +13,11 @@ require_once __DIR__ . '/../recommendation_engine.php';
 
 $u = require_api_user('patient');
 $catalog = get_symptom_catalog();
+$actPregId = get_active_pregnancy_id($pdo, $u['id']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 10");
-    $stmt->execute([$u['id']]);
+    $stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC LIMIT 10");
+    $stmt->execute([$u['id'], $actPregId]);
     $pastAssessments = $stmt->fetchAll();
 
     foreach ($pastAssessments as &$asm) {
@@ -32,19 +33,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             FROM symptom_logs sl
             JOIN symptom_log_items sli ON sli.symptom_log_id = sl.id
             LEFT JOIN symptom_catalog sc ON sc.id = sli.symptom_id
-            WHERE sl.user_id = ? AND ABS(TIMESTAMPDIFF(SECOND, sl.date, ?)) <= 60
+            WHERE sl.user_id = ? AND sl.pregnancy_id = ? AND ABS(TIMESTAMPDIFF(SECOND, sl.date, ?)) <= 60
             ORDER BY sli.id ASC
         ");
-        $symStmt->execute([$u['id'], $asm['date']]);
+        $symStmt->execute([$u['id'], $actPregId, $asm['date']]);
         $asm['logged_symptoms'] = $symStmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Fetch present pregnancy problems if any
         $ppStmt = $pdo->prepare("
             SELECT * FROM pregnancy_problems
-            WHERE user_id = ? AND ABS(TIMESTAMPDIFF(SECOND, date, ?)) <= 60
+            WHERE user_id = ? AND pregnancy_id = ? AND ABS(TIMESTAMPDIFF(SECOND, date, ?)) <= 60
             LIMIT 1
         ");
-        $ppStmt->execute([$u['id'], $asm['date']]);
+        $ppStmt->execute([$u['id'], $actPregId, $asm['date']]);
         $ppRow = $ppStmt->fetch(PDO::FETCH_ASSOC);
         $activePP = [];
         if ($ppRow) {
@@ -71,9 +72,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         unset($asm['ahp_json'], $asm['fuzzy_json'], $asm['rules_json'], $asm['recommendations_json']);
     }
 
-    // Retrieve latest Coopland assessments history and current evaluation
-    $cStmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 10");
-    $cStmt->execute([$u['id']]);
+    // Retrieve latest Coopland assessments history and current evaluation (Scoped to active pregnancy)
+    $cStmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC, id DESC LIMIT 10");
+    $cStmt->execute([$u['id'], $actPregId]);
     $coopHistory = $cStmt->fetchAll();
 
     if (!empty($coopHistory)) {
@@ -107,6 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'coopland' => $cooplandLatest,
         'coopland_history' => $coopHistory,
         'clinical_alerts' => $clinicalAlertsLatest,
+        'trends' => compute_symptoms_trends($pdo, $u['id'], $actPregId),
     ]);
 }
 
@@ -122,9 +124,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $submittedSymptoms = $input['symptoms'] ?? [];
     $submittedPP = $input['pregnancy_problems'] ?? ($input['pp'] ?? []);
 
-    // 2. Save symptom log
+    // 2. Save symptom log with current date & time (Scoped to active pregnancy)
     $logId = uid('sym');
-    $pdo->prepare("INSERT INTO symptom_logs (id, user_id, date) VALUES (?,?,?)")->execute([$logId, $u['id'], now_iso()]);
+    $currentTime = now_iso();
+    $pdo->prepare("INSERT INTO symptom_logs (id, user_id, pregnancy_id, date) VALUES (?,?,?,?)")->execute([$logId, $u['id'], $actPregId, $currentTime]);
 
     $normalizedSymptoms = [];
     $symptomIntensities = $input['symptom_intensities'] ?? [];
@@ -178,18 +181,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $pdo->prepare("INSERT INTO pregnancy_problems
-        (id, user_id, symptom_log_id, date, bleeding_lt_20wks, bleeding_gt_20wks, postmaturity_prematurity, hypertension, prom, poly_oligohydramnios, iugr, multiple_pregnancy, breech_malpresentation, rh_isoimmunization)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        (id, user_id, pregnancy_id, symptom_log_id, date, bleeding_lt_20wks, bleeding_gt_20wks, postmaturity_prematurity, hypertension, prom, poly_oligohydramnios, iugr, multiple_pregnancy, breech_malpresentation, rh_isoimmunization)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
         ->execute([
-            uid('pp'), $u['id'], $logId, now_iso(),
+            uid('pp'), $u['id'], $actPregId, $logId, $currentTime,
             $pp['bleeding_lt_20wks'], $pp['bleeding_gt_20wks'], $pp['postmaturity_prematurity'], $pp['hypertension'],
             $pp['prom'], $pp['poly_oligohydramnios'], $pp['iugr'], $pp['multiple_pregnancy'],
             $pp['breech_malpresentation'], $pp['rh_isoimmunization'],
         ]);
 
-    // 4. Retrieve latest vitals, patient profile, and risk history
-    $stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? ORDER BY date DESC LIMIT 1");
-    $stmt->execute([$u['id']]);
+    // 4. Retrieve latest vitals, patient profile, and risk history for active pregnancy
+    $stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC LIMIT 1");
+    $stmt->execute([$u['id'], $actPregId]);
     $vitals = $stmt->fetch() ?: [];
 
     // Optional override with incoming vitals in payload
@@ -201,8 +204,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sugarTiming = $input['glucose_timing'] ?? 'preprandial';
 
     if (isset($input['bp_sys']) || isset($input['temp']) || isset($input['blood_sugar'])) {
-        $pdo->prepare("INSERT INTO monitoring (id, user_id, date, bp_sys, bp_dia, temp, heart_rate, blood_sugar) VALUES (?,?,?,?,?,?,?,?)")
-            ->execute([uid('mon'), $u['id'], now_iso(), $bpSys, $bpDia, $tempVal, $hrVal, $sugarVal]);
+        $pdo->prepare("INSERT INTO monitoring (id, user_id, pregnancy_id, date, bp_sys, bp_dia, temp, heart_rate, blood_sugar) VALUES (?,?,?,?,?,?,?,?,?)")
+            ->execute([uid('mon'), $u['id'], $actPregId, now_iso(), $bpSys, $bpDia, $tempVal, $hrVal, $sugarVal]);
     }
 
     $stmt = $pdo->prepare("SELECT * FROM patient_profiles WHERE user_id = ?");
@@ -307,12 +310,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ? $input['matched_factors'] 
             : ($cooplandResult['contributing_factors'] ?? []);
 
-        // Explicitly persist into coopland_assessments
+        // Explicitly persist into coopland_assessments with matching date & time and active pregnancy
         $coopId = 'ca-' . uniqid();
-        $cStmt = $pdo->prepare("INSERT INTO coopland_assessments (id, user_id, date, score, risk_level, factors_json) VALUES (?, ?, NOW(), ?, ?, ?)");
+        $cStmt = $pdo->prepare("INSERT INTO coopland_assessments (id, user_id, pregnancy_id, date, score, risk_level, factors_json) VALUES (?, ?, ?, ?, ?, ?, ?)");
         $cStmt->execute([
             $coopId,
             $u['id'],
+            $actPregId,
+            $currentTime,
             $coopScore,
             $coopRisk,
             json_encode($coopFactors)
@@ -320,9 +325,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $cooplandResult = [
             'id' => $coopId,
+            'date' => $currentTime,
             'coopland_score' => $coopScore,
             'coopland_risk' => $coopRisk,
-            'contributing_factors' => $coopFactors
+            'contributing_factors' => $coopFactors,
+            'factors' => $coopFactors,
         ];
 
         // Insert notification according to Coopland risk level
@@ -342,8 +349,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         try {
-            $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
-                ->execute([$notifId, $u['id'], $notifTitle, $notifBody, now_iso(), $notifKind]);
+            $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+                ->execute([$notifId, $u['id'], $actPregId, $notifTitle, $notifBody, now_iso(), $notifKind]);
         } catch (Exception $e) {}
 
         $recs = generate_recommendations($cooplandResult, $clinicalAlerts, $trimester);
@@ -437,8 +444,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $notifKind = 'low_risk_assessment';
             }
             try {
-                $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
-                    ->execute([$notifId, $u['id'], $notifTitle, $notifBody, now_iso(), $notifKind]);
+                $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+                    ->execute([$notifId, $u['id'], $actPregId, $notifTitle, $notifBody, now_iso(), $notifKind]);
             } catch (Exception $e) {}
         }
         
@@ -470,10 +477,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $structTotal = isset($result['structural']['total']) ? $result['structural']['total'] : 0;
     $fuzzyCentroid = isset($result['fuzzy']['centroid']) ? $result['fuzzy']['centroid'] : 0;
     
-    $pdo->prepare("INSERT INTO assessments (id, user_id, date, score, level, weighted_score, centroid, ahp_json, fuzzy_json, rules_json, recommendations_json)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+    $pdo->prepare("INSERT INTO assessments (id, user_id, pregnancy_id, date, score, level, weighted_score, centroid, ahp_json, fuzzy_json, rules_json, recommendations_json)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
         ->execute([
-            $asmId, $u['id'], now_iso(), $result['score'], $result['level'],
+            $asmId, $u['id'], $actPregId, $currentTime, $result['score'], $result['level'],
             $structTotal, $fuzzyCentroid,
             json_encode(isset($result['structural']) ? $result['structural'] : []), 
             json_encode(isset($result['fuzzy']) ? $result['fuzzy'] : []),
@@ -501,6 +508,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     json_success([
         'assessmentId' => $asmId,
+        'date' => $currentTime,
+        'symptomLogId' => $logId,
+        'symptomLogDate' => $currentTime,
         'score' => $result['score'] ?? 0,
         'level' => $result['level'] ?? 'Low',
         'risk_level' => $result['risk_level'] ?? 'Low',
@@ -512,7 +522,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'main_contributors' => $result['main_contributors'] ?? [],
         'progression' => $result['progression'] ?? [],
         'recommendations' => $result['recommendations'] ?? [],
-        'generatedAt' => $result['generatedAt'] ?? now_iso(),
+        'generatedAt' => $currentTime,
         
         // Return separated new engine results alongside existing fuzzy logic
         'coopland' => $cooplandResult ?? null,

@@ -2,7 +2,7 @@
 require_once __DIR__ . '/base.php';
 $u = require_role('patient');
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggle_taken') {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' && ($_POST['action'] ?? '') === 'toggle_taken') {
     $medId = $_POST['medication_id'] ?? '';
     if ($medId) {
         $today = today_iso();
@@ -19,9 +19,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggl
     redirect('dashboard.php');
 }
 
+$actPregId = get_active_pregnancy_id($pdo, $u['id']);
+
 // Fetch Coopland Assessment (definitive maternal risk classifier)
-$stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
-$stmt->execute([$u['id']]);
+if ($actPregId) {
+    $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC, id DESC LIMIT 1");
+    $stmt->execute([$u['id'], $actPregId]);
+} else {
+    $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
+    $stmt->execute([$u['id']]);
+}
 $latestCoopland = $stmt->fetch();
 
 if (!$latestCoopland) {
@@ -29,23 +36,34 @@ if (!$latestCoopland) {
     $eval = evaluate_coopland($u['id'], $pdo, [], []);
     if ($eval) {
         $initId = 'ca-' . uniqid();
-        $pdo->prepare("INSERT INTO coopland_assessments (id, user_id, date, score, risk_level, factors_json) VALUES (?, ?, NOW(), ?, ?, ?)")
+        $pdo->prepare("INSERT INTO coopland_assessments (id, user_id, pregnancy_id, date, score, risk_level, factors_json) VALUES (?, ?, ?, NOW(), ?, ?, ?)")
             ->execute([
                 $initId,
                 $u['id'],
+                $actPregId,
                 $eval['coopland_score'],
                 $eval['coopland_risk'],
                 json_encode($eval['contributing_factors'] ?? [])
             ]);
-        $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
-        $stmt->execute([$u['id']]);
+        if ($actPregId) {
+            $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC, id DESC LIMIT 1");
+            $stmt->execute([$u['id'], $actPregId]);
+        } else {
+            $stmt = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? ORDER BY date DESC, id DESC LIMIT 1");
+            $stmt->execute([$u['id']]);
+        }
         $latestCoopland = $stmt->fetch();
     }
 }
 
 // General assessment for visit resolution
-$stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 1");
-$stmt->execute([$u['id']]);
+if ($actPregId) {
+    $stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC LIMIT 1");
+    $stmt->execute([$u['id'], $actPregId]);
+} else {
+    $stmt = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 1");
+    $stmt->execute([$u['id']]);
+}
 $latest = $stmt->fetch();
 
 $coopScore = $latestCoopland ? (int)$latestCoopland['score'] : 0;
@@ -140,15 +158,31 @@ $stmt->execute([$u['id']]);
 $notifications = $stmt->fetchAll();
 
 $today = today_iso();
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM monitoring WHERE user_id=? AND date >= ?");
-$stmt->execute([$u['id'], $today.' 00:00:00']);
+if ($actPregId) {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM monitoring WHERE user_id=? AND pregnancy_id=? AND date >= ?");
+    $stmt->execute([$u['id'], $actPregId, $today.' 00:00:00']);
+} else {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM monitoring WHERE user_id=? AND date >= ?");
+    $stmt->execute([$u['id'], $today.' 00:00:00']);
+}
 $loggedVitalsToday = (int)$stmt->fetchColumn() > 0;
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM symptom_logs WHERE user_id=? AND date >= ?");
-$stmt->execute([$u['id'], $today.' 00:00:00']);
+
+if ($actPregId) {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM symptom_logs WHERE user_id=? AND pregnancy_id=? AND date >= ?");
+    $stmt->execute([$u['id'], $actPregId, $today.' 00:00:00']);
+} else {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM symptom_logs WHERE user_id=? AND date >= ?");
+    $stmt->execute([$u['id'], $today.' 00:00:00']);
+}
 $loggedSymptomsToday = (int)$stmt->fetchColumn() > 0;
 
-$stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? ORDER BY date DESC LIMIT 1");
-$stmt->execute([$u['id']]);
+if ($actPregId) {
+    $stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? AND pregnancy_id = ? ORDER BY date DESC LIMIT 1");
+    $stmt->execute([$u['id'], $actPregId]);
+} else {
+    $stmt = $pdo->prepare("SELECT * FROM monitoring WHERE user_id = ? ORDER BY date DESC LIMIT 1");
+    $stmt->execute([$u['id']]);
+}
 $lastVitals = $stmt->fetch();
 
 $clinicalVisits = get_clinical_visits_history($pdo, $u['id']);
@@ -161,15 +195,39 @@ $stmt = $pdo->prepare("SELECT lmp, edd, gravida, next_ob_visit FROM patient_prof
 $stmt->execute([$u['id']]);
 $profile = $stmt->fetch();
 
+$actPreg = null;
+if ($actPregId) {
+    $stmt = $pdo->prepare("SELECT * FROM pregnancies WHERE id = ? AND user_id = ?");
+    $stmt->execute([$actPregId, $u['id']]);
+    $actPreg = $stmt->fetch();
+}
+
+$lmp = ($actPreg && !empty($actPreg['lmp'])) ? $actPreg['lmp'] : ($profile['lmp'] ?? null);
+$edd = ($actPreg && !empty($actPreg['edd'])) ? $actPreg['edd'] : ($profile['edd'] ?? null);
+
 $weeksPregnant = null;
-if ($profile && $profile['lmp']){
-    $weeksPregnant = floor((time() - strtotime($profile['lmp'])) / (7*86400));
+if ($lmp){
+    $weeksPregnant = floor((time() - strtotime($lmp)) / (7*86400));
 }
 $trimester = $weeksPregnant !== null ? ($weeksPregnant < 14 ? 1 : ($weeksPregnant < 28 ? 2 : 3)) : null;
 $babySize = $weeksPregnant !== null ? baby_size_for_week($weeksPregnant) : null;
-$daysToEdd = ($profile && $profile['edd']) ? (int)ceil((strtotime($profile['edd']) - time()) / 86400) : null;
-$nextVisit = $profile['next_ob_visit'] ?? null;
-$daysToVisit = $nextVisit ? (int)ceil((strtotime($nextVisit) - time()) / 86400) : null;
+$daysToEdd = $edd ? (int)ceil((strtotime($edd) - time()) / 86400) : null;
+$upcomingVisit = null;
+try {
+    if ($actPregId) {
+        $stmtVisit = $pdo->prepare("SELECT * FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
+        $stmtVisit->execute([$u['id'], $actPregId]);
+        $upcomingVisit = $stmtVisit->fetch(PDO::FETCH_ASSOC);
+    } else {
+        $stmtVisit = $pdo->prepare("SELECT * FROM ob_visits WHERE user_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
+        $stmtVisit->execute([$u['id']]);
+        $upcomingVisit = $stmtVisit->fetch(PDO::FETCH_ASSOC);
+    }
+} catch (Exception $e) {}
+
+$nextVisit = $upcomingVisit ? $upcomingVisit['visit_date'] : ($actPregId ? null : ($profile['next_ob_visit'] ?? null));
+$nextVisitTitle = $upcomingVisit['title'] ?? 'Next OB-GYN Visit';
+$daysToVisit = $nextVisit ? (int)ceil((strtotime($nextVisit) - strtotime(today_iso())) / 86400) : null;
 
 // Active medications/supplements and today's taken log
 $stmt = $pdo->prepare("SELECT * FROM medications WHERE user_id = ? AND active = 1 ORDER BY name");
@@ -180,20 +238,17 @@ $stmt = $pdo->prepare("SELECT medication_id FROM medication_logs WHERE user_id =
 $stmt->execute([$u['id'], $today]);
 $dashboardTaken = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
+require_once __DIR__ . '/milestones_data.php';
+
+$currentWeek = $weeksPregnant !== null ? (int)$weeksPregnant : 32;
+$currentMonth = get_pregnancy_month($currentWeek);
+$weekMilestone = get_week_milestone_details($currentWeek);
+$currMonthData = PREGNANCY_MONTH_DATA[$currentMonth] ?? PREGNANCY_MONTH_DATA[8];
+
 render_header('Dashboard', 'dashboard');
 ?>
 
-<div class="hero-gradient" style="margin-bottom:20px;">
-  <div class="eyebrow" style="color:rgba(255,255,255,.85);">Welcome back</div>
-  <h1 style="margin:6px 0 4px;color:#fff;font-size:26px;"><?php echo e($u['name']); ?></h1>
-  <div style="color:rgba(255,255,255,.9);font-size:14px;">
-    <?php if ($weeksPregnant !== null): ?>
-      You're about <strong><?php echo (int)$weeksPregnant; ?> weeks</strong> along — Trimester <?php echo $trimester; ?>. Expected due date: <?php echo e(fmt_date($profile['edd'])); ?>.
-    <?php else: ?>
-      Complete your profile to see your pregnancy timeline.
-    <?php endif; ?>
-  </div>
-</div>
+<h1 class="page-title-display">Dashboard</h1>
 
 <?php if ($canResolve): ?>
 <div class="card" style="margin-bottom:16px;border-left:5px solid var(--risk-high);background:#fff5f5;border-color:rgba(220,53,69,0.3);">
@@ -240,12 +295,14 @@ render_header('Dashboard', 'dashboard');
 <?php endif; ?>
 
 <?php if (!$loggedVitalsToday || !$loggedSymptomsToday): ?>
-<div class="card" id="dailyReminderBanner" style="margin-bottom:16px;border-color:var(--sky);background:var(--sky-light);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-  <div style="display:flex;align-items:center;gap:12px;">
-    <i class="fa-solid fa-bell" style="font-size:22px;color:#1E6E96;"></i>
-    <div>
-      <strong>Daily check-in reminder</strong>
-      <div class="muted" style="font-size:13px;">
+<div class="daily-reminder-banner" id="dailyReminderBanner">
+  <div class="daily-reminder-top">
+    <div class="daily-reminder-bell-wrap">
+      <i class="fa-solid fa-bell"></i>
+    </div>
+    <div class="daily-reminder-info">
+      <div class="daily-reminder-title">Daily check-in reminder</div>
+      <div class="daily-reminder-sub">
         <?php if (!$loggedVitalsToday && !$loggedSymptomsToday): ?>
           You haven't logged your vitals or symptoms today.
         <?php elseif (!$loggedVitalsToday): ?>
@@ -256,13 +313,16 @@ render_header('Dashboard', 'dashboard');
       </div>
     </div>
   </div>
-  <div style="display:flex;gap:8px;">
-    <?php if (!$loggedVitalsToday): ?><a class="btn btn-outline btn-sm" href="monitoring.php">Log Vitals</a><?php endif; ?>
-    <?php if (!$loggedSymptomsToday): ?><a class="btn btn-primary btn-sm" href="symptoms.php">Check-in Now</a><?php endif; ?>
+  <div class="daily-reminder-btn-row">
+    <?php if (!$loggedVitalsToday): ?>
+      <a class="btn-daily-vitals" href="monitoring.php">Log Vitals</a>
+    <?php endif; ?>
+    <?php if (!$loggedSymptomsToday): ?>
+      <a class="btn-daily-checkin" href="symptoms.php">Check-in Now</a>
+    <?php endif; ?>
   </div>
 </div>
 <script>
-  // Ask (once) if the patient wants browser notifications, then remind them once per day if they haven't logged anything yet.
   (function(){
     const missedToday = <?php echo (!$loggedVitalsToday || !$loggedSymptomsToday) ? 'true' : 'false'; ?>;
     if (!missedToday || !('Notification' in window)) return;
@@ -280,49 +340,128 @@ render_header('Dashboard', 'dashboard');
         fireReminder();
         localStorage.setItem('pregnacare_reminder_shown_date', todayStr);
       }
-    } else if (Notification.permission !== 'denied' && !localStorage.getItem('pregnacare_reminder_asked')){
-      localStorage.setItem('pregnacare_reminder_asked', '1');
-      const askBtn = document.createElement('button');
-      askBtn.className = 'btn btn-outline btn-sm';
-      askBtn.style.marginLeft = '8px';
-      askBtn.innerHTML = '<i class="fa-solid fa-bell"></i> Enable Reminders';
-      askBtn.onclick = function(){ Notification.requestPermission().then(() => askBtn.remove()); };
-      document.getElementById('dailyReminderBanner').appendChild(askBtn);
     }
   })();
 </script>
 <?php endif; ?>
 
-<?php if ($babySize || $daysToEdd !== null): ?>
 <div class="card" style="margin-bottom:16px;">
-  <div class="grid grid-2" style="align-items:center;gap:20px;">
-    <div style="text-align:center;">
-      <?php echo baby_silhouette_svg(90); ?>
-      <div class="muted" style="font-size:11px;margin-top:4px;">Illustrative only</div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+    <div class="eyebrow" style="margin:0;">Reminders</div>
+    <?php if (!empty($dashboardMeds) || $nextVisit): ?>
+      <a href="reminders.php" style="font-size:12px;font-weight:700;color:var(--primary, #C2577D);text-decoration:none;">
+        Manage <i class="fa-solid fa-chevron-right" style="font-size:10px;"></i>
+      </a>
+    <?php endif; ?>
+  </div>
+
+  <?php if ($nextVisit && $daysToVisit !== null): ?>
+    <div style="background:var(--bg-soft, #FFF5F8);border-radius:12px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;border:1px solid #F8D7E3;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:34px;height:34px;border-radius:50%;background:#FCE7F0;display:flex;align-items:center;justify-content:center;color:#C2577D;font-size:15px;">
+          <i class="fa-solid fa-calendar-check"></i>
+        </div>
+        <div>
+          <div style="font-weight:700;font-size:13px;color:var(--text);"><?php echo e($nextVisitTitle); ?></div>
+          <div class="muted" style="font-size:11.5px;"><?php echo e(fmt_date($nextVisit)); ?></div>
+        </div>
+      </div>
+      <span class="badge" style="background:#C2577D;color:#FFF;font-weight:800;font-size:11.5px;padding:4px 9px;border-radius:8px;">
+        <?php echo $daysToVisit === 0 ? "Today!" : ($daysToVisit === 1 ? "Tomorrow" : ($daysToVisit > 0 ? "{$daysToVisit}d left" : "Passed")); ?>
+      </span>
     </div>
-    <div style="text-align:center;">
-      <div class="eyebrow">Countdown to Due Date</div>
-      <?php if ($daysToEdd !== null && $daysToEdd > 0): ?>
-        <div style="font-family:var(--font-display);font-size:38px;font-weight:700;color:var(--teal-dark);"><?php echo $daysToEdd; ?></div>
-        <div class="muted" style="font-size:12.5px;">days to go &bull; Week <?php echo (int)$weeksPregnant; ?> of 40</div>
-      <?php elseif ($daysToEdd !== null): ?>
-        <div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--teal-dark);">Any day now! 🎉</div>
-      <?php else: ?>
-        <div class="muted" style="font-size:13px;">Add your LMP in Profile to see this.</div>
-      <?php endif; ?>
+  <?php endif; ?>
+
+  <?php if (!empty($dashboardMeds)): ?>
+    <div style="font-weight:700;font-size:13px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+      <span><i class="fa-solid fa-pills" style="color:#C2577D;margin-right:5px;"></i>Today's Checklist</span>
+      <span class="muted" style="font-size:11.5px;font-weight:600;">
+        <?php
+          $takenCount = count(array_intersect(array_column($dashboardMeds, 'id'), $dashboardTaken));
+          echo "{$takenCount} / " . count($dashboardMeds) . " taken";
+        ?>
+      </span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;max-height:160px;overflow-y:auto;">
+      <?php foreach ($dashboardMeds as $m): $isTaken = in_array($m['id'], $dashboardTaken); ?>
+        <form method="post" action="dashboard.php" style="margin:0;">
+          <input type="hidden" name="action" value="toggle_taken">
+          <input type="hidden" name="medication_id" value="<?php echo e($m['id']); ?>">
+          <button type="submit" class="chip <?php echo $isTaken ? 'on' : ''; ?>" style="width:100%;justify-content:flex-start;display:flex;cursor:pointer;border:1.5px solid <?php echo $isTaken ? '#C2577D' : 'var(--border)'; ?>;padding:7px 10px;font-size:12.5px;text-align:left;border-radius:10px;background:<?php echo $isTaken ? '#FFF5F8' : '#FFF'; ?>;box-shadow:none;">
+            <i class="fa-solid <?php echo $isTaken ? 'fa-circle-check' : 'fa-circle'; ?>" style="margin-right:8px;font-size:14px;color:<?php echo $isTaken ? '#C2577D' : 'var(--muted)'; ?>;"></i>
+            <span style="font-weight:<?php echo $isTaken ? '700' : '600'; ?>;color:<?php echo $isTaken ? '#9B2C52' : 'var(--text)'; ?>;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;">
+              <?php echo e($m['name']); ?>
+            </span>
+            <?php if (!empty($m['dosage'])): ?>
+              <span class="muted" style="font-size:11px;margin-left:4px;white-space:nowrap;">— <?php echo e($m['dosage']); ?></span>
+            <?php endif; ?>
+          </button>
+        </form>
+      <?php endforeach; ?>
+    </div>
+  <?php elseif (!$nextVisit): ?>
+    <p class="muted" style="font-size:13px;margin-top:6px;margin-bottom:8px;">Track your next OB-GYN visit and mark off today's supplements/vitamins.</p>
+  <?php endif; ?>
+  <a class="btn btn-outline btn-block btn-sm" href="reminders.php" style="margin-top:4px;"><i class="fa-solid fa-bell"></i> Open Reminders</a>
+</div>
+
+<div class="fetal-card-display">
+  <!-- 1. Circular Fetal Photo with month badge -->
+  <div class="fetal-circle-container" onclick="pcOpenFetalMonthModal()" title="View 9-month development chart">
+    <div class="fetal-circle-outer">
+      <img src="assets/baby_months/month_<?php echo $currentMonth; ?>.png" alt="Month <?php echo $currentMonth; ?>" class="fetal-photo">
+      <div class="fetal-mo-badge">Mo <?php echo $currentMonth; ?></div>
     </div>
   </div>
+
+  <!-- 2. Month Link with sparkles -->
+  <div>
+    <button type="button" class="fetal-month-button" onclick="pcOpenFetalMonthModal()">
+      <i class="fa-solid fa-wand-magic-sparkles" style="color:#b04a6e;font-size:12px;"></i>
+      <span>Month <?php echo $currentMonth; ?> of 9 &bull; Illustrative Fetal Size</span>
+      <i class="fa-solid fa-chevron-right" style="color:#b04a6e;font-size:11px;"></i>
+    </button>
+  </div>
+
+  <!-- 3. See Week Development & Tips Pill Button -->
+  <div style="margin: 8px 0 20px;">
+    <button type="button" class="fetal-tips-pill" onclick="pcOpenWeekTipsModal()">
+      <i class="fa-solid fa-wand-magic-sparkles" style="font-size:13px;"></i>
+      <span>See Week <?php echo $currentWeek; ?> Development &amp; Tips</span>
+      <i class="fa-solid fa-chevron-right" style="font-size:11px;"></i>
+    </button>
+  </div>
+
+  <!-- 4. Countdown to due date -->
+  <div class="fetal-countdown-block">
+    <div class="countdown-label">COUNTDOWN TO DUE DATE</div>
+    <?php if ($daysToEdd !== null && $daysToEdd > 0): ?>
+      <div class="countdown-big-num"><?php echo $daysToEdd; ?></div>
+      <div class="countdown-sub">days to go &bull; Week <?php echo $currentWeek; ?> of 40</div>
+    <?php elseif ($daysToEdd !== null): ?>
+      <div class="countdown-big-num" style="font-size:36px;">Any day now! 🎉</div>
+      <div class="countdown-sub">Week <?php echo $currentWeek; ?> of 40</div>
+    <?php else: ?>
+      <div class="countdown-sub"><a href="profile.php" style="color:#b04a6e;text-decoration:underline;">Add your LMP in Profile</a> to view countdown.</div>
+    <?php endif; ?>
+  </div>
 </div>
-<?php endif; ?>
 
 <div class="grid grid-3" style="align-items:stretch;">
-  <div class="card" style="grid-column:span 1;text-align:center;">
-    <div class="eyebrow" style="letter-spacing:0.8px;font-weight:800;color:var(--ink-soft);margin-bottom:8px;">CURRENT COOPLAND</div>
+  <div class="card" style="grid-column:span 1;text-align:center;border-radius:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="font-size:11px;font-weight:800;letter-spacing:1px;color:<?php echo $coopLevel==='Severe'?'var(--risk-high)':($coopLevel==='High'?'#ea580c':($coopLevel==='Moderate'?'#d97706':'#0d9488')); ?>;text-transform:uppercase;">
+        CURRENT COOPLAND RISK &bull; <?php echo strtoupper($coopLevel); ?>
+      </div>
+      <a href="analyze.php" style="font-size:12px;font-weight:700;color:#64748b;display:inline-flex;align-items:center;gap:4px;">
+        Assess Risk <i class="fa-solid fa-chevron-right" style="font-size:10px;"></i>
+      </a>
+    </div>
     <?php if ($latestCoopland): ?>
       <div class="risk-gauge-wrap">
         <?php echo risk_gauge_svg($coopScore, $coopLevel); ?>
         <span class="badge <?php echo risk_badge_class($coopLevel); ?>" style="margin-top:6px;"><?php echo e($coopLevel); ?> Risk</span>
-        <div class="muted" style="font-size:12px;margin-top:4px;"><?php echo e(fmt_date($latestCoopland['date'])); ?></div>
+        <div class="muted" style="font-size:12px;margin-top:4px;"><?php echo e(fmt_datetime($latestCoopland['date'])); ?></div>
         <div style="font-weight:800;font-size:14px;color:var(--primary);margin-top:4px;">
           Score: <?php echo $coopScore; ?>
         </div>
@@ -366,88 +505,16 @@ render_header('Dashboard', 'dashboard');
     <?php endif; ?>
   </div>
 
-  <div class="card">
-    <div class="eyebrow">Latest Vitals</div>
-    <?php if ($lastVitals): ?>
-      <div class="kv"><span class="k">Blood Pressure</span><span class="v"><?php echo (int)$lastVitals['bp_sys']; ?>/<?php echo (int)$lastVitals['bp_dia']; ?> mmHg</span></div>
-      <div class="kv"><span class="k">Hemoglobin</span><span class="v"><?php echo e($lastVitals['hemoglobin']); ?> g/dL</span></div>
-      <div class="kv"><span class="k">Blood Sugar</span><span class="v"><?php echo e($lastVitals['blood_sugar']); ?> mg/dL</span></div>
-      <div class="kv"><span class="k">Weight</span><span class="v"><?php echo e($lastVitals['weight_kg']); ?> kg</span></div>
-      <div class="kv"><span class="k">Logged</span><span class="v"><?php echo e(fmt_date($lastVitals['date'])); ?></span></div>
-    <?php else: ?>
-      <div class="empty"><i class="fa-solid fa-heart-pulse"></i>No vitals logged yet.</div>
-    <?php endif; ?>
-    <a class="btn btn-outline btn-block btn-sm" style="margin-top:10px;" href="monitoring.php"><i class="fa-solid fa-plus"></i> Log Vitals</a>
-  </div>
-
-  <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-      <div class="eyebrow" style="margin:0;">Reminders</div>
-      <?php if (!empty($dashboardMeds) || $nextVisit): ?>
-        <a href="reminders.php" style="font-size:12px;font-weight:700;color:var(--primary, #C2577D);text-decoration:none;">
-          Manage <i class="fa-solid fa-chevron-right" style="font-size:10px;"></i>
-        </a>
-      <?php endif; ?>
-    </div>
-
-    <?php if ($nextVisit && $daysToVisit !== null): ?>
-      <div style="background:var(--bg-soft, #FFF5F8);border-radius:10px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;border:1px solid #F8D7E3;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <i class="fa-solid fa-calendar-check" style="color:var(--primary, #C2577D);font-size:16px;"></i>
-          <div>
-            <div style="font-weight:700;font-size:12px;color:var(--text);">Next OB-GYN Visit</div>
-            <div class="muted" style="font-size:11px;"><?php echo e(fmt_date($nextVisit)); ?></div>
-          </div>
-        </div>
-        <span class="badge" style="background:#C2577D;color:#FFF;font-weight:800;font-size:11px;padding:3px 8px;border-radius:8px;">
-          <?php echo $daysToVisit === 0 ? "Today!" : ($daysToVisit > 0 ? "{$daysToVisit}d left" : "Passed"); ?>
-        </span>
-      </div>
-    <?php endif; ?>
-
-    <?php if (!empty($dashboardMeds)): ?>
-      <div style="font-weight:700;font-size:13px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
-        <span><i class="fa-solid fa-pills" style="color:#C2577D;margin-right:5px;"></i>Today's Checklist</span>
-        <span class="muted" style="font-size:11.5px;font-weight:600;">
-          <?php
-            $takenCount = count(array_intersect(array_column($dashboardMeds, 'id'), $dashboardTaken));
-            echo "{$takenCount} / " . count($dashboardMeds) . " taken";
-          ?>
-        </span>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;max-height:160px;overflow-y:auto;">
-        <?php foreach ($dashboardMeds as $m): $isTaken = in_array($m['id'], $dashboardTaken); ?>
-          <form method="post" action="dashboard.php" style="margin:0;">
-            <input type="hidden" name="action" value="toggle_taken">
-            <input type="hidden" name="medication_id" value="<?php echo e($m['id']); ?>">
-            <button type="submit" class="chip <?php echo $isTaken ? 'on' : ''; ?>" style="width:100%;justify-content:flex-start;display:flex;cursor:pointer;border:1.5px solid <?php echo $isTaken ? '#C2577D' : 'var(--border)'; ?>;padding:7px 10px;font-size:12.5px;text-align:left;border-radius:10px;background:<?php echo $isTaken ? '#FFF5F8' : '#FFF'; ?>;box-shadow:none;">
-              <i class="fa-solid <?php echo $isTaken ? 'fa-circle-check' : 'fa-circle'; ?>" style="margin-right:8px;font-size:14px;color:<?php echo $isTaken ? '#C2577D' : 'var(--muted)'; ?>;"></i>
-              <span style="font-weight:<?php echo $isTaken ? '700' : '600'; ?>;color:<?php echo $isTaken ? '#9B2C52' : 'var(--text)'; ?>;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;">
-                <?php echo e($m['name']); ?>
-              </span>
-              <?php if (!empty($m['dosage'])): ?>
-                <span class="muted" style="font-size:11px;margin-left:4px;white-space:nowrap;">— <?php echo e($m['dosage']); ?></span>
-              <?php endif; ?>
-            </button>
-          </form>
-        <?php endforeach; ?>
-      </div>
-      <a class="btn btn-outline btn-block btn-sm" href="reminders.php"><i class="fa-solid fa-bell"></i> Open Reminders</a>
-    <?php else: ?>
-      <p class="muted" style="font-size:13px;margin-top:6px;">Track your next OB-GYN visit and mark off today's supplements/vitamins.</p>
-      <a class="btn btn-primary btn-block btn-sm" href="reminders.php"><i class="fa-solid fa-bell"></i> Open Reminders</a>
-    <?php endif; ?>
-  </div>
-</div>
-
 <div class="card" style="margin-top:16px;">
-  <div class="eyebrow">Top Recommendations</div>
-  <?php if ($topRecs): foreach ($topRecs as $r): ?>
-    <div class="kv"><span class="k"><i class="fa-solid <?php echo e(is_array($r) ? ($r['icon'] ?? 'fa-circle-check') : 'fa-circle-check'); ?>" style="margin-right:8px;color:<?php echo (is_array($r) && !empty($r['urgent'])) ? 'var(--risk-high)' : 'var(--teal)'; ?>;"></i><?php echo e(is_array($r) ? ($r['text'] ?? '') : $r); ?></span></div>
-  <?php endforeach; else: ?>
-    <div class="empty"><i class="fa-solid fa-lightbulb"></i>Complete a symptom check-in to get recommendations.</div>
-  <?php endif; ?>
-  <a class="btn btn-outline btn-sm" style="margin-top:10px;" href="recommendations.php"><i class="fa-solid fa-list-check"></i> View All Recommendations</a>
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <div>
+      <div class="eyebrow" style="margin:0;">Top Clinical Recommendations</div>
+      <div class="muted" style="font-size:12px;margin-top:2px;">Personalized guidance &amp; clinical advice</div>
+    </div>
+    <button type="button" class="btn btn-outline btn-sm" onclick="pcOpenRecsModal()" style="padding:6px 14px;font-size:12px;font-weight:700;">
+      <i class="fa-solid fa-clipboard-list" style="margin-right:5px;"></i> View Result
+    </button>
+  </div>
 </div>
 
 <div class="card" style="margin-top:16px;">
@@ -510,5 +577,186 @@ if ($canResolve && $latest) {
     render_clinical_visit_modal($latest['id'], 'dashboard');
 }
 ?>
+
+<!-- Modal: See Week Development & Tips -->
+<div class="ed-modal-backdrop" id="weekTipsModalBackdrop" style="display:none;" onclick="if(event.target===this) pcCloseWeekTipsModal()">
+  <div class="ed-modal" style="max-width:480px;border-radius:24px;padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:28px;"><?php echo $weekMilestone['emoji']; ?></span>
+        <div>
+          <div style="font-family:var(--font-display,'Fraunces',serif);font-size:20px;font-weight:700;color:#1e293b;">Week <?php echo $currentWeek; ?>: <?php echo e($weekMilestone['sizeName']); ?></div>
+          <div style="font-size:12px;color:#64748b;">Length: <strong><?php echo e($weekMilestone['lengthApprox']); ?></strong> &bull; Weight: <strong><?php echo e($weekMilestone['weightApprox']); ?></strong></div>
+        </div>
+      </div>
+      <button type="button" class="ed-close" onclick="pcCloseWeekTipsModal()" style="border:none;background:#f1f5f9;width:34px;height:34px;border-radius:50%;cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;max-height:70vh;overflow-y:auto;padding-right:4px;">
+      <div style="background:#fdf2f4;border:1px solid #fce7f0;border-radius:16px;padding:14px;">
+        <div style="font-size:12px;font-weight:800;letter-spacing:1px;color:#b04a6e;text-transform:uppercase;margin-bottom:6px;"><i class="fa-solid fa-baby"></i> Baby's Development</div>
+        <div style="font-size:13.5px;color:#334155;line-height:1.45;"><?php echo e($weekMilestone['babyDevelopment']); ?></div>
+      </div>
+
+      <div style="background:#f0f9ff;border:1px solid #e0f2fe;border-radius:16px;padding:14px;">
+        <div style="font-size:12px;font-weight:800;letter-spacing:1px;color:#0284c7;text-transform:uppercase;margin-bottom:6px;"><i class="fa-solid fa-person-pregnant"></i> Mom's Common Symptoms</div>
+        <div style="font-size:13.5px;color:#334155;line-height:1.45;"><?php echo e($weekMilestone['momSymptoms']); ?></div>
+      </div>
+
+      <div style="background:#fefce8;border:1px solid #fef08a;border-radius:16px;padding:14px;">
+        <div style="font-size:12px;font-weight:800;letter-spacing:1px;color:#ca8a04;text-transform:uppercase;margin-bottom:6px;"><i class="fa-solid fa-lightbulb"></i> Clinical Care Tip</div>
+        <div style="font-size:13.5px;color:#334155;line-height:1.45;"><?php echo e($weekMilestone['weeklyTip']); ?></div>
+      </div>
+    </div>
+
+    <button type="button" class="btn btn-block" style="margin-top:18px;background:#b04a6e;color:#fff;border-radius:14px;padding:11px;" onclick="pcCloseWeekTipsModal()">Got it ✨</button>
+  </div>
+</div>
+
+<!-- Modal: 9-Month Fetal Development Chart -->
+<div class="ed-modal-backdrop" id="fetalMonthModalBackdrop" style="display:none;" onclick="if(event.target===this) pcCloseFetalMonthModal()">
+  <div class="ed-modal" style="max-width:540px;border-radius:24px;padding:24px;max-height:88vh;display:flex;flex-direction:column;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div>
+        <div style="font-family:var(--font-display,'Fraunces',serif);font-size:20px;font-weight:700;color:#1e293b;">9-Month Fetal Development</div>
+        <div style="font-size:12px;color:#64748b;">Month-by-month size and anatomical growth</div>
+      </div>
+      <button type="button" class="ed-close" onclick="pcCloseFetalMonthModal()" style="border:none;background:#f1f5f9;width:34px;height:34px;border-radius:50%;cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+
+    <!-- Month Selector Pills -->
+    <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;margin-bottom:10px;" id="fetalMonthPillRow">
+      <?php for ($m = 1; $m <= 9; $m++): ?>
+        <button type="button" class="btn-mo-tab <?php echo $m === $currentMonth ? 'active' : ''; ?>" onclick="pcSelectFetalMonth(<?php echo $m; ?>)" id="btnMoTab<?php echo $m; ?>" style="flex-shrink:0;padding:6px 14px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid #e2e8f0;background:<?php echo $m === $currentMonth ? '#b04a6e' : '#ffffff'; ?>;color:<?php echo $m === $currentMonth ? '#ffffff' : '#64748b'; ?>;cursor:pointer;">
+          Mo <?php echo $m; ?>
+        </button>
+      <?php endfor; ?>
+    </div>
+
+    <div style="overflow-y:auto;flex:1;padding-right:4px;">
+      <?php for ($m = 1; $m <= 9; $m++):
+          $md = PREGNANCY_MONTH_DATA[$m];
+      ?>
+        <div class="fetal-month-panel" id="fetalMonthPanel<?php echo $m; ?>" style="display:<?php echo $m === $currentMonth ? 'block' : 'none'; ?>;">
+          <div style="text-align:center;margin-bottom:16px;">
+            <div style="width:130px;height:130px;border-radius:50%;margin:0 auto 10px;overflow:hidden;border:4px solid #fce7f0;box-shadow:0 4px 16px rgba(176,74,110,0.15);">
+              <img src="assets/baby_months/month_<?php echo $m; ?>.png" alt="Month <?php echo $m; ?>" style="width:100%;height:100%;object-fit:cover;">
+            </div>
+            <div style="font-family:var(--font-display,'Fraunces',serif);font-size:18px;font-weight:700;color:#1e293b;">Month <?php echo $m; ?> &bull; <?php echo e($md['fruitCompare']); ?></div>
+            <div style="font-size:12px;color:#64748b;"><?php echo e($md['weeks']); ?> &bull; Length: <strong><?php echo e($md['sizeLength']); ?></strong> &bull; Weight: <strong><?php echo e($md['weight']); ?></strong></div>
+          </div>
+
+          <div style="background:#fdf2f4;border:1px solid #fce7f0;border-radius:16px;padding:14px;margin-bottom:10px;">
+            <div style="font-size:11.5px;font-weight:800;letter-spacing:1px;color:#b04a6e;text-transform:uppercase;margin-bottom:4px;">Monthly Highlights</div>
+            <div style="font-size:13px;color:#334155;line-height:1.45;"><?php echo e($md['highlights']); ?></div>
+          </div>
+
+          <div style="background:#f0f9ff;border:1px solid #e0f2fe;border-radius:16px;padding:14px;">
+            <div style="font-size:11.5px;font-weight:800;letter-spacing:1px;color:#0284c7;text-transform:uppercase;margin-bottom:4px;">Anatomical Milestones</div>
+            <div style="font-size:13px;color:#334155;line-height:1.45;"><?php echo e($md['anatomy']); ?></div>
+          </div>
+        </div>
+      <?php endfor; ?>
+    </div>
+
+    <button type="button" class="btn btn-block" style="margin-top:16px;background:#b04a6e;color:#fff;border-radius:14px;padding:11px;" onclick="pcCloseFetalMonthModal()">Close</button>
+  </div>
+</div>
+
+<!-- Clinical Recommendations Pop-up Form / Modal -->
+<div class="ed-modal-backdrop" id="recsModalBackdrop" style="display:none;" onclick="if(event.target===this) pcCloseRecsModal()">
+  <div class="ed-modal" style="max-width:500px;border-radius:24px;padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:38px;height:38px;border-radius:50%;background:#fce7f0;display:flex;align-items:center;justify-content:center;color:#b04a6e;font-size:18px;">
+          <i class="fa-solid fa-clipboard-check"></i>
+        </div>
+        <div>
+          <div style="font-family:var(--font-display,'Fraunces',serif);font-size:18px;font-weight:700;color:#1e293b;">Clinical Recommendations</div>
+          <div style="font-size:12px;color:#64748b;">Guidance tailored to your maternal assessment</div>
+        </div>
+      </div>
+      <button type="button" class="ed-close" onclick="pcCloseRecsModal()" style="border:none;background:#f1f5f9;width:34px;height:34px;border-radius:50%;cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+
+    <div style="font-size:11px;font-weight:800;letter-spacing:1px;color:#85818A;text-transform:uppercase;margin-bottom:12px;">Top Clinical Recommendations</div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;max-height:360px;overflow-y:auto;padding-right:2px;">
+      <?php if (!empty($topRecs)): foreach ($topRecs as $r): 
+        $recText = is_array($r) ? ($r['text'] ?? '') : $r;
+        $isUrgent = is_array($r) && !empty($r['urgent']);
+        $cat = is_array($r) ? ($r['category'] ?? '') : '';
+      ?>
+        <div style="background:<?php echo $isUrgent ? '#FEE2E2' : '#FDF2F7'; ?>;border:1px solid <?php echo $isUrgent ? '#FCA5A5' : '#FCE7F0'; ?>;border-radius:14px;padding:12px 14px;display:flex;align-items:flex-start;gap:12px;">
+          <i class="fa-solid <?php echo $isUrgent ? 'fa-triangle-exclamation' : 'fa-circle-check'; ?>" style="font-size:16px;margin-top:2px;color:<?php echo $isUrgent ? '#DC2626' : '#B04A6E'; ?>;"></i>
+          <div style="flex:1;">
+            <?php if ($cat): ?>
+              <div style="font-size:11px;font-weight:800;letter-spacing:0.8px;color:<?php echo $isUrgent ? '#DC2626' : '#B04A6E'; ?>;text-transform:uppercase;margin-bottom:2px;"><?php echo e($cat); ?></div>
+            <?php endif; ?>
+            <div style="font-size:13.5px;color:<?php echo $isUrgent ? '#991B1B' : '#334155'; ?>;line-height:1.45;"><?php echo e($recText); ?></div>
+          </div>
+        </div>
+      <?php endforeach; else: ?>
+        <div class="empty"><i class="fa-solid fa-lightbulb"></i>Complete a symptom check-in to get recommendations.</div>
+      <?php endif; ?>
+    </div>
+
+    <a class="btn btn-outline btn-block" style="margin-bottom:8px;border-radius:12px;padding:10px;text-align:center;color:#B04A6E;border-color:#B04A6E;" href="recommendations.php">
+      <i class="fa-solid fa-chart-line" style="margin-right:6px;"></i> View Factor Analysis & Guidance
+    </a>
+    <button type="button" class="btn btn-block" style="background:#b04a6e;color:#fff;border-radius:12px;padding:10px;" onclick="pcCloseRecsModal()">Close</button>
+  </div>
+</div>
+
+<script>
+function pcOpenRecsModal(){
+  var m = document.getElementById('recsModalBackdrop');
+  if(m){
+    m.style.display = 'flex';
+    m.classList.add('open');
+  }
+}
+function pcCloseRecsModal(){
+  var m = document.getElementById('recsModalBackdrop');
+  if(m){
+    m.style.display = 'none';
+    m.classList.remove('open');
+  }
+}
+function pcOpenWeekTipsModal(){
+  var m = document.getElementById('weekTipsModalBackdrop');
+  if(m) m.style.display = 'flex';
+}
+function pcCloseWeekTipsModal(){
+  var m = document.getElementById('weekTipsModalBackdrop');
+  if(m) m.style.display = 'none';
+}
+function pcOpenFetalMonthModal(){
+  var m = document.getElementById('fetalMonthModalBackdrop');
+  if(m) m.style.display = 'flex';
+}
+function pcCloseFetalMonthModal(){
+  var m = document.getElementById('fetalMonthModalBackdrop');
+  if(m) m.style.display = 'none';
+}
+function pcSelectFetalMonth(mNum){
+  for(var i = 1; i <= 9; i++){
+    var p = document.getElementById('fetalMonthPanel' + i);
+    var b = document.getElementById('btnMoTab' + i);
+    if(p) p.style.display = (i === mNum) ? 'block' : 'none';
+    if(b){
+      if(i === mNum){
+        b.style.background = '#b04a6e';
+        b.style.color = '#ffffff';
+        b.style.borderColor = '#b04a6e';
+      } else {
+        b.style.background = '#ffffff';
+        b.style.color = '#64748b';
+        b.style.borderColor = '#e2e8f0';
+      }
+    }
+  }
+}
+</script>
 
 <?php render_footer(); ?>

@@ -5,11 +5,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  StatusBar,
   Platform,
   SafeAreaView,
   LogBox,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 
 import { LinearGradient } from 'expo-linear-gradient';
@@ -344,7 +344,7 @@ function MainApp() {
 
     return (
       <View style={[styles.safeArea, { paddingTop: topInset, paddingBottom: bottomInset }]}>
-        <StatusBar barStyle="dark-content" backgroundColor={Colors.background} translucent={false} />
+        <StatusBar style="dark" />
         <AuthScreen
           initialTab={authInitialTab}
           onLoginSuccess={handleLoginSuccess}
@@ -421,11 +421,7 @@ function MainApp() {
 
   return (
     <View style={[styles.safeArea, { paddingTop: topInset }, isDarkMode && { backgroundColor: '#0A0A0C' }]}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={isDarkMode ? '#0A0A0C' : Colors.background}
-        translucent={false}
-      />
+      <StatusBar style={isDarkMode ? 'light' : 'dark'} />
 
       {/* Top Header Bar - persistent across screens and burger menu tools */}
       <HeaderBar
@@ -539,6 +535,17 @@ function MainApp() {
         onMarkAllRead={handleMarkAllNotificationsRead}
         onClearAll={handleClearAllNotifications}
         onDeleteNotification={handleDeleteNotification}
+        onItemPress={(item) => {
+          setNotificationsVisible(false);
+          if (item?.kind === 'hospital_bag') {
+            setWellnessSubTab('bag');
+            setActiveTab('wellness');
+          } else if (item?.kind === 'severe_risk_alert' || item?.kind === 'high_risk_alert' || item?.kind === 'low_risk_assessment') {
+            setActiveTab('analyze');
+          } else if (item?.kind === 'ob_visit' || item?.kind === 'due_date') {
+            setActiveTab('home');
+          }
+        }}
         isDarkMode={isDarkMode}
       />
 

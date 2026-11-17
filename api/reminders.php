@@ -19,8 +19,30 @@ if ($method === 'POST') {
 
     if ($action === 'set_ob_visit') {
         $nextVisit = $input['next_ob_visit'] ?? ($_POST['next_ob_visit'] ?? null);
+        $actPregId = get_active_pregnancy_id($pdo, $u['id']);
         $stmt = $pdo->prepare("UPDATE patient_profiles SET next_ob_visit = ? WHERE user_id = ?");
         $stmt->execute([$nextVisit ?: null, $u['id']]);
+
+        // Sync into ob_visits table
+        if ($nextVisit) {
+            try {
+                if ($actPregId) {
+                    $stmtEx = $pdo->prepare("SELECT id FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? AND visit_date = ?");
+                    $stmtEx->execute([$u['id'], $actPregId, $nextVisit]);
+                    if (!$stmtEx->fetch()) {
+                        $pdo->prepare("INSERT INTO ob_visits (id, user_id, pregnancy_id, visit_date, title, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())")
+                            ->execute([uid('obv'), $u['id'], $actPregId, $nextVisit, 'Routine Prenatal Checkup', 'Scheduled via Reminders']);
+                    }
+                } else {
+                    $stmtEx = $pdo->prepare("SELECT id FROM ob_visits WHERE user_id = ? AND visit_date = ?");
+                    $stmtEx->execute([$u['id'], $nextVisit]);
+                    if (!$stmtEx->fetch()) {
+                        $pdo->prepare("INSERT INTO ob_visits (id, user_id, visit_date, title, notes, created_at) VALUES (?, ?, ?, ?, ?, NOW())")
+                            ->execute([uid('obv'), $u['id'], $nextVisit, 'Routine Prenatal Checkup', 'Scheduled via Reminders']);
+                    }
+                }
+            } catch (Exception $e) {}
+        }
 
         $daysToVisit = $nextVisit ? (int)round((strtotime($nextVisit) - strtotime(today_iso())) / 86400) : null;
 
@@ -32,8 +54,8 @@ if ($method === 'POST') {
                     ? "Your prenatal checkup is scheduled in {$daysToVisit} day(s), on {$visitLabel}."
                     : "Your scheduled prenatal checkup on {$visitLabel} has passed.");
 
-            $stmtNtf = $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)");
-            $stmtNtf->execute([uid('ntf'), $u['id'], 'OB-GYN Visit Reminder', $body, now_iso(), 'ob_visit']);
+            $stmtNtf = $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)");
+            $stmtNtf->execute([uid('ntf'), $u['id'], $actPregId, 'OB-GYN Visit Reminder', $body, now_iso(), 'ob_visit']);
         }
 
         json_success([
@@ -76,9 +98,17 @@ if ($method === 'POST') {
 }
 
 // GET Request
-$stmt = $pdo->prepare("SELECT next_ob_visit FROM patient_profiles WHERE user_id = ?");
-$stmt->execute([$u['id']]);
-$nextVisit = $stmt->fetchColumn();
+$actPregId = get_active_pregnancy_id($pdo, $u['id']);
+$nextVisit = null;
+if ($actPregId) {
+    $stmtUp = $pdo->prepare("SELECT visit_date FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
+    $stmtUp->execute([$u['id'], $actPregId]);
+    $nextVisit = $stmtUp->fetchColumn() ?: null;
+} else {
+    $stmt = $pdo->prepare("SELECT next_ob_visit FROM patient_profiles WHERE user_id = ?");
+    $stmt->execute([$u['id']]);
+    $nextVisit = $stmt->fetchColumn() ?: null;
+}
 $daysToVisit = $nextVisit ? (int)round((strtotime($nextVisit) - strtotime(today_iso())) / 86400) : null;
 
 $stmt = $pdo->prepare("SELECT m.*, 

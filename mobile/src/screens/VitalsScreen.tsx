@@ -11,9 +11,11 @@ import {
   Alert,
   RefreshControl,
   Pressable,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Line, Polyline, Circle, Text as SvgText, G } from 'react-native-svg';
 import { Colors, Shadows, Gradients } from '../theme/colors';
 import { api } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -95,6 +97,272 @@ interface VitalsScreenProps {
   isDarkMode?: boolean;
 }
 
+interface TrendAnalysisChartProps {
+  items: any[];
+  metric: 'bp' | 'weight';
+  isDarkMode?: boolean;
+}
+
+const TrendAnalysisChart: React.FC<TrendAnalysisChartProps> = ({ items, metric, isDarkMode }) => {
+  if (!items || items.length === 0) {
+    return (
+      <View style={[styles.trendEmptyBox, { backgroundColor: isDarkMode ? '#1E1924' : '#F8FAFC', borderRadius: 14, marginBottom: 14 }]}>
+        <Ionicons name="trending-up-outline" size={28} color={isDarkMode ? '#64748B' : '#CBD5E1'} />
+        <Text style={[styles.trendEmptyText, isDarkMode && { color: '#85818A' }]}>
+          No readings logged yet in this timeframe.
+        </Text>
+      </View>
+    );
+  }
+
+  const n = items.length;
+  const plotLeft = 46;
+  const plotRight = 410;
+  const plotTop = 22;
+  const plotBottom = 180;
+  const plotW = plotRight - plotLeft;
+  const plotH = plotBottom - plotTop;
+
+  let yMin = 60;
+  let yMax = 160;
+  let step = 20;
+
+  if (metric === 'bp') {
+    const sysArr = items.filter(it => it.avg_sys).map(it => Number(it.avg_sys));
+    const diaArr = items.filter(it => it.avg_dia).map(it => Number(it.avg_dia));
+    const minVal = diaArr.length ? Math.min(...diaArr) : 60;
+    const maxVal = sysArr.length ? Math.max(...sysArr) : 140;
+    yMin = Math.max(40, Math.floor((minVal - 10) / 20) * 20);
+    yMax = Math.max(160, Math.ceil((maxVal + 10) / 20) * 20);
+    if (yMax - yMin < 60) { yMin = 60; yMax = 160; }
+    step = (yMax - yMin > 120) ? 30 : 20;
+  } else {
+    const wtArr = items.filter(it => it.avg_weight).map(it => Number(it.avg_weight));
+    const minVal = wtArr.length ? Math.min(...wtArr) : 50;
+    const maxVal = wtArr.length ? Math.max(...wtArr) : 70;
+    yMin = Math.max(30, Math.floor((minVal - 3) / 5) * 5);
+    yMax = Math.ceil((maxVal + 3) / 5) * 5;
+    if (yMax - yMin < 15) { yMin = Math.max(30, yMin - 5); yMax += 10; }
+    step = 5;
+  }
+
+  const yTicks: number[] = [];
+  for (let v = yMin; v <= yMax; v += step) {
+    yTicks.push(v);
+  }
+
+  const getY = (val: number) => {
+    if (yMax === yMin) return (plotTop + plotBottom) / 2;
+    const ratio = (val - yMin) / (yMax - yMin);
+    return plotBottom - (ratio * plotH);
+  };
+
+  const getX = (idx: number) => {
+    if (n <= 1) return plotLeft + (plotW / 2);
+    return plotLeft + ((idx / (n - 1)) * plotW);
+  };
+
+  const gridColor = isDarkMode ? '#2C2C31' : '#E2E8F0';
+  const axisColor = isDarkMode ? '#475569' : '#94A3B8';
+  const labelColor = isDarkMode ? '#85818A' : '#64748B';
+
+  const sysPoints: [number, number, number][] = [];
+  const diaPoints: [number, number, number][] = [];
+  const wtPoints: [number, number, number][] = [];
+
+  for (let i = 0; i < n; i++) {
+    const x = getX(i);
+    if (items[i].avg_sys) {
+      sysPoints.push([x, getY(items[i].avg_sys), items[i].avg_sys]);
+    }
+    if (items[i].avg_dia) {
+      diaPoints.push([x, getY(items[i].avg_dia), items[i].avg_dia]);
+    }
+    if (items[i].avg_weight) {
+      wtPoints.push([x, getY(items[i].avg_weight), items[i].avg_weight]);
+    }
+  }
+
+  const lastSysPt = sysPoints[sysPoints.length - 1];
+  const lastDiaPt = diaPoints[diaPoints.length - 1];
+  const lastWtPt = wtPoints[wtPoints.length - 1];
+
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+      <Svg width={360} height={220} viewBox="0 0 540 220">
+        {yTicks.map((tick) => {
+          const y = getY(tick);
+          return (
+            <G key={`ytick-${tick}`}>
+              <Line x1={plotLeft} y1={y} x2={plotRight + 20} y2={y} stroke={gridColor} strokeWidth="1.2" />
+              <SvgText x={plotLeft - 8} y={y + 4} textAnchor="end" fontSize="11" fontWeight="600" fill={labelColor}>
+                {tick}
+              </SvgText>
+            </G>
+          );
+        })}
+
+        <Line x1={plotLeft} y1={plotBottom} x2={plotRight + 20} y2={plotBottom} stroke={axisColor} strokeWidth="1.8" />
+
+        {items.map((it, idx) => {
+          const x = getX(idx);
+          const lbl = it.short_label || it.period || '';
+          return (
+            <SvgText key={`xtick-${idx}`} x={x} y={plotBottom + 18} textAnchor="middle" fontSize="11" fontWeight="600" fill={labelColor}>
+              {lbl}
+            </SvgText>
+          );
+        })}
+
+        {metric === 'bp' ? (
+          <>
+            {diaPoints.length > 1 ? (
+              <Polyline
+                points={diaPoints.map(p => `${Math.round(p[0])},${Math.round(p[1])}`).join(' ')}
+                fill="none"
+                stroke="#02848F"
+                strokeWidth="3.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ) : diaPoints.length === 1 ? (
+              <Line
+                x1={plotLeft}
+                y1={diaPoints[0][1]}
+                x2={plotRight + 10}
+                y2={diaPoints[0][1]}
+                stroke="#02848F"
+                strokeWidth="2"
+                strokeDasharray="4,4"
+                opacity={0.6}
+              />
+            ) : null}
+            {diaPoints.map((p, idx) => {
+              const isHigh = p[2] >= 90;
+              return (
+                <Circle
+                  key={`dia-pt-${idx}`}
+                  cx={p[0]}
+                  cy={p[1]}
+                  r={5.5}
+                  fill={isHigh ? '#DC2626' : '#02848F'}
+                  stroke="#FFFFFF"
+                  strokeWidth="2"
+                />
+              );
+            })}
+
+            {sysPoints.length > 1 ? (
+              <Polyline
+                points={sysPoints.map(p => `${Math.round(p[0])},${Math.round(p[1])}`).join(' ')}
+                fill="none"
+                stroke="#246944"
+                strokeWidth="3.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ) : sysPoints.length === 1 ? (
+              <Line
+                x1={plotLeft}
+                y1={sysPoints[0][1]}
+                x2={plotRight + 10}
+                y2={sysPoints[0][1]}
+                stroke="#246944"
+                strokeWidth="2"
+                strokeDasharray="4,4"
+                opacity="0.6"
+              />
+            ) : null}
+            {sysPoints.map((p, idx) => {
+              const isHigh = p[2] >= 140;
+              return (
+                <Circle
+                  key={`sys-pt-${idx}`}
+                  cx={p[0]}
+                  cy={p[1]}
+                  r={5.5}
+                  fill={isHigh ? '#DC2626' : '#246944'}
+                  stroke="#FFFFFF"
+                  strokeWidth="2"
+                />
+              );
+            })}
+
+            {lastSysPt && (
+              <SvgText
+                x={lastSysPt[0] + 8}
+                y={lastSysPt[1] + 4}
+                fill={lastSysPt[2] >= 140 ? '#DC2626' : '#246944'}
+                fontSize="13"
+                fontWeight="800"
+              >
+                {`${lastSysPt[2]} mmHg`}
+              </SvgText>
+            )}
+            {lastDiaPt && (
+              <SvgText
+                x={lastDiaPt[0] + 8}
+                y={lastDiaPt[1] + 4}
+                fill={lastDiaPt[2] >= 90 ? '#DC2626' : '#02848F'}
+                fontSize="13"
+                fontWeight="800"
+              >
+                {`${lastDiaPt[2]} mmHg`}
+              </SvgText>
+            )}
+          </>
+        ) : (
+          <>
+            {wtPoints.length > 1 ? (
+              <Polyline
+                points={wtPoints.map(p => `${Math.round(p[0])},${Math.round(p[1])}`).join(' ')}
+                fill="none"
+                stroke="#246944"
+                strokeWidth="3.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ) : wtPoints.length === 1 ? (
+              <Line
+                x1={plotLeft}
+                y1={wtPoints[0][1]}
+                x2={plotRight + 10}
+                y2={wtPoints[0][1]}
+                stroke="#246944"
+                strokeWidth="2"
+                strokeDasharray="4,4"
+                opacity="0.6"
+              />
+            ) : null}
+            {wtPoints.map((p, idx) => (
+              <Circle
+                key={`wt-pt-${idx}`}
+                cx={p[0]}
+                cy={p[1]}
+                r={5.5}
+                fill="#246944"
+                stroke="#FFFFFF"
+                strokeWidth="2"
+              />
+            ))}
+            {lastWtPt && (
+              <SvgText
+                x={lastWtPt[0] + 8}
+                y={lastWtPt[1] + 4}
+                fill="#246944"
+                fontSize="13"
+                fontWeight="800"
+              >
+                {`${lastWtPt[2]} kg`}
+              </SvgText>
+            )}
+          </>
+        )}
+      </Svg>
+    </ScrollView>
+  );
+};
+
 export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }) => {
   // Data states
   const [logs, setLogs] = useState<any[]>([]);
@@ -104,6 +372,11 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
   const [refreshing, setRefreshing] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'vitals' | 'initial_lab'>('all');
 
+  // Vitals Trends & Analytics state
+  const [trendsData, setTrendsData] = useState<any>(null);
+  const [trendTimeframe, setTrendTimeframe] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [trendMetric, setTrendMetric] = useState<'bp' | 'weight'>('bp');
+
   // Modal visibilities
   const [showModal, setShowModal] = useState(false); // Daily Vitals modal
   const [showLabModal, setShowLabModal] = useState(false); // Prenatal Lab modal
@@ -111,6 +384,7 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
   const [submittingLab, setSubmittingLab] = useState(false);
 
   // Daily Vitals Form State
+  const [vitalDate, setVitalDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [bpSys, setBpSys] = useState('');
   const [bpDia, setBpDia] = useState('');
   const [heartRate, setHeartRate] = useState('');
@@ -130,7 +404,7 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
 
   // Prenatal Laboratory Form State
   const [labTypeTab, setLabTypeTab] = useState<'initial' | 'followup' | 'investigation'>('initial');
-  const [labDate, setLabDate] = useState('');
+  const [labDate, setLabDate] = useState(() => new Date().toISOString().split('T')[0]);
   // CBC
   const [cbcHb, setCbcHb] = useState('');
   const [cbcHct, setCbcHct] = useState('');
@@ -187,6 +461,9 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
         const fetchedLogs = vitalsRes.value.logs || [];
         setLogs(fetchedLogs);
         setStats(vitalsRes.value.stats || {});
+        if (vitalsRes.value.trends) {
+          setTrendsData(vitalsRes.value.trends);
+        }
         AsyncStorage.setItem(api.getUserStorageKey('cached_vitals'), JSON.stringify(fetchedLogs)).catch(() => {});
       }
       if (labRes.status === 'fulfilled') {
@@ -276,7 +553,9 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
       const parsedSleep = sleepHours ? parseFloat(sleepHours) : undefined;
       const parsedWater = waterIntake ? parseFloat(waterIntake) : undefined;
 
+      const finalVitalDate = vitalDate ? (vitalDate.includes(' ') ? vitalDate : `${vitalDate} ${new Date().toLocaleTimeString('en-GB')}`) : undefined;
       const res = await api.logVitals({
+        date: finalVitalDate,
         bp_sys: parsedSys,
         bp_dia: parsedDia,
         heart_rate: parsedHr,
@@ -297,7 +576,7 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
       // Optimistically record entry so it immediately appears in Daily Vitals Folder
       const newVitalsRecord = {
         id: res?.id || 'mon_' + Date.now(),
-        date: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        date: finalVitalDate || new Date().toISOString().replace('T', ' ').substring(0, 19),
         bp_sys: parsedSys ?? null,
         bp_dia: parsedDia ?? null,
         heart_rate: parsedHr ?? null,
@@ -330,6 +609,7 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
       setTemp(''); setSpo2(''); setWeight(''); setFetalHeartRate('');
       setSugar(''); setFetalMovement(''); setSleepHours('');
       setWaterIntake(''); setMood(''); setActivity('');
+      setVitalDate(new Date().toISOString().split('T')[0]);
       fetchVitals();
 
       if (res.overall_risk && res.recommendations) {
@@ -377,8 +657,9 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
       const parsedFundal = fundalHeight ? parseFloat(fundalHeight) : undefined;
       const parsedMovement = investigationFetalMovement ? parseInt(investigationFetalMovement, 10) : undefined;
 
+      const finalLabDate = labDate ? (labDate.includes(' ') ? labDate : `${labDate} ${new Date().toLocaleTimeString('en-GB')}`) : undefined;
       const payload = {
-        date: labDate ? labDate : undefined,
+        date: finalLabDate,
         lab_type: labTypeTab,
         cbc_hemoglobin: parsedHb,
         cbc_hematocrit: parsedHct,
@@ -407,7 +688,7 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
       // Optimistically record entry so it immediately appears in Initial Lab Folder
       const newLab = {
         id: res?.id || 'lab_' + Date.now(),
-        date: labDate || new Date().toISOString().replace('T', ' ').substring(0, 19),
+        date: finalLabDate || new Date().toISOString().replace('T', ' ').substring(0, 19),
         lab_type: labTypeTab || 'initial',
         cbc_hemoglobin: parsedHb ?? null,
         cbc_hematocrit: parsedHct ?? null,
@@ -448,7 +729,8 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
       setHivScreening(''); setSyphilisScreening(''); setHepbScreening('');
       setUrineCulture(''); setOtherTests(''); setUltrasoundNotes('');
       setInvestigationFhr(''); setFundalHeight(''); setInvestigationFetalMovement('');
-      setLabNotes(''); setLabDate('');
+      setLabNotes('');
+      setLabDate(new Date().toISOString().split('T')[0]);
       fetchVitals();
 
       Alert.alert('Recorded in History', 'Initial laboratory record successfully recorded in the Initial Lab Folder.');
@@ -539,6 +821,137 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
             </Text>
             <Text style={[styles.statUnit, isDarkMode && { color: '#85818A' }]}>entries</Text>
           </View>
+        </View>
+
+        {/* Vitals Trends & Analytics Card */}
+        <View style={[styles.trendsCard, Shadows.card, isDarkMode && styles.trendsCardDark]}>
+          {/* Centered Card Header matching image */}
+          <View style={{ alignItems: 'center', marginBottom: 12 }}>
+            <Text style={[styles.trendsMainTitle, isDarkMode && { color: '#F0EEF0' }]}>
+              Trend Analysis
+            </Text>
+
+            {/* Dynamic Legend */}
+            {trendMetric === 'bp' ? (
+              <View style={styles.trendLegendRow}>
+                <View style={styles.trendLegendItem}>
+                  <View style={[styles.trendLegendSquare, { backgroundColor: '#246944' }]} />
+                  <Text style={[styles.trendLegendText, isDarkMode && { color: '#CBD5E1' }]}>
+                    Systolic BP (mmHg)
+                  </Text>
+                </View>
+                <View style={styles.trendLegendItem}>
+                  <View style={[styles.trendLegendSquare, { backgroundColor: '#02848F' }]} />
+                  <Text style={[styles.trendLegendText, isDarkMode && { color: '#CBD5E1' }]}>
+                    Diastolic BP (mmHg)
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.trendLegendRow}>
+                <View style={styles.trendLegendItem}>
+                  <View style={[styles.trendLegendSquare, { backgroundColor: '#246944' }]} />
+                  <Text style={[styles.trendLegendText, isDarkMode && { color: '#CBD5E1' }]}>
+                    Weight (kg)
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+
+          {/* Timeframe Switcher Tabs */}
+          <View style={[styles.timeframeTabsRow, isDarkMode && styles.timeframeTabsRowDark]}>
+            {(['daily', 'weekly', 'monthly'] as const).map((tf) => (
+              <TouchableOpacity
+                key={tf}
+                style={[
+                  styles.timeframeTab,
+                  trendTimeframe === tf && styles.timeframeTabActive,
+                  trendTimeframe === tf && isDarkMode && styles.timeframeTabActiveDark,
+                ]}
+                onPress={() => setTrendTimeframe(tf)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.timeframeTabText,
+                    trendTimeframe === tf && styles.timeframeTabTextActive,
+                    isDarkMode && { color: trendTimeframe === tf ? '#FFFFFF' : '#85818A' },
+                  ]}
+                >
+                  {tf === 'daily' ? 'Daily Readings' : tf === 'weekly' ? 'Weekly' : 'Monthly'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Metric Selector Pills */}
+          <View style={styles.metricSwitchRow}>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              <TouchableOpacity
+                style={[
+                  styles.metricBtn,
+                  trendMetric === 'bp' && styles.metricBtnActive,
+                  isDarkMode && styles.metricBtnDark,
+                  trendMetric === 'bp' && isDarkMode && styles.metricBtnActiveDark,
+                ]}
+                onPress={() => setTrendMetric('bp')}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name="heart"
+                  size={12}
+                  color={trendMetric === 'bp' ? '#FFFFFF' : (isDarkMode ? '#A09CA8' : '#64748B')}
+                />
+                <Text
+                  style={[
+                    styles.metricBtnText,
+                    trendMetric === 'bp' && styles.metricBtnTextActive,
+                    isDarkMode && { color: trendMetric === 'bp' ? '#FFFFFF' : '#A09CA8' },
+                  ]}
+                >
+                  Blood Pressure
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.metricBtn,
+                  trendMetric === 'weight' && styles.metricBtnActive,
+                  isDarkMode && styles.metricBtnDark,
+                  trendMetric === 'weight' && isDarkMode && styles.metricBtnActiveDark,
+                ]}
+                onPress={() => setTrendMetric('weight')}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name="scale-outline"
+                  size={12}
+                  color={trendMetric === 'weight' ? '#FFFFFF' : (isDarkMode ? '#A09CA8' : '#64748B')}
+                />
+                <Text
+                  style={[
+                    styles.metricBtnText,
+                    trendMetric === 'weight' && styles.metricBtnTextActive,
+                    isDarkMode && { color: trendMetric === 'weight' ? '#FFFFFF' : '#A09CA8' },
+                  ]}
+                >
+                  Weight
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.trendContextLabel, isDarkMode && { color: '#85818A' }]}>
+              {trendTimeframe === 'daily' ? 'Daily' : trendTimeframe === 'weekly' ? 'Weekly' : 'Monthly'} {trendMetric === 'bp' ? 'BP' : 'Weight'}
+            </Text>
+          </View>
+
+          {/* SVG Line Graph (matching reference) */}
+          <TrendAnalysisChart
+            items={trendsData?.[trendTimeframe] || []}
+            metric={trendMetric}
+            isDarkMode={isDarkMode}
+          />
         </View>
 
         {/* History Header & Folder Pills */}
@@ -895,6 +1308,47 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
             </View>
 
             <ScrollView style={{ maxHeight: 520 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Checkup / OB-GYN Visit Date */}
+              <View style={[styles.datePickerContainer, isDarkMode && styles.datePickerContainerDark]}>
+                <Text style={[styles.fieldLabel, isDarkMode && { color: '#F0EEF0' }, { fontWeight: '700', marginBottom: 2, color: '#B04A6E' }]}>
+                  OB-GYN Checkup / Visit Date
+                </Text>
+                <Text style={{ fontSize: 11, color: isDarkMode ? '#85818A' : '#64748B', marginBottom: 8 }}>
+                  Choose the date you visited the clinic or took your vitals
+                </Text>
+                <View style={[styles.datePickerInputWrap, isDarkMode && styles.datePickerInputWrapDark]}>
+                  <Ionicons name="calendar-outline" size={18} color="#D45D79" style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={[styles.datePickerInput, isDarkMode && { color: '#F0EEF0' }]}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={isDarkMode ? '#85818A' : '#8A8490'}
+                    value={vitalDate}
+                    onChangeText={setVitalDate}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    {...(Platform.OS === 'web' ? ({ type: 'date' } as any) : {})}
+                  />
+                </View>
+                <View style={styles.quickDateChips}>
+                  <TouchableOpacity
+                    style={[styles.quickDateChip, isDarkMode && styles.quickDateChipDark]}
+                    onPress={() => setVitalDate(new Date().toISOString().split('T')[0])}
+                  >
+                    <Text style={[styles.quickDateChipText, isDarkMode && { color: '#F472B6' }]}>Today</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.quickDateChip, isDarkMode && styles.quickDateChipDark]}
+                    onPress={() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() - 1);
+                      setVitalDate(d.toISOString().split('T')[0]);
+                    }}
+                  >
+                    <Text style={[styles.quickDateChipText, isDarkMode && { color: '#F472B6' }]}>Yesterday</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
               {/* Clinical Measurements */}
               <View style={styles.dividerRow}>
                 <View style={[styles.dividerLine, isDarkMode && { backgroundColor: '#2C2C31' }]} />
@@ -1251,6 +1705,47 @@ export const VitalsScreen: React.FC<VitalsScreenProps> = ({ isDarkMode = false }
             </View>
 
             <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Checkup / OB-GYN Visit Date */}
+              <View style={[styles.datePickerContainer, { backgroundColor: isDarkMode ? '#112233' : '#F0F9FF', borderColor: isDarkMode ? '#1E3A5F' : '#BAE6FD' }]}>
+                <Text style={[styles.fieldLabel, isDarkMode && { color: '#F0EEF0' }, { fontWeight: '700', marginBottom: 2, color: '#0369A1' }]}>
+                  OB-GYN Checkup / Visit Date
+                </Text>
+                <Text style={{ fontSize: 11, color: isDarkMode ? '#85818A' : '#64748B', marginBottom: 8 }}>
+                  Choose the date you went to the OB-GYN for laboratory checkup
+                </Text>
+                <View style={[styles.datePickerInputWrap, { borderColor: isDarkMode ? '#1E3A5F' : '#BAE6FD' }, isDarkMode && styles.datePickerInputWrapDark]}>
+                  <Ionicons name="calendar-outline" size={18} color="#0284C7" style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={[styles.datePickerInput, isDarkMode && { color: '#F0EEF0' }]}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={isDarkMode ? '#85818A' : '#8A8490'}
+                    value={labDate}
+                    onChangeText={setLabDate}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    {...(Platform.OS === 'web' ? ({ type: 'date' } as any) : {})}
+                  />
+                </View>
+                <View style={styles.quickDateChips}>
+                  <TouchableOpacity
+                    style={[styles.quickDateChip, { backgroundColor: isDarkMode ? '#163350' : '#E0F2FE', borderColor: isDarkMode ? '#1E3A5F' : '#BAE6FD' }]}
+                    onPress={() => setLabDate(new Date().toISOString().split('T')[0])}
+                  >
+                    <Text style={[styles.quickDateChipText, { color: '#0284C7' }]}>Today</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.quickDateChip, { backgroundColor: isDarkMode ? '#163350' : '#E0F2FE', borderColor: isDarkMode ? '#1E3A5F' : '#BAE6FD' }]}
+                    onPress={() => {
+                      const d = new Date();
+                      d.setDate(d.getDate() - 1);
+                      setLabDate(d.toISOString().split('T')[0]);
+                    }}
+                  >
+                    <Text style={[styles.quickDateChipText, { color: '#0284C7' }]}>Yesterday</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
               {/* ── INITIAL LABORATORY TAB ── */}
               {labTypeTab === 'initial' && (
                 <>
@@ -2393,6 +2888,61 @@ const styles = StyleSheet.create({
     borderColor: '#342B3E',
     color: '#F0EEF0',
   },
+  datePickerContainer: {
+    marginBottom: 14,
+    backgroundColor: '#FDF2F8',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#FBCFE8',
+  },
+  datePickerContainerDark: {
+    backgroundColor: '#26141D',
+    borderColor: '#4A1D2E',
+  },
+  datePickerInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#F8B4D9',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  datePickerInputWrapDark: {
+    backgroundColor: '#1E1924',
+    borderColor: '#4A1D2E',
+  },
+  datePickerInput: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#201A1B',
+    paddingVertical: 0,
+  },
+  quickDateChips: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  quickDateChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#FCE7F3',
+    borderWidth: 1,
+    borderColor: '#FBCFE8',
+  },
+  quickDateChipDark: {
+    backgroundColor: '#341B26',
+    borderColor: '#4A1D2E',
+  },
+  quickDateChipText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#D45D79',
+  },
   selectBox: {
     backgroundColor: '#F4EFF6',
     borderWidth: 1,
@@ -2808,6 +3358,264 @@ const styles = StyleSheet.create({
   pickerClearText: {
     color: '#8A8490',
     fontSize: 13,
+    fontWeight: '600',
+  },
+  // Trends & Analytics styles
+  trendsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#EDF2F7',
+    marginBottom: 20,
+  },
+  trendsCardDark: {
+    backgroundColor: '#1A1A1E',
+    borderColor: '#2C2C31',
+  },
+  trendsMainTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0F372A',
+    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: -0.3,
+  },
+  trendLegendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    flexWrap: 'wrap',
+    marginBottom: 4,
+  },
+  trendLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  trendLegendSquare: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+  },
+  trendLegendText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  trendsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  trendsHeaderIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#FCE7F3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trendsTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#1E293B',
+    letterSpacing: -0.2,
+  },
+  trendsSubtitle: {
+    fontSize: 11.5,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  timeframeTabsRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 3,
+    marginBottom: 10,
+  },
+  timeframeTabsRowDark: {
+    backgroundColor: '#24242A',
+  },
+  timeframeTab: {
+    flex: 1,
+    paddingVertical: 7,
+    alignItems: 'center',
+    borderRadius: 9,
+  },
+  timeframeTabActive: {
+    backgroundColor: '#FFFFFF',
+    ...Shadows.small,
+  },
+  timeframeTabActiveDark: {
+    backgroundColor: '#1E1924',
+  },
+  timeframeTabText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  timeframeTabTextActive: {
+    color: '#1E293B',
+    fontWeight: '800',
+  },
+  metricSwitchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  metricBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+  },
+  metricBtnActive: {
+    backgroundColor: '#B04A6E',
+    borderColor: '#B04A6E',
+  },
+  metricBtnDark: {
+    backgroundColor: '#27272A',
+    borderColor: '#3F3F46',
+  },
+  metricBtnActiveDark: {
+    backgroundColor: '#D45D79',
+    borderColor: '#D45D79',
+  },
+  metricBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  metricBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  trendContextLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  trendSummaryRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  trendMiniTile: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 8,
+    alignItems: 'center',
+  },
+  trendMiniTileDark: {
+    backgroundColor: '#24242A',
+  },
+  trendMiniLbl: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: '#64748B',
+    textTransform: 'uppercase',
+  },
+  trendMiniVal: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#1E293B',
+    marginTop: 2,
+  },
+  trendItemCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  trendItemCardDark: {
+    backgroundColor: '#24242A',
+    borderColor: '#2C2C31',
+  },
+  trendItemTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  trendItemLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  trendItemSub: {
+    fontSize: 10.5,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  trendItemVal: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#1E293B',
+  },
+  trendItemUnit: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  trendWarningBadge: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+  },
+  trendWarningText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#DC2626',
+  },
+  trendNeutralBadge: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+  },
+  trendNeutralBadgeDark: {
+    backgroundColor: '#1E1924',
+    borderColor: '#342B3E',
+  },
+  trendNeutralText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  trendBarTrack: {
+    height: 5,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 999,
+    overflow: 'hidden',
+    marginTop: 6,
+  },
+  trendBarFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  trendEmptyBox: {
+    paddingVertical: 22,
+    alignItems: 'center',
+    gap: 6,
+  },
+  trendEmptyText: {
+    fontSize: 12,
+    color: '#94A3B8',
     fontWeight: '600',
   },
 });

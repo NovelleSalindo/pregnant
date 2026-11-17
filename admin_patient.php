@@ -13,8 +13,9 @@ $stmt->execute([$patientId]);
 $profile = $stmt->fetch() ?: [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_note'){
-    $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, kind) VALUES (?,?,?,?,?,?)")
-        ->execute([uid('ntf'), $patientId, 'Note from ' . $u['name'], trim($_POST['note']), now_iso(), 'info']);
+    $patientActPregId = get_active_pregnancy_id($pdo, $patientId);
+    $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+        ->execute([uid('ntf'), $patientId, $patientActPregId, 'Note from ' . $u['name'], trim($_POST['note']), now_iso(), 'info']);
     flash('Note sent to patient.', 'success');
     log_action('admin_note:' . $patientId);
     redirect('admin_patient.php?id=' . urlencode($patientId));

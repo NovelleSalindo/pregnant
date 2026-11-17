@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/base.php';
 $u = require_role('patient');
+$actPregId = get_active_pregnancy_id($pdo, $u['id']);
 
 $stmt = $pdo->prepare("SELECT * FROM postpartum_status WHERE user_id=?");
 $stmt->execute([$u['id']]);
@@ -15,7 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
                        VALUES (?,1,?,?,?,?)")
             ->execute([$u['id'], $deliveryDate, trim($_POST['delivery_type']), trim($_POST['baby_name']), $status['recovery_notes'] ?? '']);
         seed_default_vaccinations($pdo, $u['id'], $deliveryDate);
-        flash('Congratulations! Postpartum tracking is now active.', 'success');
+        seed_default_newborn_care($pdo, $u['id'], $actPregId);
+        flash('Congratulations! Postpartum tracking and baby care checklists are now active.', 'success');
         log_action('mark_delivered');
         redirect('postpartum.php');
     }
@@ -27,11 +29,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
         redirect('postpartum.php');
     }
 
+    if ($action === 'toggle_newborn_care'){
+        $itemId = $_POST['item_id'] ?? '';
+        $completed = isset($_POST['completed']) ? 1 : 0;
+        toggle_newborn_care_item($pdo, $u['id'], $itemId, $completed, $actPregId);
+        redirect('postpartum.php');
+    }
+
     if ($action === 'toggle_vaccine'){
         $vaxId = $_POST['vax_id'];
         $given = isset($_POST['given']) ? 1 : 0;
-        $pdo->prepare("UPDATE baby_vaccinations SET given=?, given_date=? WHERE id=? AND user_id=?")
-            ->execute([$given, $given ? date('Y-m-d') : null, $vaxId, $u['id']]);
+        toggle_baby_vaccine_item($pdo, $u['id'], $vaxId, $given);
         redirect('postpartum.php');
     }
 }
@@ -49,8 +57,39 @@ if ($isPostpartum){
     $vaccines = $stmt->fetchAll();
 }
 
-render_header('Postpartum', 'postpartum');
+// Essential Newborn Care Checklist items
+$newbornCare = get_user_newborn_care_items($pdo, $u['id'], $actPregId);
+$totalCare = count($newbornCare);
+$completedCare = 0;
+foreach ($newbornCare as $nc) {
+    if (!empty($nc['is_completed'])) $completedCare++;
+}
+$pendingCare = $totalCare - $completedCare;
+$percentCare = $totalCare > 0 ? (int)round(($completedCare / $totalCare) * 100) : 0;
+
+render_header('Postpartum & Baby Care', 'postpartum');
 ?>
+
+<script>
+function filterCare(type, btn) {
+  document.querySelectorAll('.care-filter-btn').forEach(b => {
+    b.classList.remove('active', 'btn-primary');
+    b.classList.add('btn-outline');
+  });
+  btn.classList.add('active', 'btn-primary');
+  btn.classList.remove('btn-outline');
+
+  document.querySelectorAll('.care-item-card').forEach(el => {
+    if (type === 'all') {
+      el.style.display = 'block';
+    } else if (type === 'todo') {
+      el.style.display = el.getAttribute('data-status') === 'todo' ? 'block' : 'none';
+    } else if (type === 'done') {
+      el.style.display = el.getAttribute('data-status') === 'done' ? 'block' : 'none';
+    }
+  });
+}
+</script>
 
 <?php if (!$isPostpartum): ?>
   <div class="card">
@@ -72,6 +111,69 @@ render_header('Postpartum', 'postpartum');
       <div class="field"><label>Baby's Name (optional)</label><input type="text" name="baby_name" placeholder="e.g. Baby Salindo"></div>
       <button class="btn btn-primary btn-block" type="submit"><i class="fa-solid fa-baby"></i> Mark as Delivered</button>
     </form>
+  </div>
+
+  <!-- Essential Newborn Care Interactive Checklist (Pre-delivery / Preparation) -->
+  <div class="card" style="margin-top:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+      <div>
+        <div class="eyebrow">Essential Newborn Care Checklist</div>
+        <h3 style="margin-top:4px;">Unang Yakap &amp; At-Birth Clinical Protocol</h3>
+        <p class="muted" style="font-size:13.5px;margin-bottom:0;">
+          WHO &amp; Philippine DOH protocol to monitor what has been done and what still needs to be done.
+        </p>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:16px;font-weight:800;color:var(--primary);"><?php echo (int)$completedCare; ?> of <?php echo (int)$totalCare; ?> Done</div>
+        <div class="muted" style="font-size:12px;"><?php echo (int)$percentCare; ?>% Completed</div>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div style="width:100%;height:8px;background:var(--border);border-radius:999px;margin:12px 0 14px;overflow:hidden;">
+      <div style="width:<?php echo (int)$percentCare; ?>%;height:100%;background:#059669;transition:width 0.3s ease;"></div>
+    </div>
+
+    <!-- Filter buttons -->
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+      <button type="button" class="btn btn-sm btn-primary care-filter-btn active" onclick="filterCare('all', this)" style="border-radius:20px;padding:4px 12px;font-size:12px;">All (<?php echo (int)$totalCare; ?>)</button>
+      <button type="button" class="btn btn-sm btn-outline care-filter-btn" onclick="filterCare('todo', this)" style="border-radius:20px;padding:4px 12px;font-size:12px;">To Do / What to do (<?php echo (int)$pendingCare; ?>)</button>
+      <button type="button" class="btn btn-sm btn-outline care-filter-btn" onclick="filterCare('done', this)" style="border-radius:20px;padding:4px 12px;font-size:12px;">Completed (<?php echo (int)$completedCare; ?>)</button>
+    </div>
+
+    <!-- Checklist items -->
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <?php foreach ($newbornCare as $item): 
+        $isDone = !empty($item['is_completed']);
+      ?>
+        <div class="care-item-card" data-status="<?php echo $isDone ? 'done' : 'todo'; ?>" style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:<?php echo $isDone ? '#F8FAFC' : '#fff'; ?>;">
+          <form method="post" action="postpartum.php" style="display:flex;align-items:flex-start;gap:12px;margin:0;">
+            <input type="hidden" name="action" value="toggle_newborn_care">
+            <input type="hidden" name="item_id" value="<?php echo e($item['id']); ?>">
+            <input type="checkbox" name="completed" onchange="this.form.submit()" <?php echo $isDone ? 'checked' : ''; ?> style="width:19px;height:19px;margin-top:3px;cursor:pointer;">
+            <div style="flex:1;">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+                <span style="font-weight:700;font-size:14px;color:var(--ink);<?php echo $isDone ? 'text-decoration:line-through;color:var(--muted);' : ''; ?>">
+                  <?php echo e($item['title']); ?>
+                </span>
+                <span class="badge" style="background:#F1F5F9;color:#475569;font-size:11px;"><?php echo e($item['timing_label']); ?></span>
+                <span class="badge" style="background:#F1F5F9;color:#475569;border:1px solid #E2E8F0;font-size:11px;"><?php echo e($item['category']); ?></span>
+              </div>
+              <p style="font-size:12.5px;color:var(--muted);margin:0 0 6px;line-height:1.4;">
+                <?php echo e($item['description']); ?>
+              </p>
+              <div>
+                <?php if ($isDone): ?>
+                  <span class="badge badge-low" style="font-size:11px;"><i class="fa-solid fa-check"></i> Completed<?php echo !empty($item['completed_at']) ? ' (' . fmt_date($item['completed_at']) . ')' : ''; ?></span>
+                <?php else: ?>
+                  <span class="badge" style="background:#F8FAFC;color:#64748B;border:1px solid #CBD5E1;font-size:11px;"><i class="fa-solid fa-clock"></i> To Do / Pending</span>
+                <?php endif; ?>
+              </div>
+            </div>
+          </form>
+        </div>
+      <?php endforeach; ?>
+    </div>
   </div>
 
 <?php else: ?>
@@ -101,9 +203,74 @@ render_header('Postpartum', 'postpartum');
     </div>
   </div>
 
+  <!-- Essential Newborn Care Interactive Checklist (Delivered) -->
+  <div class="card" style="margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+      <div>
+        <div class="eyebrow">Essential Newborn Care Checklist</div>
+        <h3 style="margin-top:4px;">Unang Yakap &amp; At-Birth Clinical Protocol</h3>
+        <p class="muted" style="font-size:13.5px;margin-bottom:0;">
+          WHO &amp; Philippine DOH protocol to monitor what has been done and what still needs to be done.
+        </p>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:16px;font-weight:800;color:var(--primary);"><?php echo (int)$completedCare; ?> of <?php echo (int)$totalCare; ?> Done</div>
+        <div class="muted" style="font-size:12px;"><?php echo (int)$percentCare; ?>% Completed</div>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div style="width:100%;height:8px;background:var(--border);border-radius:999px;margin:12px 0 14px;overflow:hidden;">
+      <div style="width:<?php echo (int)$percentCare; ?>%;height:100%;background:#059669;transition:width 0.3s ease;"></div>
+    </div>
+
+    <!-- Filter buttons -->
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+      <button type="button" class="btn btn-sm btn-primary care-filter-btn active" onclick="filterCare('all', this)" style="border-radius:20px;padding:4px 12px;font-size:12px;">All (<?php echo (int)$totalCare; ?>)</button>
+      <button type="button" class="btn btn-sm btn-outline care-filter-btn" onclick="filterCare('todo', this)" style="border-radius:20px;padding:4px 12px;font-size:12px;">To Do / What to do (<?php echo (int)$pendingCare; ?>)</button>
+      <button type="button" class="btn btn-sm btn-outline care-filter-btn" onclick="filterCare('done', this)" style="border-radius:20px;padding:4px 12px;font-size:12px;">Completed (<?php echo (int)$completedCare; ?>)</button>
+    </div>
+
+    <!-- Checklist items -->
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <?php foreach ($newbornCare as $item): 
+        $isDone = !empty($item['is_completed']);
+      ?>
+        <div class="care-item-card" data-status="<?php echo $isDone ? 'done' : 'todo'; ?>" style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:<?php echo $isDone ? '#F8FAFC' : '#fff'; ?>;">
+          <form method="post" action="postpartum.php" style="display:flex;align-items:flex-start;gap:12px;margin:0;">
+            <input type="hidden" name="action" value="toggle_newborn_care">
+            <input type="hidden" name="item_id" value="<?php echo e($item['id']); ?>">
+            <input type="checkbox" name="completed" onchange="this.form.submit()" <?php echo $isDone ? 'checked' : ''; ?> style="width:19px;height:19px;margin-top:3px;cursor:pointer;">
+            <div style="flex:1;">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+                <span style="font-weight:700;font-size:14px;color:var(--ink);<?php echo $isDone ? 'text-decoration:line-through;color:var(--muted);' : ''; ?>">
+                  <?php echo e($item['title']); ?>
+                </span>
+                <span class="badge" style="background:#F1F5F9;color:#475569;font-size:11px;"><?php echo e($item['timing_label']); ?></span>
+                <span class="badge" style="background:#F1F5F9;color:#475569;border:1px solid #E2E8F0;font-size:11px;"><?php echo e($item['category']); ?></span>
+              </div>
+              <p style="font-size:12.5px;color:var(--muted);margin:0 0 6px;line-height:1.4;">
+                <?php echo e($item['description']); ?>
+              </p>
+              <div>
+                <?php if ($isDone): ?>
+                  <span class="badge badge-low" style="font-size:11px;"><i class="fa-solid fa-check"></i> Completed<?php echo !empty($item['completed_at']) ? ' (' . fmt_date($item['completed_at']) . ')' : ''; ?></span>
+                <?php else: ?>
+                  <span class="badge" style="background:#F8FAFC;color:#64748B;border:1px solid #CBD5E1;font-size:11px;"><i class="fa-solid fa-clock"></i> To Do / Pending</span>
+                <?php endif; ?>
+              </div>
+            </div>
+          </form>
+        </div>
+      <?php endforeach; ?>
+    </div>
+  </div>
+
+  <!-- Childhood Routine Vaccinations (Philippine EPI) -->
   <div class="card">
-    <div class="eyebrow">Baby's Vaccination Checklist</div>
-    <h3 style="margin-top:6px;">Track each dose as it's given</h3>
+    <div class="eyebrow">Baby's Routine Vaccinations (Philippine EPI)</div>
+    <h3 style="margin-top:6px;">Ongoing Childhood Immunization Schedule</h3>
+    <p class="muted" style="font-size:13.5px;margin-bottom:12px;">Track routine EPI vaccine doses across weeks and months as your baby grows.</p>
     <?php foreach ($vaccines as $v): ?>
       <form method="post" action="postpartum.php" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">
         <input type="hidden" name="action" value="toggle_vaccine">
@@ -115,7 +282,11 @@ render_header('Postpartum', 'postpartum');
             <div class="muted" style="font-size:12px;">Due: <?php echo e($v['due_age_label']); ?><?php echo $v['due_date'] ? ' — ' . e(fmt_date($v['due_date'])) : ''; ?></div>
           </div>
         </label>
-        <?php if ($v['given']): ?><span class="badge badge-low">Given <?php echo e(fmt_date($v['given_date'])); ?></span><?php endif; ?>
+        <?php if ($v['given']): ?>
+          <span class="badge badge-low">Completed <?php echo e(fmt_date($v['given_date'])); ?></span>
+        <?php elseif (($v['due_age_days'] ?? 0) <= 1 || stripos($v['vaccine_name'], 'Screening') !== false || stripos($v['vaccine_name'], 'BCG') !== false): ?>
+          <span class="badge" style="background:#F1F5F9;color:#475569;border:1px solid #CBD5E1;">At-Birth Essential</span>
+        <?php endif; ?>
       </form>
     <?php endforeach; ?>
   </div>

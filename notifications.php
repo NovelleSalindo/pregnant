@@ -2,15 +2,25 @@
 require_once __DIR__ . '/base.php';
 $u = require_role('patient');
 
+$actPregId = get_active_pregnancy_id($pdo, $u['id']);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST'){
     $action = $_POST['action'] ?? '';
     if ($action === 'mark_read'){
         $pdo->prepare("UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?")->execute([$_POST['id'], $u['id']]);
     } elseif ($action === 'mark_all_read'){
-        $pdo->prepare("UPDATE notifications SET is_read=1 WHERE user_id=?")->execute([$u['id']]);
+        if ($actPregId) {
+            $pdo->prepare("UPDATE notifications SET is_read=1 WHERE user_id=? AND pregnancy_id=?")->execute([$u['id'], $actPregId]);
+        } else {
+            $pdo->prepare("UPDATE notifications SET is_read=1 WHERE user_id=?")->execute([$u['id']]);
+        }
         flash('All notifications marked as read.', 'success');
     } elseif ($action === 'clear_all'){
-        $pdo->prepare("DELETE FROM notifications WHERE user_id=?")->execute([$u['id']]);
+        if ($actPregId) {
+            $pdo->prepare("DELETE FROM notifications WHERE user_id=? AND pregnancy_id=?")->execute([$u['id'], $actPregId]);
+        } else {
+            $pdo->prepare("DELETE FROM notifications WHERE user_id=?")->execute([$u['id']]);
+        }
         flash('All notifications cleared.', 'info');
     } elseif ($action === 'delete'){
         $pdo->prepare("DELETE FROM notifications WHERE id=? AND user_id=?")->execute([$_POST['id'], $u['id']]);
@@ -21,9 +31,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST'){
 
 // Auto-sync: If user has an active High or Severe risk assessment without a notification, create one now
 try {
-    // 1. Check all Severe/High Coopland assessments for this user
-    $stmtHighRisks = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND (risk_level IN ('Severe', 'High') OR score >= 3) ORDER BY date DESC");
-    $stmtHighRisks->execute([$u['id']]);
+    check_hospital_bag_reminder($pdo, $u);
+    // 1. Check all Severe/High Coopland assessments for this active pregnancy
+    if ($actPregId) {
+        $stmtHighRisks = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND pregnancy_id = ? AND (risk_level IN ('Severe', 'High') OR score >= 3) ORDER BY date DESC");
+        $stmtHighRisks->execute([$u['id'], $actPregId]);
+    } else {
+        $stmtHighRisks = $pdo->prepare("SELECT * FROM coopland_assessments WHERE user_id = ? AND (risk_level IN ('Severe', 'High') OR score >= 3) ORDER BY date DESC");
+        $stmtHighRisks->execute([$u['id']]);
+    }
     $coopRisks = $stmtHighRisks->fetchAll();
 
     foreach ($coopRisks as $rk) {
@@ -34,8 +50,13 @@ try {
 
         $kindSearch = ($rl === 'Severe') ? 'severe_risk_alert' : 'high_risk_alert';
         $titleSearch = "%{$rl}%";
-        $stmtChk = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND (kind = ? OR title LIKE ?)");
-        $stmtChk->execute([$u['id'], $kindSearch, $titleSearch]);
+        if ($actPregId) {
+            $stmtChk = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND pregnancy_id = ? AND (kind = ? OR title LIKE ?)");
+            $stmtChk->execute([$u['id'], $actPregId, $kindSearch, $titleSearch]);
+        } else {
+            $stmtChk = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND (kind = ? OR title LIKE ?)");
+            $stmtChk->execute([$u['id'], $kindSearch, $titleSearch]);
+        }
         if (!$stmtChk->fetch()) {
             $notifId = uid('ntf');
             if ($rl === 'Severe') {
@@ -47,21 +68,31 @@ try {
                 $notifBody = "Your Coopland risk score is {$rk['score']} (High Risk). Please schedule an OB-GYN checkup within 24 to 48 hours.";
                 $notifKind = 'high_risk_alert';
             }
-            $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
-                ->execute([$notifId, $u['id'], $notifTitle, $notifBody, $rk['date'] ?: now_iso(), $notifKind]);
+            $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+                ->execute([$notifId, $u['id'], $actPregId, $notifTitle, $notifBody, $rk['date'] ?: now_iso(), $notifKind]);
         }
     }
 
     // 2. Also check general assessments table if any severe/high exists
-    $stmtAsmRisks = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? AND level IN ('Severe', 'High') ORDER BY date DESC");
-    $stmtAsmRisks->execute([$u['id']]);
+    if ($actPregId) {
+        $stmtAsmRisks = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? AND pregnancy_id = ? AND level IN ('Severe', 'High') ORDER BY date DESC");
+        $stmtAsmRisks->execute([$u['id'], $actPregId]);
+    } else {
+        $stmtAsmRisks = $pdo->prepare("SELECT * FROM assessments WHERE user_id = ? AND level IN ('Severe', 'High') ORDER BY date DESC");
+        $stmtAsmRisks->execute([$u['id']]);
+    }
     $asmRisks = $stmtAsmRisks->fetchAll();
     foreach ($asmRisks as $ak) {
         $rl = ucfirst(strtolower($ak['level']));
         $kindSearch = ($rl === 'Severe') ? 'severe_risk_alert' : 'high_risk_alert';
         $titleSearch = "%{$rl}%";
-        $stmtChk = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND (kind = ? OR title LIKE ?)");
-        $stmtChk->execute([$u['id'], $kindSearch, $titleSearch]);
+        if ($actPregId) {
+            $stmtChk = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND pregnancy_id = ? AND (kind = ? OR title LIKE ?)");
+            $stmtChk->execute([$u['id'], $actPregId, $kindSearch, $titleSearch]);
+        } else {
+            $stmtChk = $pdo->prepare("SELECT id FROM notifications WHERE user_id = ? AND (kind = ? OR title LIKE ?)");
+            $stmtChk->execute([$u['id'], $kindSearch, $titleSearch]);
+        }
         if (!$stmtChk->fetch()) {
             $notifId = uid('ntf');
             if ($rl === 'Severe') {
@@ -73,19 +104,30 @@ try {
                 $notifBody = "Maternal risk assessment completed with High Risk (Score: {$ak['score']}). Schedule an OB-GYN checkup within 24 to 48 hours.";
                 $notifKind = 'high_risk_alert';
             }
-            $pdo->prepare("INSERT INTO notifications (id, user_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,0,?)")
-                ->execute([$notifId, $u['id'], $notifTitle, $notifBody, $ak['date'] ?: now_iso(), $notifKind]);
+            $pdo->prepare("INSERT INTO notifications (id, user_id, pregnancy_id, title, body, date, is_read, kind) VALUES (?,?,?,?,?,?,0,?)")
+                ->execute([$notifId, $u['id'], $actPregId, $notifTitle, $notifBody, $ak['date'] ?: now_iso(), $notifKind]);
         }
     }
 } catch (Exception $e) {}
 
 $filter = $_GET['filter'] ?? 'all';
-if ($filter === 'unread'){
-    $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id=? AND is_read=0 ORDER BY date DESC");
+if ($actPregId) {
+    if ($filter === 'unread'){
+        $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id=? AND pregnancy_id=? AND is_read=0 ORDER BY date DESC");
+        $stmt->execute([$u['id'], $actPregId]);
+    } else {
+        $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id=? AND pregnancy_id=? ORDER BY date DESC");
+        $stmt->execute([$u['id'], $actPregId]);
+    }
 } else {
-    $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id=? ORDER BY date DESC");
+    if ($filter === 'unread'){
+        $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id=? AND is_read=0 ORDER BY date DESC");
+        $stmt->execute([$u['id']]);
+    } else {
+        $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id=? ORDER BY date DESC");
+        $stmt->execute([$u['id']]);
+    }
 }
-$stmt->execute([$u['id']]);
 $items = $stmt->fetchAll();
 
 $kindIcon = [
@@ -98,6 +140,7 @@ $kindIcon = [
     'ob_visit' => 'fa-calendar-check',
     'emergency' => 'fa-truck-medical',
     'due_date' => 'fa-baby',
+    'hospital_bag' => 'fa-suitcase-rolling',
 ];
 
 $kindColor = [
@@ -110,6 +153,7 @@ $kindColor = [
     'ob_visit' => 'var(--teal-dark)',
     'emergency' => '#DC2626',
     'due_date' => 'var(--teal-dark)',
+    'hospital_bag' => '#db2777',
 ];
 
 render_header('Notifications', 'notifications');
@@ -205,6 +249,10 @@ render_header('Notifications', 'notifications');
           <?php elseif ($isLow): ?>
             <a href="analyze.php" class="btn btn-ghost btn-sm" style="color:#16A34A;padding:3px 8px;text-decoration:none;">
               <i class="fa-solid fa-chart-line"></i> View Analysis
+            </a>
+          <?php elseif ($kind === 'hospital_bag'): ?>
+            <a href="hospital_bag.php" class="btn btn-sm" style="background:#db2777;color:#FFF;font-weight:600;padding:3px 10px;text-decoration:none;border-radius:6px;">
+              <i class="fa-solid fa-suitcase-rolling"></i> View Hospital Bag Checklist
             </a>
           <?php endif; ?>
 

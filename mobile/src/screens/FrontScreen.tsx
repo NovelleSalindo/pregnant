@@ -6,12 +6,12 @@ import {
   TouchableOpacity,
   ScrollView,
   SafeAreaView,
-  StatusBar,
   LayoutAnimation,
   Platform,
   UIManager,
   Image,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -71,7 +71,7 @@ export const FrontScreen: React.FC<FrontScreenProps> = ({ onNavigateToAuth, onNa
 
   return (
     <View style={[styles.safeArea, { paddingTop: topPadding }]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFAFCC" translucent={false} />
+      <StatusBar style="dark" />
       <ScrollView
         style={styles.container}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding + 20 }]}

@@ -153,9 +153,9 @@ class ApiService {
     const uid = this.currentUser?.id || 'guest';
     const cacheKey = `${STORAGE_KEY_CACHE_PREFIX}${uid}_${endpoint.replace(/[^a-zA-Z0-9_]/g, '_')}`;
 
-    // AbortController with 7-second timeout (extended to 45s for large payloads like images)
+    // Extended timeout (60s) to accommodate Render free-tier cold starts (~20-50s)
     const isLargePayload = options.body && typeof options.body === 'string' && options.body.length > 50000;
-    const timeoutDuration = isLargePayload ? 45000 : 7000;
+    const timeoutDuration = isLargePayload ? 60000 : 60000;
     
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);

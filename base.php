@@ -322,35 +322,14 @@ function get_active_pregnancy_id($pdo, $userId) {
         }
     } catch (Throwable $e) {}
 
-    $pregs = get_user_pregnancies($pdo, $userId);
-    return !empty($pregs[0]['id']) ? $pregs[0]['id'] : null;
+    return null;
 }
 
 function get_user_pregnancies($pdo, $userId) {
     try {
         $stmt = $pdo->prepare("SELECT * FROM pregnancies WHERE user_id = ? ORDER BY pregnancy_number DESC, created_at DESC");
         $stmt->execute([$userId]);
-        $rows = $stmt->fetchAll();
-
-        // Auto-seed first pregnancy if none exists yet
-        if (empty($rows)) {
-            $pStmt = $pdo->prepare("SELECT edd, lmp, gravida FROM patient_profiles WHERE user_id = ?");
-            $pStmt->execute([$userId]);
-            $prof = $pStmt->fetch();
-            $edd = $prof['edd'] ?? null;
-            $grav = max(1, (int)($prof['gravida'] ?? 1));
-
-            $pid = uid('preg');
-            $title = $grav > 1 ? "Pregnancy #{$grav}" : "Current Pregnancy";
-            $ins = $pdo->prepare("INSERT INTO pregnancies (id, user_id, pregnancy_number, title, edd, status, created_at) VALUES (?, ?, ?, ?, ?, 'active', ?)");
-            $ins->execute([$pid, $userId, $grav, $title, $edd, now_iso()]);
-
-            $pdo->prepare("UPDATE patient_profiles SET active_pregnancy_id = ? WHERE user_id = ?")->execute([$pid, $userId]);
-
-            $stmt->execute([$userId]);
-            $rows = $stmt->fetchAll();
-        }
-        return $rows;
+        return $stmt->fetchAll() ?: [];
     } catch (Throwable $e) {
         return [];
     }
@@ -1263,8 +1242,13 @@ function ensure_hospital_bag_checklist($pdo, $userId, $pregnancyId = null) {
         $pregnancyId = get_active_pregnancy_id($pdo, $userId);
     }
 
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM hospital_bag_items WHERE user_id = ? AND pregnancy_id = ?");
-    $stmt->execute([$userId, $pregnancyId]);
+    if ($pregnancyId === null) {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM hospital_bag_items WHERE user_id = ? AND pregnancy_id IS NULL");
+        $stmt->execute([$userId]);
+    } else {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM hospital_bag_items WHERE user_id = ? AND pregnancy_id = ?");
+        $stmt->execute([$userId, $pregnancyId]);
+    }
     $total = (int)$stmt->fetchColumn();
 
     if ($total === 0) {
@@ -1281,14 +1265,6 @@ function ensure_hospital_bag_checklist($pdo, $userId, $pregnancyId = null) {
 function seed_default_hospital_bag($pdo, $userId, $pregnancyId = null) {
     ensure_hospital_bag_checklist($pdo, $userId, $pregnancyId);
 }
-
-// Run for all active patient accounts on startup/request
-try {
-    $allPatients = $pdo->query("SELECT id FROM users WHERE role='patient' UNION SELECT DISTINCT user_id FROM hospital_bag_items")->fetchAll(PDO::FETCH_COLUMN);
-    foreach ($allPatients as $pId) {
-        ensure_hospital_bag_checklist($pdo, $pId);
-    }
-} catch (Throwable $e) {}
 
 // ---------- Language toggle (English / Bisaya) ----------
 // Only the shared chrome (nav, topbar, bottom nav) and a few key labels are

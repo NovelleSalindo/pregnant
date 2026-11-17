@@ -22,15 +22,20 @@ define('DB_PASS', $dbPass);
 define('DB_PORT', $dbPort);
 
 try {
+    $pdoOptions = [
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES   => false,
+    ];
+    if (defined('PDO::MYSQL_ATTR_SSL_CA') && DB_HOST !== 'localhost' && DB_HOST !== '127.0.0.1') {
+        $pdoOptions[PDO::MYSQL_ATTR_SSL_CA] = true;
+        $pdoOptions[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+    }
     $pdo = new PDO(
         "mysql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME . ";charset=utf8mb4",
         DB_USER,
         DB_PASS,
-        [
-            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES   => false,
-        ]
+        $pdoOptions
     );
     try { $pdo->exec("SET time_zone = '+08:00'"); } catch (Throwable $tzEx) {}
 } catch (PDOException $e) {

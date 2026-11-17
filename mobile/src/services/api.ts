@@ -1,10 +1,8 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Default to Cloudflare public HTTPS tunnel so ANY phone on ANY Wi-Fi or cellular data can connect
-const DEFAULT_API_URL = Platform.OS === 'web'
-  ? 'http://localhost/HAYYYSSSS/pregnacare_old/api'
-  : 'https://eastern-entering-pulled-response.trycloudflare.com/HAYYYSSSS/pregnacare_old/api';
+// Permanent Cloud API endpoint on Render (works on ANY phone and ANY Wi-Fi 24/7)
+const DEFAULT_API_URL = 'https://pregnant.onrender.com/api';
 const STORAGE_KEY_TOKEN = '@pregnacare_token';
 const STORAGE_KEY_USER = '@pregnacare_user';
 const STORAGE_KEY_BASE_URL = '@pregnacare_api_url';
@@ -36,9 +34,10 @@ class ApiService {
         } catch {}
       }
       const savedUrl = await AsyncStorage.getItem(STORAGE_KEY_BASE_URL);
-      if (savedUrl && !savedUrl.includes('192.168.')) {
+      if (savedUrl && savedUrl.includes('pregnant.onrender.com')) {
         this.baseUrl = savedUrl;
-      } else if (savedUrl && savedUrl.includes('192.168.')) {
+      } else {
+        // Clear any old local IPs or temporary tunnel URLs
         await AsyncStorage.removeItem(STORAGE_KEY_BASE_URL);
         this.baseUrl = DEFAULT_API_URL;
       }

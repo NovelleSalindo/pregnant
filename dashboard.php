@@ -202,16 +202,21 @@ if ($actPregId) {
     $actPreg = $stmt->fetch();
 }
 
-$lmp = ($actPreg && !empty($actPreg['lmp'])) ? $actPreg['lmp'] : ($profile['lmp'] ?? null);
-$edd = ($actPreg && !empty($actPreg['edd'])) ? $actPreg['edd'] : ($profile['edd'] ?? null);
+$hasActivePregnancy = !empty($actPreg);
+$lmp = ($actPreg && !empty($actPreg['lmp'])) ? $actPreg['lmp'] : null;
+$edd = ($actPreg && !empty($actPreg['edd'])) ? $actPreg['edd'] : null;
 
 $weeksPregnant = null;
-if ($lmp){
+if ($hasActivePregnancy && $lmp){
     $weeksPregnant = floor((time() - strtotime($lmp)) / (7*86400));
+} elseif ($hasActivePregnancy && $edd) {
+    $daysToEdd = (int)ceil((strtotime($edd) - time()) / 86400);
+    $daysPregnant = max(0, 280 - $daysToEdd);
+    $weeksPregnant = (int)floor($daysPregnant / 7);
 }
 $trimester = $weeksPregnant !== null ? ($weeksPregnant < 14 ? 1 : ($weeksPregnant < 28 ? 2 : 3)) : null;
 $babySize = $weeksPregnant !== null ? baby_size_for_week($weeksPregnant) : null;
-$daysToEdd = $edd ? (int)ceil((strtotime($edd) - time()) / 86400) : null;
+$daysToEdd = ($hasActivePregnancy && $edd) ? (int)ceil((strtotime($edd) - time()) / 86400) : null;
 $upcomingVisit = null;
 try {
     if ($actPregId) {
@@ -405,6 +410,20 @@ render_header('Dashboard', 'dashboard');
   <a class="btn btn-outline btn-block btn-sm" href="reminders.php" style="margin-top:4px;"><i class="fa-solid fa-bell"></i> Open Reminders</a>
 </div>
 
+<?php if (!$hasActivePregnancy): ?>
+<div class="card" style="margin-bottom:20px;text-align:center;padding:36px 20px;background:linear-gradient(135deg, #fff5f8 0%, #ffffff 100%);border:1px solid #fbcfe8;border-radius:20px;box-shadow:0 4px 16px rgba(194,87,125,0.08);">
+  <div style="width:68px;height:68px;border-radius:50%;background:#fce7f3;color:#b04a6e;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:30px;box-shadow:0 2px 8px rgba(194,87,125,0.15);">
+    <i class="fa-solid fa-heart-pulse"></i>
+  </div>
+  <h2 style="font-size:22px;font-weight:700;color:#1e293b;margin:0 0 8px;">Start Your Pregnancy Journey</h2>
+  <p style="font-size:14px;color:#64748b;max-width:480px;margin:0 auto 20px;line-height:1.5;">
+    You haven't added an active pregnancy yet. Add your estimated due date to unlock week-by-week baby development, fruit size comparisons, and daily vitals monitoring.
+  </p>
+  <a href="profile.php" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:12px;font-weight:700;box-shadow:0 4px 12px rgba(194,87,125,0.25);">
+    <i class="fa-solid fa-plus-circle"></i> Add Pregnancy
+  </a>
+</div>
+<?php else: ?>
 <div class="fetal-card-display">
   <!-- 1. Circular Fetal Photo with month badge -->
   <div class="fetal-circle-container" onclick="pcOpenFetalMonthModal()" title="View 9-month development chart">
@@ -446,6 +465,7 @@ render_header('Dashboard', 'dashboard');
     <?php endif; ?>
   </div>
 </div>
+<?php endif; ?>
 
 <div class="grid grid-3" style="align-items:stretch;">
   <div class="card" style="grid-column:span 1;text-align:center;border-radius:24px;">

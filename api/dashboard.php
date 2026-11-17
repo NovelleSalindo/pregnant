@@ -103,26 +103,31 @@ $trimester = null;
 $babySize = null;
 $daysToEdd = null;
 
-$eddToUse = ($activePregnancy && !empty($activePregnancy['edd'])) ? $activePregnancy['edd'] : ($profile['edd'] ?? null);
+$hasActivePregnancy = !empty($activePregnancy);
 
-if (!empty($profile['lmp'])) {
-    $diffSecs = time() - strtotime($profile['lmp']);
-    if ($diffSecs >= 0) {
-        $daysPregnant = (int)floor($diffSecs / 86400);
+if ($hasActivePregnancy) {
+    $eddToUse = !empty($activePregnancy['edd']) ? $activePregnancy['edd'] : ($profile['edd'] ?? null);
+    $lmpToUse = !empty($activePregnancy['lmp']) ? $activePregnancy['lmp'] : ($profile['lmp'] ?? null);
+
+    if (!empty($lmpToUse)) {
+        $diffSecs = time() - strtotime($lmpToUse);
+        if ($diffSecs >= 0) {
+            $daysPregnant = (int)floor($diffSecs / 86400);
+            $weeksPregnant = (int)floor($daysPregnant / 7);
+            $trimester = $weeksPregnant < 14 ? 1 : ($weeksPregnant < 28 ? 2 : 3);
+            $babySize = baby_size_for_week($weeksPregnant);
+        }
+    } elseif (!empty($eddToUse)) {
+        $daysToEdd = (int)ceil((strtotime($eddToUse) - time()) / 86400);
+        $daysPregnant = max(0, 280 - $daysToEdd);
         $weeksPregnant = (int)floor($daysPregnant / 7);
         $trimester = $weeksPregnant < 14 ? 1 : ($weeksPregnant < 28 ? 2 : 3);
         $babySize = baby_size_for_week($weeksPregnant);
     }
-} elseif (!empty($eddToUse)) {
-    $daysToEdd = (int)ceil((strtotime($eddToUse) - time()) / 86400);
-    $daysPregnant = max(0, 280 - $daysToEdd);
-    $weeksPregnant = (int)floor($daysPregnant / 7);
-    $trimester = $weeksPregnant < 14 ? 1 : ($weeksPregnant < 28 ? 2 : 3);
-    $babySize = baby_size_for_week($weeksPregnant);
-}
 
-if (!empty($eddToUse)) {
-    $daysToEdd = (int)ceil((strtotime($eddToUse) - time()) / 86400);
+    if (!empty($eddToUse)) {
+        $daysToEdd = (int)ceil((strtotime($eddToUse) - time()) / 86400);
+    }
 }
 
 // 2. Latest Risk Assessment (Scoped strictly to Active Pregnancy)
@@ -407,12 +412,13 @@ json_success([
     ],
     'medications' => $medsList,
     'pregnancy' => [
+        'hasPregnancy' => $hasActivePregnancy,
         'weeks' => $weeksPregnant,
         'days' => $daysPregnant,
         'trimester' => $trimester,
-        'lmp' => $profile['lmp'] ?? null,
-        'edd' => $eddToUse,
-        'formattedEdd' => !empty($eddToUse) ? fmt_date($eddToUse) : null,
+        'lmp' => $hasActivePregnancy ? ($lmpToUse ?? null) : null,
+        'edd' => $hasActivePregnancy ? ($eddToUse ?? null) : null,
+        'formattedEdd' => ($hasActivePregnancy && !empty($eddToUse)) ? fmt_date($eddToUse) : null,
         'daysToEdd' => $daysToEdd,
         'nextObVisit' => $nextVisitDate,
         'nextObVisitTitle' => $nextVisitTitle,

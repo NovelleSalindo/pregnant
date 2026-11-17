@@ -55,6 +55,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [showRecommendationsResult, setShowRecommendationsResult] = useState(false);
   const [localObVisit, setLocalObVisit] = useState<any>(null);
 
+  // Add Pregnancy Modal State (when user has no active pregnancy yet)
+  const [showAddPregModal, setShowAddPregModal] = useState(false);
+  const [newPregTitle, setNewPregTitle] = useState('');
+  const [newPregEdd, setNewPregEdd] = useState('');
+  const [newPregNotes, setNewPregNotes] = useState('');
+  const [savingNewPreg, setSavingNewPreg] = useState(false);
+
   // Red / Themed Bubble Flash State
   const [bubbleFlash, setBubbleFlash] = useState<{
     visible: boolean;
@@ -368,6 +375,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     }
   };
 
+  const hasPregnancy = Boolean(
+    preg.hasPregnancy === true ||
+    (preg.hasPregnancy !== false && (preg.activePregnancyId || preg.activePregnancy))
+  );
+
+  const handleAddPregnancyOnDashboard = async () => {
+    if (!newPregTitle.trim() && !newPregEdd.trim()) {
+      Alert.alert('Required', 'Please enter a title or estimated due date for your pregnancy.');
+      return;
+    }
+    setSavingNewPreg(true);
+    try {
+      await api.addPregnancy({
+        title: newPregTitle.trim() || 'My Pregnancy',
+        edd: newPregEdd.trim() || undefined,
+        notes: newPregNotes.trim() || undefined,
+      });
+      setShowAddPregModal(false);
+      setNewPregTitle('');
+      setNewPregEdd('');
+      setNewPregNotes('');
+      await fetchDashboard();
+      showBubbleFlash(
+        'Pregnancy Added! 🎉',
+        'Your pregnancy journey has officially begun! Your baby development card and milestones are now unlocked.',
+        'checkmark-circle',
+        'View My Baby ✨'
+      );
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Unable to add pregnancy');
+    } finally {
+      setSavingNewPreg(false);
+    }
+  };
+
   const displayWeeks = preg.weeks !== null && preg.weeks !== undefined ? preg.weeks : defaultWeeks;
   const displayTrimester = preg.trimester || (displayWeeks < 14 ? 1 : displayWeeks < 28 ? 2 : 3);
 
@@ -596,17 +638,56 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </TouchableOpacity>
         </View>
 
-        {/* Baby Milestone & Due Date Countdown Card */}
-        <BabySizeCard
-          weeks={displayWeeks}
-          days={preg.days || 227}
-          trimester={displayTrimester}
-          babyFruit={preg.babyFruit || 'Rutabaga'}
-          babyEmoji={preg.babyEmoji || '🥬'}
-          daysToEdd={preg.daysToEdd !== null && preg.daysToEdd !== undefined ? preg.daysToEdd : defaultDaysToEdd}
-          edd={displayEdd}
-          isDarkMode={isDarkMode}
-        />
+        {/* Baby Milestone & Due Date Countdown Card OR Add Pregnancy Prompt */}
+        {!hasPregnancy ? (
+          <View style={[styles.noPregCard, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
+            <LinearGradient
+              colors={isDarkMode ? ['#2D1520', '#1A141A'] : ['#FFF5F8', '#FFE4ED']}
+              style={styles.noPregGrad}
+            >
+              <View style={styles.noPregHeaderRow}>
+                <View style={[styles.noPregIconCircle, isDarkMode && { backgroundColor: '#3D1C2A' }]}>
+                  <Ionicons name="heart" size={26} color="#E8729A" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={[styles.noPregTitle, isDarkMode && { color: '#F0EEF0' }]}>
+                    Start Your Pregnancy Journey
+                  </Text>
+                  <Text style={[styles.noPregSub, isDarkMode && { color: '#A09CA8' }]}>
+                    No active pregnancy added yet. Add your pregnancy details to see your baby's weekly growth, fruit comparisons, and milestone reminders.
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.noPregBtn}
+                onPress={() => setShowAddPregModal(true)}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={['#E8729A', '#C2577D']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.noPregBtnGrad}
+                >
+                  <Ionicons name="add-circle" size={18} color="#FFF" style={{ marginRight: 6 }} />
+                  <Text style={styles.noPregBtnText}>Add Pregnancy</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </LinearGradient>
+          </View>
+        ) : (
+          <BabySizeCard
+            weeks={displayWeeks}
+            days={preg.days || 227}
+            trimester={displayTrimester}
+            babyFruit={preg.babyFruit || 'Rutabaga'}
+            babyEmoji={preg.babyEmoji || '🥬'}
+            daysToEdd={preg.daysToEdd !== null && preg.daysToEdd !== undefined ? preg.daysToEdd : defaultDaysToEdd}
+            edd={displayEdd}
+            isDarkMode={isDarkMode}
+          />
+        )}
 
         {/* Active Severe or High Maternal Risk Alert Banner */}
         {isSevere && (
@@ -955,6 +1036,98 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Add Pregnancy Modal */}
+      <Modal
+        visible={showAddPregModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAddPregModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, isDarkMode && { backgroundColor: '#1A1A1E', borderColor: '#2C2C31' }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <View style={[styles.modalIconCircle, isDarkMode && { backgroundColor: '#3A1820' }]}>
+                  <Ionicons name="heart" size={20} color={isDarkMode ? '#FF94B8' : Colors.primaryDark} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.modalTitle, isDarkMode && { color: '#F0EEF0' }]} numberOfLines={1}>
+                    Add Pregnancy
+                  </Text>
+                  <Text style={[styles.modalSub, isDarkMode && { color: '#85818A' }]} numberOfLines={1}>
+                    Unlock your baby's development & milestones
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setShowAddPregModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={24} color={isDarkMode ? '#85818A' : Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={[styles.inputLabel, isDarkMode && { color: '#E0D6DC' }]}>
+                Pregnancy Title / Baby Nickname <Text style={{ color: '#E15D74' }}>*</Text>
+              </Text>
+              <TextInput
+                style={[styles.modalInput, isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31', color: '#FFF' }]}
+                placeholder="e.g. Baby Alexander, First Baby"
+                placeholderTextColor={isDarkMode ? '#666' : '#999'}
+                value={newPregTitle}
+                onChangeText={setNewPregTitle}
+              />
+
+              <Text style={[styles.inputLabel, isDarkMode && { color: '#E0D6DC' }]}>
+                Estimated Due Date (EDD) <Text style={{ color: '#E15D74' }}>*</Text>
+              </Text>
+              <TextInput
+                style={[styles.modalInput, isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31', color: '#FFF' }]}
+                placeholder="YYYY-MM-DD (e.g. 2026-11-20)"
+                placeholderTextColor={isDarkMode ? '#666' : '#999'}
+                value={newPregEdd}
+                onChangeText={setNewPregEdd}
+              />
+
+              <Text style={[styles.inputLabel, isDarkMode && { color: '#E0D6DC' }]}>
+                Notes (Optional)
+              </Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  { height: 75, textAlignVertical: 'top' },
+                  isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31', color: '#FFF' },
+                ]}
+                placeholder="e.g. First ultrasound showed healthy development."
+                placeholderTextColor={isDarkMode ? '#666' : '#999'}
+                multiline
+                numberOfLines={3}
+                value={newPregNotes}
+                onChangeText={setNewPregNotes}
+              />
+            </View>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.modalCancelBtn, isDarkMode && { borderColor: '#2C2C31' }]}
+                onPress={() => setShowAddPregModal(false)}
+              >
+                <Text style={[styles.modalCancelBtnText, isDarkMode && { color: '#85818A' }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, isDarkMode && { backgroundColor: '#E15D74' }]}
+                onPress={handleAddPregnancyOnDashboard}
+                disabled={savingNewPreg}
+              >
+                {savingNewPreg ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Text style={styles.modalSubmitBtnText}>Save & Start</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Hospital / OB-GYN Visit Modal */}
       <Modal
@@ -2065,5 +2238,64 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     letterSpacing: 0.2,
+  },
+  noPregCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#FCE7F3',
+    elevation: 3,
+    shadowColor: '#C2577D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  noPregGrad: {
+    padding: 20,
+    borderRadius: 20,
+  },
+  noPregHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  noPregIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FFE4ED',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noPregTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#831843',
+    marginBottom: 4,
+  },
+  noPregSub: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#64748B',
+  },
+  noPregBtn: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  noPregBtnGrad: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+  },
+  noPregBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

@@ -286,7 +286,10 @@ $migTables = [
 ];
 foreach ($migTables as $mt) {
     try {
-        $pdo->exec("ALTER TABLE $mt ADD COLUMN pregnancy_id VARCHAR(20) NULL AFTER user_id, ADD INDEX idx_{$mt}_user_preg (user_id, pregnancy_id)");
+        $pdo->exec("ALTER TABLE $mt ADD COLUMN pregnancy_id VARCHAR(20) NULL AFTER user_id");
+    } catch (Throwable $ignored) {}
+    try {
+        $pdo->exec("ALTER TABLE $mt ADD INDEX idx_{$mt}_user_preg (user_id, pregnancy_id)");
     } catch (Throwable $ignored) {}
 }
 try {

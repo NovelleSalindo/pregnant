@@ -146,7 +146,7 @@ $symptomLogs = [];
 foreach ($rawSymLogs as $sl) {
     // Fetch items for this log
     $sliStmt = $pdo->prepare("
-        SELECT sli.symptom_id, sli.severity, sli.duration, sli.frequency, sc.name, sc.category 
+        SELECT sli.symptom_id, sli.severity, sli.duration, sli.frequency, sc.name, sc.icon, '' AS category 
         FROM symptom_log_items sli 
         LEFT JOIN symptom_catalog sc ON sc.id = sli.symptom_id 
         WHERE sli.symptom_log_id = ? AND sli.severity != 'None' 
@@ -157,13 +157,34 @@ foreach ($rawSymLogs as $sl) {
 
     // Fetch matching pregnancy problems if any
     $ppStmt = $pdo->prepare("
-        SELECT conditions_json FROM pregnancy_problems 
+        SELECT * FROM pregnancy_problems 
         WHERE user_id = ? AND (pregnancy_id = ? OR pregnancy_id IS NULL) 
         AND ABS(TIMESTAMPDIFF(SECOND, date, ?)) <= 60 
         LIMIT 1
     ");
     $ppStmt->execute([$userId, $sl['pregnancy_id'], $sl['date']]);
-    $ppConditions = json_decode($ppStmt->fetchColumn() ?: '[]', true) ?: [];
+    $ppRow = $ppStmt->fetch(PDO::FETCH_ASSOC);
+    $ppConditions = [];
+    if ($ppRow) {
+        $ppLabels = [
+            'bleeding_lt_20wks' => 'Bleeding < 20 weeks',
+            'bleeding_gt_20wks' => 'Bleeding > 20 weeks',
+            'postmaturity_prematurity' => 'Postmaturity / Prematurity',
+            'hypertension' => 'Hypertension / High BP',
+            'prom' => 'Premature Rupture of Membranes',
+            'poly_oligohydramnios' => 'Polyhydramnios / Oligohydramnios',
+            'iugr' => 'Intrauterine Growth Restriction (IUGR)',
+            'multiple_pregnancy' => 'Multiple Pregnancy (Twins+)',
+            'breech_malpresentation' => 'Breech / Malpresentation',
+            'rh_isoimmunization' => 'Rh Isoimmunization',
+            'anemia' => 'Hemoglobin < 10 g/dL / Anemia',
+        ];
+        foreach ($ppLabels as $k => $label) {
+            if (!empty($ppRow[$k])) {
+                $ppConditions[] = $label;
+            }
+        }
+    }
 
     $symptomLogs[] = [
         'id' => $sl['id'],
@@ -179,11 +200,21 @@ foreach ($rawSymLogs as $sl) {
 
 // 7. Pregnancy stats summary for each pregnancy (queried directly so counts are always permanent and independent of filter)
 $pregnancySummaries = [];
+$cntVStmt = $pdo->prepare("SELECT COUNT(*) FROM monitoring WHERE user_id = ? AND pregnancy_id = ?");
+$cntRStmt = $pdo->prepare("SELECT COUNT(*) FROM coopland_assessments WHERE user_id = ? AND pregnancy_id = ?");
+$cntSStmt = $pdo->prepare("SELECT COUNT(*) FROM symptom_logs WHERE user_id = ? AND pregnancy_id = ?");
+
 foreach ($pregnancies as $pr) {
     $pId = $pr['id'];
-    $cntV = (int)$pdo->query("SELECT COUNT(*) FROM monitoring WHERE user_id = '{$userId}' AND pregnancy_id = '{$pId}'")->fetchColumn();
-    $cntR = (int)$pdo->query("SELECT COUNT(*) FROM coopland_assessments WHERE user_id = '{$userId}' AND pregnancy_id = '{$pId}'")->fetchColumn();
-    $cntS = (int)$pdo->query("SELECT COUNT(*) FROM symptom_logs WHERE user_id = '{$userId}' AND pregnancy_id = '{$pId}'")->fetchColumn();
+    $cntVStmt->execute([$userId, $pId]);
+    $cntV = (int)$cntVStmt->fetchColumn();
+
+    $cntRStmt->execute([$userId, $pId]);
+    $cntR = (int)$cntRStmt->fetchColumn();
+
+    $cntSStmt->execute([$userId, $pId]);
+    $cntS = (int)$cntSStmt->fetchColumn();
+
     $pregnancySummaries[$pId] = [
         'vitals_count' => $cntV,
         'risk_count' => $cntR,

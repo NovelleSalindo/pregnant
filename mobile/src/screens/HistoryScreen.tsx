@@ -200,9 +200,10 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onNavigate, isDark
 
   const fetchHistory = useCallback(async (pregId = selectedPregId) => {
     try {
-      const res = await api.getHistory(pregId);
-      if (res && res.data) {
-        setHistoryData(res.data);
+      const res: any = await api.getHistory(pregId);
+      if (res) {
+        const payload = (res.data && res.data.pregnancies) ? res.data : (res.pregnancies ? res : (res.data || res));
+        setHistoryData(payload);
       }
     } catch (err) {
       console.warn('[HistoryScreen Fetch Error]', err);

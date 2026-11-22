@@ -232,7 +232,7 @@ foreach ($vitalsLogs as $vl) {
 $avgSys = count($allBps) ? round(array_sum(array_column($allBps, 'sys')) / count($allBps)) : null;
 $avgDia = count($allBps) ? round(array_sum(array_column($allBps, 'dia')) / count($allBps)) : null;
 
-json_success([
+$respData = [
     'filter_pregnancy_id' => $filterPregId,
     'active_pregnancy_id' => $activePregId,
     'pregnancies' => $pregnancies,
@@ -251,4 +251,7 @@ json_success([
         'avg_bp' => ($avgSys && $avgDia) ? "{$avgSys}/{$avgDia} mmHg" : '—',
         'latest_reading' => !empty($vitalsLogs[0]) ? $vitalsLogs[0]['date'] : null,
     ]
-]);
+];
+$respData['data'] = $respData;
+
+json_success($respData);

@@ -23,6 +23,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 set_exception_handler(function($e) {
     http_response_code(500);
+    header('Access-Control-Allow-Origin: *');
+    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'success' => false,
@@ -37,6 +40,9 @@ register_shutdown_function(function() {
     if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
         if (!headers_sent()) {
             http_response_code(500);
+            header('Access-Control-Allow-Origin: *');
+            header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+            header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
             header('Content-Type: application/json; charset=utf-8');
         }
         echo json_encode([

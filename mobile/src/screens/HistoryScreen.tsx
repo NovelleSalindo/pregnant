@@ -32,6 +32,16 @@ interface VitalsTrendChartProps {
 }
 
 const VitalsTrendChart: React.FC<VitalsTrendChartProps> = ({ items, metric, isDarkMode }) => {
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (items && items.length > 0) {
+      setSelectedIdx(items.length - 1);
+    } else {
+      setSelectedIdx(null);
+    }
+  }, [items]);
+
   if (!items || items.length === 0) {
     return (
       <View style={[styles.trendEmptyBox, isDarkMode && { backgroundColor: '#1E1924' }]}>
@@ -45,11 +55,14 @@ const VitalsTrendChart: React.FC<VitalsTrendChartProps> = ({ items, metric, isDa
 
   const n = items.length;
   const plotLeft = 44;
-  const plotRight = Math.max(300, width - 64);
-  const plotTop = 20;
+  // Dynamic column spacing so labels never collide and user can smoothly scroll horizontally
+  const colWidth = Math.max(68, Math.floor((width - 80) / Math.max(1, n)));
+  const plotW = Math.max(width - 80, (n - 1) * colWidth);
+  const plotRight = plotLeft + plotW;
+  const plotTop = 24;
   const plotBottom = 160;
-  const plotW = plotRight - plotLeft;
   const plotH = plotBottom - plotTop;
+  const svgWidth = Math.max(width - 32, plotRight + 45);
 
   let yMin = 60;
   let yMax = 160;
@@ -87,105 +100,247 @@ const VitalsTrendChart: React.FC<VitalsTrendChartProps> = ({ items, metric, isDa
 
   const getX = (idx: number) => {
     if (n <= 1) return plotLeft + (plotW / 2);
-    return plotLeft + ((idx / (n - 1)) * plotW);
+    return plotLeft + (idx * colWidth);
   };
 
   const gridColor = isDarkMode ? '#2C2C31' : '#E2E8F0';
   const labelColor = isDarkMode ? '#85818A' : '#64748B';
 
-  const sysPoints: [number, number, number][] = [];
-  const diaPoints: [number, number, number][] = [];
-  const wtPoints: [number, number, number][] = [];
+  const sysPoints: [number, number, number, number][] = [];
+  const diaPoints: [number, number, number, number][] = [];
+  const wtPoints: [number, number, number, number][] = [];
 
   for (let i = 0; i < n; i++) {
     const x = getX(i);
-    if (items[i].avg_sys) sysPoints.push([x, getY(items[i].avg_sys), items[i].avg_sys]);
-    if (items[i].avg_dia) diaPoints.push([x, getY(items[i].avg_dia), items[i].avg_dia]);
-    if (items[i].avg_weight) wtPoints.push([x, getY(items[i].avg_weight), items[i].avg_weight]);
+    if (items[i].avg_sys) sysPoints.push([x, getY(items[i].avg_sys), items[i].avg_sys, i]);
+    if (items[i].avg_dia) diaPoints.push([x, getY(items[i].avg_dia), items[i].avg_dia, i]);
+    if (items[i].avg_weight) wtPoints.push([x, getY(items[i].avg_weight), items[i].avg_weight, i]);
+  }
+
+  const activeItem = (selectedIdx !== null && items[selectedIdx]) ? items[selectedIdx] : null;
+  const selX = (selectedIdx !== null) ? getX(selectedIdx) : null;
+
+  // BP Status badge
+  let bpBadge = null;
+  if (activeItem && metric === 'bp' && activeItem.avg_sys && activeItem.avg_dia) {
+    const s = Number(activeItem.avg_sys);
+    const d = Number(activeItem.avg_dia);
+    if (s >= 140 || d >= 90) {
+      bpBadge = { label: 'High BP (Stage 2)', bg: '#FEE2E2', text: '#DC2626' };
+    } else if (s >= 130 || d >= 80) {
+      bpBadge = { label: 'Stage 1', bg: '#FEF3C7', text: '#D97706' };
+    } else if (s >= 120 && d < 80) {
+      bpBadge = { label: 'Elevated', bg: '#FEF9C3', text: '#CA8A04' };
+    } else {
+      bpBadge = { label: 'Normal', bg: '#DCFCE7', text: '#16A34A' };
+    }
   }
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-      <Svg width={Math.max(width - 32, plotRight + 30)} height={200}>
-        {yTicks.map((tick) => {
-          const y = getY(tick);
-          return (
-            <G key={`ytick-${tick}`}>
-              <Line x1={plotLeft} y1={y} x2={plotRight + 10} y2={y} stroke={gridColor} strokeWidth="1" strokeDasharray="3,3" />
-              <SvgText x={plotLeft - 6} y={y + 4} textAnchor="end" fontSize="10" fontWeight="600" fill={labelColor}>
-                {tick}
-              </SvgText>
-            </G>
-          );
-        })}
+    <View style={{ marginBottom: 12 }}>
+      {/* ── Active Hover / Tap Tooltip Box ── */}
+      <View style={[styles.trendTooltipBox, isDarkMode && { backgroundColor: '#131316', borderColor: '#2C2C31' }]}>
+        <View style={styles.trendTooltipHeader}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+            <Ionicons name="calendar-outline" size={15} color={Colors.primary} />
+            <Text style={[styles.trendTooltipDate, { color: isDarkMode ? '#F0EEF0' : '#1E293B' }]}>
+              {activeItem ? (activeItem.label || activeItem.period) : 'Hover or tap a point to inspect'}
+            </Text>
+          </View>
+          <Text style={[styles.trendTooltipHint, { color: labelColor }]}>
+            {activeItem && selectedIdx !== null ? `Point ${selectedIdx + 1} of ${n}` : 'Hover / tap'}
+          </Text>
+        </View>
 
-        <Line x1={plotLeft} y1={plotBottom} x2={plotRight + 10} y2={plotBottom} stroke={gridColor} strokeWidth="1.5" />
-
-        {items.map((it, idx) => {
-          const x = getX(idx);
-          const lbl = it.short_label || it.period || '';
-          return (
-            <SvgText key={`xtick-${idx}`} x={x} y={plotBottom + 16} textAnchor="middle" fontSize="9.5" fontWeight="600" fill={labelColor}>
-              {lbl}
-            </SvgText>
-          );
-        })}
-
-        {metric === 'bp' ? (
-          <>
-            {diaPoints.length > 1 && (
-              <Polyline
-                points={diaPoints.map(p => `${Math.round(p[0])},${Math.round(p[1])}`).join(' ')}
-                fill="none"
-                stroke="#02848F"
-                strokeWidth="2.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+        {activeItem ? (
+          <View style={styles.trendTooltipValuesRow}>
+            {metric === 'bp' ? (
+              <>
+                <View style={styles.trendValuePill}>
+                  <View style={[styles.miniDot, { backgroundColor: '#C2577D' }]} />
+                  <Text style={[styles.trendValueLabel, { color: labelColor }]}>Systolic:</Text>
+                  <Text style={[styles.trendValueNum, { color: '#C2577D' }]}>
+                    {activeItem.avg_sys ? `${activeItem.avg_sys} mmHg` : '—'}
+                  </Text>
+                </View>
+                <View style={styles.trendValuePill}>
+                  <View style={[styles.miniDot, { backgroundColor: '#02848F' }]} />
+                  <Text style={[styles.trendValueLabel, { color: labelColor }]}>Diastolic:</Text>
+                  <Text style={[styles.trendValueNum, { color: '#02848F' }]}>
+                    {activeItem.avg_dia ? `${activeItem.avg_dia} mmHg` : '—'}
+                  </Text>
+                </View>
+                {bpBadge && (
+                  <View style={[styles.trendStatusBadge, { backgroundColor: bpBadge.bg }]}>
+                    <Text style={[styles.trendStatusBadgeText, { color: bpBadge.text }]}>{bpBadge.label}</Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              <View style={styles.trendValuePill}>
+                <View style={[styles.miniDot, { backgroundColor: '#246944' }]} />
+                <Text style={[styles.trendValueLabel, { color: labelColor }]}>Weight:</Text>
+                <Text style={[styles.trendValueNum, { color: '#246944' }]}>
+                  {activeItem.avg_weight ? `${activeItem.avg_weight} kg` : '—'}
+                </Text>
+              </View>
             )}
-            {diaPoints.map((p, idx) => (
-              <G key={`dia-pt-${idx}`}>
-                <Circle cx={p[0]} cy={p[1]} r={4} fill="#02848F" stroke="#FFF" strokeWidth={1.5} />
-              </G>
-            ))}
+          </View>
+        ) : null}
+      </View>
 
-            {sysPoints.length > 1 && (
-              <Polyline
-                points={sysPoints.map(p => `${Math.round(p[0])},${Math.round(p[1])}`).join(' ')}
-                fill="none"
-                stroke="#C2577D"
-                strokeWidth="2.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )}
-            {sysPoints.map((p, idx) => (
-              <G key={`sys-pt-${idx}`}>
-                <Circle cx={p[0]} cy={p[1]} r={4.5} fill="#C2577D" stroke="#FFF" strokeWidth={1.5} />
+      {/* ── Interactive Horizontal Scroll Chart ── */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={true} style={{ marginBottom: 4 }}>
+        <Svg width={svgWidth} height={215}>
+          {yTicks.map((tick) => {
+            const y = getY(tick);
+            return (
+              <G key={`ytick-${tick}`}>
+                <Line x1={plotLeft} y1={y} x2={plotRight + 15} y2={y} stroke={gridColor} strokeWidth="1" strokeDasharray="3,3" />
+                <SvgText x={plotLeft - 6} y={y + 4} textAnchor="end" fontSize="10" fontWeight="600" fill={labelColor}>
+                  {tick}
+                </SvgText>
               </G>
-            ))}
-          </>
-        ) : (
-          <>
-            {wtPoints.length > 1 && (
-              <Polyline
-                points={wtPoints.map(p => `${Math.round(p[0])},${Math.round(p[1])}`).join(' ')}
-                fill="none"
-                stroke="#246944"
-                strokeWidth="2.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )}
-            {wtPoints.map((p, idx) => (
-              <G key={`wt-pt-${idx}`}>
-                <Circle cx={p[0]} cy={p[1]} r={4.5} fill="#246944" stroke="#FFF" strokeWidth={1.5} />
+            );
+          })}
+
+          <Line x1={plotLeft} y1={plotBottom} x2={plotRight + 15} y2={plotBottom} stroke={gridColor} strokeWidth="1.5" />
+
+          {/* Active Hover / Selected Vertical Line */}
+          {selX !== null && (
+            <Line
+              x1={selX}
+              y1={plotTop - 6}
+              x2={selX}
+              y2={plotBottom + 10}
+              stroke={isDarkMode ? '#F43F5E' : Colors.primary}
+              strokeWidth={1.8}
+              strokeDasharray="4,3"
+            />
+          )}
+
+          {/* X Axis Date Labels */}
+          {items.map((it, idx) => {
+            const x = getX(idx);
+            const isSel = selectedIdx === idx;
+            let lbl = it.short_label || it.period || '';
+            // If it contains a comma like 'Nov 22, 10:50pm', display clean date
+            if (lbl.includes(',')) {
+              lbl = lbl.split(',')[0].trim();
+            }
+
+            return (
+              <G key={`xtick-${idx}`}>
+                {isSel && (
+                  <Circle cx={x} cy={plotBottom + 7} r={3} fill={isDarkMode ? '#F43F5E' : Colors.primary} />
+                )}
+                <SvgText
+                  x={x}
+                  y={plotBottom + (isSel ? 22 : 18)}
+                  textAnchor="middle"
+                  fontSize={isSel ? "10.5" : "9"}
+                  fontWeight={isSel ? "800" : "600"}
+                  fill={isSel ? (isDarkMode ? '#F43F5E' : Colors.primary) : labelColor}
+                >
+                  {lbl}
+                </SvgText>
               </G>
-            ))}
-          </>
-        )}
-      </Svg>
-    </ScrollView>
+            );
+          })}
+
+          {metric === 'bp' ? (
+            <>
+              {diaPoints.length > 1 && (
+                <Polyline
+                  points={diaPoints.map(p => `${Math.round(p[0])},${Math.round(p[1])}`).join(' ')}
+                  fill="none"
+                  stroke="#02848F"
+                  strokeWidth="2.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
+              {diaPoints.map((p, idx) => {
+                const isSel = selectedIdx === p[3];
+                return (
+                  <G key={`dia-pt-${idx}`}>
+                    {isSel && (
+                      <Circle cx={p[0]} cy={p[1]} r={7.5} fill="#02848F" opacity={0.3} />
+                    )}
+                    <Circle cx={p[0]} cy={p[1]} r={isSel ? 5 : 4} fill="#02848F" stroke="#FFF" strokeWidth={isSel ? 2 : 1.5} />
+                  </G>
+                );
+              })}
+
+              {sysPoints.length > 1 && (
+                <Polyline
+                  points={sysPoints.map(p => `${Math.round(p[0])},${Math.round(p[1])}`).join(' ')}
+                  fill="none"
+                  stroke="#C2577D"
+                  strokeWidth="2.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
+              {sysPoints.map((p, idx) => {
+                const isSel = selectedIdx === p[3];
+                return (
+                  <G key={`sys-pt-${idx}`}>
+                    {isSel && (
+                      <Circle cx={p[0]} cy={p[1]} r={8} fill="#C2577D" opacity={0.3} />
+                    )}
+                    <Circle cx={p[0]} cy={p[1]} r={isSel ? 5.5 : 4.5} fill="#C2577D" stroke="#FFF" strokeWidth={isSel ? 2 : 1.5} />
+                  </G>
+                );
+              })}
+            </>
+          ) : (
+            <>
+              {wtPoints.length > 1 && (
+                <Polyline
+                  points={wtPoints.map(p => `${Math.round(p[0])},${Math.round(p[1])}`).join(' ')}
+                  fill="none"
+                  stroke="#246944"
+                  strokeWidth="2.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
+              {wtPoints.map((p, idx) => {
+                const isSel = selectedIdx === p[3];
+                return (
+                  <G key={`wt-pt-${idx}`}>
+                    {isSel && (
+                      <Circle cx={p[0]} cy={p[1]} r={8} fill="#246944" opacity={0.3} />
+                    )}
+                    <Circle cx={p[0]} cy={p[1]} r={isSel ? 5.5 : 4.5} fill="#246944" stroke="#FFF" strokeWidth={isSel ? 2 : 1.5} />
+                  </G>
+                );
+              })}
+            </>
+          )}
+
+          {/* Interactive Touch & Hover Hitboxes across all columns */}
+          {items.map((_, idx) => {
+            const x = getX(idx);
+            return (
+              <Rect
+                key={`hitbox-${idx}`}
+                x={x - (colWidth / 2)}
+                y={plotTop - 15}
+                width={colWidth}
+                height={plotH + 50}
+                fill="transparent"
+                onPress={() => setSelectedIdx(idx)}
+                // @ts-ignore Web hover
+                onMouseEnter={() => setSelectedIdx(idx)}
+                style={{ cursor: 'pointer' }}
+              />
+            );
+          })}
+        </Svg>
+      </ScrollView>
+    </View>
   );
 };
 
@@ -1291,6 +1446,65 @@ const styles = StyleSheet.create({
   },
   timeframeTextActive: {
     color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  trendTooltipBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  trendTooltipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  trendTooltipDate: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  trendTooltipHint: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  trendTooltipValuesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  trendValuePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  miniDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
+  trendValueLabel: {
+    fontSize: 11.5,
+    fontWeight: '500',
+  },
+  trendValueNum: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  trendStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  trendStatusBadgeText: {
+    fontSize: 11,
     fontWeight: '700',
   },
   trendEmptyBox: {

@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Svg, G, Line, Text as SvgText, Polyline, Circle, Rect } from 'react-native-svg';
@@ -227,10 +228,15 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onNavigate, isDark
 
   const handleSwitchActive = async (pregId: string) => {
     try {
+      setLoading(true);
       await api.switchPregnancy(pregId);
       await fetchHistory(selectedPregId);
+      Alert.alert('Active Pregnancy Changed', 'You have set this child as your current active pregnancy.');
     } catch (e: any) {
       console.warn('Switch pregnancy error', e);
+      Alert.alert('Notice', e?.message || 'Could not switch active pregnancy.');
+    } finally {
+      setLoading(false);
     }
   };
 

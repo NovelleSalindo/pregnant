@@ -293,6 +293,18 @@ foreach ($migTables as $mt) {
     } catch (Throwable $ignored) {}
 }
 try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS ob_visits (
+        id VARCHAR(20) NOT NULL PRIMARY KEY,
+        user_id VARCHAR(20) NOT NULL,
+        pregnancy_id VARCHAR(20) NULL,
+        visit_date DATE NOT NULL,
+        title VARCHAR(150) NULL,
+        notes TEXT NULL,
+        created_at DATETIME NOT NULL
+    )");
+} catch (Throwable $ignored) {}
+
+try {
     $pdo->exec("ALTER TABLE birth_plans DROP PRIMARY KEY, ADD COLUMN id VARCHAR(30) NOT NULL FIRST, ADD COLUMN pregnancy_id VARCHAR(20) NULL AFTER user_id, ADD PRIMARY KEY (id), ADD UNIQUE KEY uq_bp_user_preg (user_id, pregnancy_id)");
 } catch (Throwable $ignored) {}
 
@@ -304,9 +316,15 @@ function get_active_pregnancy_id($pdo, $userId) {
         $stmt->execute([$userId]);
         $actId = $stmt->fetchColumn();
         if (!empty($actId)) {
-            $chk = $pdo->prepare("SELECT id FROM pregnancies WHERE id = ? AND user_id = ?");
+            $chk = $pdo->prepare("SELECT id, status FROM pregnancies WHERE id = ? AND user_id = ?");
             $chk->execute([$actId, $userId]);
-            if ($chk->fetchColumn()) {
+            $row = $chk->fetch();
+            if ($row) {
+                // Ensure this pregnancy is marked active in the pregnancies table
+                if ($row['status'] !== 'active') {
+                    $pdo->prepare("UPDATE pregnancies SET status = 'active' WHERE id = ?")->execute([$actId]);
+                    $pdo->prepare("UPDATE pregnancies SET status = 'completed' WHERE user_id = ? AND id != ? AND status = 'active'")->execute([$userId, $actId]);
+                }
                 return $actId;
             }
         }
@@ -386,22 +404,28 @@ function switch_active_pregnancy($pdo, $userId, $pregnancyId) {
     $target = $stmt->fetch();
     if (!$target) return false;
 
-    // Mark previous active as completed
-    $pdo->prepare("UPDATE pregnancies SET status = 'completed' WHERE user_id = ? AND status = 'active'")->execute([$userId]);
+    // 1. Mark other pregnancies of this user as completed
+    $pdo->prepare("UPDATE pregnancies SET status = 'completed' WHERE user_id = ? AND id != ?")->execute([$userId, $pregnancyId]);
 
-    // Activate target
-    $pdo->prepare("UPDATE pregnancies SET status = 'active' WHERE id = ?")->execute([$pregnancyId]);
+    // 2. Activate target pregnancy
+    $pdo->prepare("UPDATE pregnancies SET status = 'active' WHERE id = ? AND user_id = ?")->execute([$pregnancyId, $userId]);
 
-    // Determine upcoming visit for target pregnancy
-    $stmtNext = $pdo->prepare("SELECT visit_date FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
-    $stmtNext->execute([$userId, $pregnancyId]);
-    $nextDate = $stmtNext->fetchColumn() ?: null;
+    // 3. Determine upcoming visit for target pregnancy safely
+    $nextDate = null;
+    try {
+        $stmtNext = $pdo->prepare("SELECT visit_date FROM ob_visits WHERE user_id = ? AND pregnancy_id = ? AND visit_date >= CURDATE() ORDER BY visit_date ASC LIMIT 1");
+        $stmtNext->execute([$userId, $pregnancyId]);
+        $nextDate = $stmtNext->fetchColumn() ?: null;
+    } catch (Throwable $e) {}
 
-    // Update profile
-    $pdo->prepare("UPDATE patient_profiles SET active_pregnancy_id = ?, edd = ?, next_ob_visit = ? WHERE user_id = ?")->execute([$pregnancyId, $target['edd'], $nextDate, $userId]);
+    // 4. Update profile active pregnancy, EDD, next_ob_visit
+    $pdo->prepare("UPDATE patient_profiles SET active_pregnancy_id = ?, edd = ?, next_ob_visit = ? WHERE user_id = ?")
+        ->execute([$pregnancyId, $target['edd'] ?: null, $nextDate, $userId]);
 
-    // Ensure bag items exist for this pregnancy if needed
-    ensure_hospital_bag_checklist($pdo, $userId, $pregnancyId);
+    // 5. Ensure bag items exist for this pregnancy if needed
+    try {
+        ensure_hospital_bag_checklist($pdo, $userId, $pregnancyId);
+    } catch (Throwable $e) {}
 
     return true;
 }

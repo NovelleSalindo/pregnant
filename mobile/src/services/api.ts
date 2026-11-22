@@ -811,6 +811,10 @@ class ApiService {
     return this.request('auth.php?action=pregnancies');
   }
 
+  async getHistory(pregnancyId = 'all') {
+    return this.request(`history.php?pregnancy_id=${encodeURIComponent(pregnancyId)}`);
+  }
+
   async addPregnancy(data: { title: string; edd?: string; notes?: string }) {
     const res = await this.request('auth.php?action=new_pregnancy', {
       method: 'POST',

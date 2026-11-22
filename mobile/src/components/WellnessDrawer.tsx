@@ -118,6 +118,7 @@ export const WellnessDrawer: React.FC<WellnessDrawerProps> = ({
   const [showHelp, setShowHelp] = useState(false);
 
   const tools = [
+    { key: 'history', label: 'Pregnancy & Health History', icon: 'time-outline' as const },
     { key: 'reminders', label: 'OB-GYN & Health Reminders', icon: 'alarm' as const },
     { key: 'education', label: 'Education Hub', icon: 'book' as const },
     { key: 'meal_planner', label: 'Meal Planner', icon: 'restaurant' as const },

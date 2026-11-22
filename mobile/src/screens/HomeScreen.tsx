@@ -661,21 +661,32 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 </View>
               </View>
 
-              <TouchableOpacity
-                style={styles.noPregBtn}
-                onPress={() => setShowAddPregModal(true)}
-                activeOpacity={0.85}
-              >
-                <LinearGradient
-                  colors={['#E8729A', '#C2577D']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.noPregBtnGrad}
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                <TouchableOpacity
+                  style={[styles.noPregBtn, { flex: 1 }]}
+                  onPress={() => setShowAddPregModal(true)}
+                  activeOpacity={0.85}
                 >
-                  <Ionicons name="add-circle" size={18} color="#FFF" style={{ marginRight: 6 }} />
-                  <Text style={styles.noPregBtnText}>Add Pregnancy</Text>
-                </LinearGradient>
-              </TouchableOpacity>
+                  <LinearGradient
+                    colors={['#E8729A', '#C2577D']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.noPregBtnGrad}
+                  >
+                    <Ionicons name="add-circle" size={17} color="#FFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.noPregBtnText}>Add Pregnancy</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.noPregBtnOutline, isDarkMode && { borderColor: '#4A2A38', backgroundColor: '#1F141A' }]}
+                  onPress={() => onNavigate('history')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="time-outline" size={17} color={isDarkMode ? '#FF94B8' : '#C2577D'} style={{ marginRight: 6 }} />
+                  <Text style={[styles.noPregBtnOutlineText, isDarkMode && { color: '#FF94B8' }]}>View History</Text>
+                </TouchableOpacity>
+              </View>
             </LinearGradient>
           </View>
         ) : (
@@ -2299,6 +2310,23 @@ const styles = StyleSheet.create({
   },
   noPregBtnText: {
     color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  noPregBtnOutline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#F8B4C8',
+    backgroundColor: '#FFF',
+    marginTop: 4,
+  },
+  noPregBtnOutlineText: {
+    color: '#C2577D',
     fontSize: 14,
     fontWeight: '700',
   },

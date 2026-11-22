@@ -535,7 +535,9 @@ const DEFAULT_NEWBORN_CARE = [
 
 function seed_default_newborn_care($pdo, $userId, $pregnancyId = null) {
     if (empty($userId)) return;
-    if (!$pregnancyId) {
+    if ($pregnancyId === 'all') {
+        $pregnancyId = null;
+    } elseif ($pregnancyId === null) {
         $pregnancyId = get_active_pregnancy_id($pdo, $userId);
     }
 
@@ -569,7 +571,9 @@ function seed_default_newborn_care($pdo, $userId, $pregnancyId = null) {
 
 function get_user_newborn_care_items($pdo, $userId, $pregnancyId = null) {
     if (empty($userId)) return [];
-    if (!$pregnancyId) {
+    if ($pregnancyId === 'all') {
+        $pregnancyId = null;
+    } elseif ($pregnancyId === null) {
         $pregnancyId = get_active_pregnancy_id($pdo, $userId);
     }
 
@@ -646,7 +650,9 @@ function toggle_baby_vaccine_item($pdo, $userId, $vaxId, $given) {
 // Trends on readings (Weight, BP, Heart Rate) for Daily, Weekly, and Monthly basis
 function compute_vitals_trends($pdo, $userId, $pregnancyId = null) {
     if (empty($userId)) return ['daily' => [], 'weekly' => [], 'monthly' => [], 'summary' => []];
-    if (!$pregnancyId) {
+    if ($pregnancyId === 'all') {
+        $pregnancyId = null;
+    } elseif ($pregnancyId === null) {
         $pregnancyId = get_active_pregnancy_id($pdo, $userId);
     }
 
@@ -881,7 +887,9 @@ function compute_vitals_trends($pdo, $userId, $pregnancyId = null) {
 // Symptom trends on readings for Daily, Weekly, and Monthly basis
 function compute_symptoms_trends($pdo, $userId, $pregnancyId = null) {
     if (empty($userId)) return ['daily' => [], 'weekly' => [], 'monthly' => [], 'summary' => []];
-    if (!$pregnancyId) {
+    if ($pregnancyId === 'all') {
+        $pregnancyId = null;
+    } elseif ($pregnancyId === null) {
         $pregnancyId = get_active_pregnancy_id($pdo, $userId);
     }
 
@@ -1272,6 +1280,8 @@ function seed_default_hospital_bag($pdo, $userId, $pregnancyId = null) {
 // not yet in the dictionary, so untranslated strings never break.
 const TRANSLATIONS = [
     'Dashboard'            => ['bi' => 'Dashboard'],
+    'History'              => ['bi' => 'Kasaysayan'],
+    'Pregnancy & Health History' => ['bi' => 'Kasaysayan sa Pagbuntis & Panglawas'],
     'Vitals Monitoring'    => ['bi' => 'Vitals'],
     'Symptom Check-in'     => ['bi' => 'Check-in sa Sintomas'],
     'Risk Analysis'        => ['bi' => 'Risk Analysis'],
@@ -1784,6 +1794,7 @@ function render_header($title, $active = ''){
     <?php if ($u['role'] === 'patient'): ?>
       <div class="nav-group-label">Care</div>
       <a class="nav-link <?php echo $active==='dashboard'?'active':''; ?>" href="dashboard.php"><i class="fa-solid fa-house"></i> <?php echo t('Dashboard'); ?></a>
+      <a class="nav-link <?php echo $active==='history'?'active':''; ?>" href="history.php"><i class="fa-solid fa-clock-rotate-left"></i> <?php echo t('History'); ?></a>
       <a class="nav-link <?php echo $active==='monitoring'?'active':''; ?>" href="monitoring.php"><i class="fa-solid fa-heart-pulse"></i> <?php echo t('Vitals Monitoring'); ?></a>
       <a class="nav-link <?php echo $active==='reminders'?'active':''; ?>" href="reminders.php"><i class="fa-solid fa-bell"></i> Reminders</a>
       <a class="nav-link <?php echo $active==='symptoms'?'active':''; ?>" href="symptoms.php"><i class="fa-solid fa-notes-medical"></i> <?php echo t('Symptom Check-in'); ?></a>
@@ -1890,6 +1901,7 @@ function render_footer(){
     <span>Wellness Tools</span>
     <button type="button" class="ed-close" onclick="pcToggleWellnessDrawer()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
   </div>
+  <a class="wt-drawer-link <?php echo ($active_page ?? '')==='history'?'active':''; ?>" href="history.php"><i class="fa-solid fa-clock-rotate-left"></i> Pregnancy &amp; Health History</a>
   <a class="wt-drawer-link <?php echo ($active_page ?? '')==='reminders'?'active':''; ?>" href="reminders.php"><i class="fa-solid fa-bell"></i> Reminders &amp; OB Visit</a>
   <a class="wt-drawer-link <?php echo ($active_page ?? '')==='education'?'active':''; ?>" href="education.php"><i class="fa-solid fa-book-medical"></i> <?php echo t('Education Hub'); ?></a>
   <a class="wt-drawer-link <?php echo ($active_page ?? '')==='meal_planner'?'active':''; ?>" href="meal_planner.php"><i class="fa-solid fa-utensils"></i> Meal Planner</a>

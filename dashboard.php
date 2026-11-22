@@ -415,9 +415,14 @@ render_header('Dashboard', 'dashboard');
   <p style="font-size:14px;color:#64748b;max-width:480px;margin:0 auto 20px;line-height:1.5;">
     You haven't added an active pregnancy yet. Add your estimated due date to unlock week-by-week baby development, fruit size comparisons, and daily vitals monitoring.
   </p>
-  <a href="profile.php" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:12px;font-weight:700;box-shadow:0 4px 12px rgba(194,87,125,0.25);">
-    <i class="fa-solid fa-plus-circle"></i> Add Pregnancy
-  </a>
+  <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+    <a href="profile.php" class="btn btn-primary" style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:12px;font-weight:700;box-shadow:0 4px 12px rgba(194,87,125,0.25);">
+      <i class="fa-solid fa-plus-circle"></i> Add Pregnancy
+    </a>
+    <a href="history.php" class="btn btn-outline" style="display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border-radius:12px;font-weight:600;">
+      <i class="fa-solid fa-clock-rotate-left"></i> View History
+    </a>
+  </div>
 </div>
 <?php else: ?>
 <div class="fetal-card-display">

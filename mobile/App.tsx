@@ -26,6 +26,7 @@ import { WellnessScreen } from './src/screens/WellnessScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { AnalyzeScreen } from './src/screens/AnalyzeScreen';
 import { AdviceScreen } from './src/screens/AdviceScreen';
+import { HistoryScreen } from './src/screens/HistoryScreen';
 import { WellnessDrawer } from './src/components/WellnessDrawer';
 import { NotificationModal } from './src/components/NotificationModal';
 import { EmergencyFab } from './src/components/EmergencyFab';
@@ -39,7 +40,7 @@ LogBox.ignoreLogs([
   'setLayoutAnimationEnabledExperimental',
 ]);
 
-type NavTab = 'home' | 'vitals' | 'symptoms' | 'analyze' | 'advice' | 'profile' | 'wellness' | 'trackers';
+type NavTab = 'home' | 'vitals' | 'symptoms' | 'analyze' | 'advice' | 'profile' | 'wellness' | 'trackers' | 'history';
 
 const DEFAULT_USER = {
   id: 'u_174da054f',
@@ -196,6 +197,9 @@ function MainApp() {
 
   const handleSelectTool = (key: string) => {
     switch (key) {
+      case 'history':
+        setActiveTab('history');
+        break;
       case 'reminders':
         setWellnessSubTab('reminders');
         setActiveTab('wellness');
@@ -243,6 +247,10 @@ function MainApp() {
   };
 
   const handleNavigate = (tab: any, subTab?: any) => {
+    if (tab === 'history') {
+      setActiveTab('history');
+      return;
+    }
     if (tab === 'reminders') {
       setWellnessSubTab('reminders');
       setActiveTab('wellness');
@@ -380,6 +388,8 @@ function MainApp() {
         return 'Recommendations';
       case 'profile':
         return 'Profile';
+      case 'history':
+        return 'Pregnancy & Health History';
       case 'wellness':
         switch (wellnessSubTab) {
           case 'education':
@@ -449,6 +459,7 @@ function MainApp() {
         {activeTab === 'analyze' && <AnalyzeScreen onNavigate={handleNavigate} />}
         {activeTab === 'advice' && <AdviceScreen onNavigate={handleNavigate} isDarkMode={isDarkMode} />}
         {activeTab === 'profile' && <ProfileScreen user={user} onLogout={handleLogout} />}
+        {activeTab === 'history' && <HistoryScreen onNavigate={handleNavigate} isDarkMode={isDarkMode} />}
         {activeTab === 'wellness' && (
           <WellnessScreen
             key={wellnessSubTab}

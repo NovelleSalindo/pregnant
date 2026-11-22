@@ -177,22 +177,13 @@ foreach ($rawSymLogs as $sl) {
     ];
 }
 
-// 7. Pregnancy stats summary for each pregnancy
+// 7. Pregnancy stats summary for each pregnancy (queried directly so counts are always permanent and independent of filter)
 $pregnancySummaries = [];
 foreach ($pregnancies as $pr) {
     $pId = $pr['id'];
-    $cntV = 0;
-    foreach ($vitalsLogs as $vl) {
-        if (($vl['pregnancy_id'] ?? '') === $pId) $cntV++;
-    }
-    $cntR = 0;
-    foreach ($riskAssessments as $ra) {
-        if (($ra['pregnancy_id'] ?? '') === $pId) $cntR++;
-    }
-    $cntS = 0;
-    foreach ($symptomLogs as $syl) {
-        if (($syl['pregnancy_id'] ?? '') === $pId) $cntS++;
-    }
+    $cntV = (int)$pdo->query("SELECT COUNT(*) FROM monitoring WHERE user_id = '{$userId}' AND pregnancy_id = '{$pId}'")->fetchColumn();
+    $cntR = (int)$pdo->query("SELECT COUNT(*) FROM coopland_assessments WHERE user_id = '{$userId}' AND pregnancy_id = '{$pId}'")->fetchColumn();
+    $cntS = (int)$pdo->query("SELECT COUNT(*) FROM symptom_logs WHERE user_id = '{$userId}' AND pregnancy_id = '{$pId}'")->fetchColumn();
     $pregnancySummaries[$pId] = [
         'vitals_count' => $cntV,
         'risk_count' => $cntR,

@@ -4,8 +4,8 @@ FROM php:8.2-apache
 # Install PDO MySQL extension
 RUN docker-php-ext-install pdo pdo_mysql
 
-# Enable Apache rewrite and headers modules
-RUN a2enmod rewrite headers
+# Enable Apache rewrite module
+RUN a2enmod rewrite
 
 # Allow .htaccess overrides and set DocumentRoot
 RUN sed -i 's/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
